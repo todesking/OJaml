@@ -1,0 +1,6 @@
+package test.ml0
+
+struct Let {
+  let result = 1
+}
+(* expected: 2 *)
