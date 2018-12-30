@@ -12,23 +12,23 @@ class Main extends FunSpec {
   def init(): Unit = {
     val baseDir = new java.io.File(getClass.getClassLoader.getResource("test").toURI).toPath
 
-    listFiles(baseDir).foreach(registerTest)
+    listFiles(baseDir).foreach(registerTest(baseDir, _))
   }
 
   def listFiles(p: Path): Seq[Path] =
     Files.list(p).collect(java.util.stream.Collectors.toList[Path]).asScala
 
-  private[this] def registerTest(p: Path): Unit = {
+  private[this] def registerTest(base: Path, p: Path): Unit = {
     if (Files.isDirectory(p)) {
-      describe(p.toString) {
-        listFiles(p).foreach(registerTest)
+      describe(base.relativize(p).toString) {
+        listFiles(p).foreach(registerTest(p, _))
       }
     } else if (p.getFileName.toString.endsWith(".ml0")) {
-      it(p.toString) {
+      it(base.relativize(p).toString) {
         test(p)
       }
     } else {
-      it(p.toString) {
+      it(base.relativize(p).toString) {
         fail(s"Unknown test file: $p")
       }
     }
@@ -41,18 +41,22 @@ class Main extends FunSpec {
     val reName = """(.+)\.ml0""".r
     val className = "test.ml0." + p.getFileName() match { case `reName`(name) => name }
 
-    val reExpected = """\(\* expected: (.+) \*\)""".r
-    val expected = Files.readAllLines(p).asScala.collect {
-      case `reExpected`(e) => e
-    }.headOption getOrElse { throw new RuntimeException(s"Expected value not specified in $p") }
+    val reExpected = """\(\* ([\w.]+): ([\w.]+) = (.+) \*\)""".r
+    val expects = Files.readAllLines(p).asScala.filter(_.startsWith("(* ")).map {
+      case `reExpected`(name, tpe, value) => (name, tpe, value)
+    }
 
     try {
       c.compile(Seq(p))
       val cl = new java.net.URLClassLoader(Array(outDir.toUri.toURL))
       val klass = cl.loadClass(className)
-      val field = klass.getField("result")
-      val result = field.get(null)
-      assert(expected == result.toString)
+      expects.foreach {
+        case (fieldName, fieldTypeName, value) =>
+          val field = klass.getField(fieldName)
+          val result = field.get(null)
+          assert(fieldTypeName == field.getType.getName)
+          assert(value == result.toString)
+      }
     } finally {
       // rm outDir
     }
