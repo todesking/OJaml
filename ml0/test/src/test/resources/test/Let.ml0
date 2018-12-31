@@ -1,6 +1,6 @@
 package test.ml0
 
 struct Let {
-  let result = 1
+  let result = 2 ;;
 }
 (* result: java.lang.Integer = 2 *)
