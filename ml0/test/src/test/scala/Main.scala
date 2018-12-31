@@ -55,7 +55,7 @@ class Main extends FunSpec {
           val field = klass.getField(fieldName)
           val result = field.get(null)
           assert(fieldTypeName == field.getType.getName)
-          assert(value == result.toString)
+          assert(value == s"$result")
       }
     } finally {
       // rm outDir
