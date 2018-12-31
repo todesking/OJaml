@@ -1,0 +1,5 @@
+package test.ml0
+
+struct Empty {
+}
+
