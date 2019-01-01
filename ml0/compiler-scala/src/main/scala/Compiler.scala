@@ -24,12 +24,13 @@ class Compiler(baseDir: Path) {
   }
 
   def compile1(file: FileContent): Seq[Error] = {
-    Parser.parse(file.content) match {
-      case Parser.NoSuccess(msg, next) =>
+    val parser = new Parser(file.path.toString)
+    parser.parse(file.content) match {
+      case parser.NoSuccess(msg, next) =>
         val line = next.pos.line
         val col = next.pos.column
-        Seq(Error(file.path, line, col, s"Parse error: $msg\n${next.pos.longString}"))
-      case Parser.Success(ast, _) =>
+        Seq(Error(file.path.toString, line, col, s"Parse error: $msg\n${next.pos.longString}"))
+      case parser.Success(ast, _) =>
         typer.typeProgram(ast).fold(l => l, { r => assembler.emit(r); Seq() })
     }
 
@@ -96,7 +97,7 @@ class Compiler(baseDir: Path) {
 }
 
 object Compiler {
-  case class Error(path: Path, line: Int, col: Int, message: String)
+  case class Error(location: String, line: Int, col: Int, message: String)
   case class Result(errors: Seq[Error]) {
     def isSuccess = errors.isEmpty
   }

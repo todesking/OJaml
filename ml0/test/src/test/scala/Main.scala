@@ -68,7 +68,7 @@ class Main extends FunSpec {
       unexpected.foreach {
         case pos =>
           val e = errors(pos)
-          println(s"${e.path}:${e.line}:${e.col} [Unexpected] ${e.message}")
+          println(s"${e.location}:${e.line}:${e.col} [Unexpected] ${e.message}")
       }
       notHappend.foreach {
         case (l, c) =>

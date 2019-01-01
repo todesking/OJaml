@@ -3,13 +3,21 @@ package com.todesking.ojaml.ml0.compiler.scala
 import scala.util.parsing.input.Positional
 import scala.util.parsing.input.Position
 
-case class Name(value: String) extends Positional
-case class QName(parts: Seq[Name]) extends Positional {
+case class Pos(location: String, line: Int, col: Int)
+trait HasPos {
+  private[this] var _pos: Pos = null
+  def fillPos(location: String, line: Int, col: Int) = if (_pos == null) _pos =
+    Pos(location, line, col)
+  def pos: Pos = _pos
+}
+
+case class Name(value: String) extends HasPos
+case class QName(parts: Seq[Name]) extends HasPos {
   require(parts.nonEmpty)
   def value = parts.map(_.value).mkString(".")
 }
 
-sealed abstract class RawAST extends Positional
+sealed abstract class RawAST extends HasPos
 object RawAST {
   case class Program(pkg: QName, item: Struct) extends RawAST
   case class Struct(name: Name, body: Seq[Term]) extends RawAST

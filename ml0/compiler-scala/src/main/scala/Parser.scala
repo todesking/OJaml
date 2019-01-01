@@ -1,6 +1,6 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
-object Parser extends scala.util.parsing.combinator.RegexParsers {
+class Parser(sourceLocation: String) extends scala.util.parsing.combinator.RegexParsers {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => T }
 
   def parse(s: String): ParseResult[T.Program] =
@@ -30,17 +30,25 @@ object Parser extends scala.util.parsing.combinator.RegexParsers {
     }
   }
 
-  val name: Parser[Name] = positioned("""[a-zA-Z][a-zA-Z0-9_]*""".r ^^ { s => Name(s) })
-  val qname: Parser[QName] = positioned(rep1sep(name, ".") ^^ { xs => QName(xs) })
+  private[this] def withpos[T <: HasPos](p: => Parser[T]): Parser[T] = Parser { in =>
+    p(in) match {
+      case Success(t, in1) => Success({ t.fillPos(sourceLocation, in.pos.line, in.pos.column); t }, in1)
+      case ns: NoSuccess => ns
+    }
+  }
 
-  lazy val program = positioned(pkg ~ struct ^^ { case p ~ s => T.Program(p, s) })
+  val name: Parser[Name] = withpos("""[a-zA-Z][a-zA-Z0-9_]*""".r ^^ { s => Name(s) })
+  val qname: Parser[QName] = withpos(rep1sep(name, ".") ^^ { xs => QName(xs) })
+
+  lazy val program = withpos(pkg ~ struct ^^ { case p ~ s => T.Program(p, s) })
   lazy val pkg = kwd("package") ~> qname
-  lazy val struct = positioned(kwd("struct") ~> (name <~ "{") ~ rep(term) <~ "}" ^^ {
+  lazy val struct = withpos(kwd("struct") ~> (name <~ "{") ~ rep(term) <~ "}" ^^ {
     case n ~ ts => T.Struct(n, ts)
   })
 
   def term: Parser[T.Term] = tlet
-  def tlet = positioned(kwd("let") ~> (name <~ "=") ~ expr <~ ";;" ^^ { case n ~ e => T.TLet(n, e) })
+  def tlet = withpos(kwd("let") ~> (name <~ "=") ~ expr <~ ";;" ^^ { case n ~ e => T.TLet(n, e) })
   def expr: Parser[T.Expr] = lit_int
-  val lit_int = positioned("""[0-9]+""".r ^^ { i => T.LitInt(i.toInt) })
+  val lit_int = withpos("""[0-9]+""".r ^^ { i => T.LitInt(i.toInt) })
 }
+
