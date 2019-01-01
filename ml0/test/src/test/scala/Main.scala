@@ -47,8 +47,10 @@ class Main extends FunSpec {
     val reError = """^(\s*\(\*\s*\^).*""".r
     val expectedErrors = lines.zipWithIndex.collect {
       case (reError(error), i) =>
-        (i + 1, error.length + 1)
-    }
+        val line = i // line = i +1(1-origin) -1(above line)
+        val col = error.length
+        (line, col)
+    }.toSet
 
     val reExpected = """^\s*\(\* ([\w.]+): ([\w.]+) = (.+) \*\)\s*$""".r
     val expects = lines.collect {
@@ -74,8 +76,7 @@ class Main extends FunSpec {
         case (l, c) =>
           println(s"$p:$l:$c Error expected but not happend")
       }
-      assert(Set() == notHappend)
-      assert(unexpected.isEmpty)
+      assert((Set(), Set()) == (notHappend, unexpected))
     } else {
       try {
         val content = scala_compiler.FileContent(p, lines.mkString("\n"))
