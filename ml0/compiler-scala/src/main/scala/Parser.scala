@@ -1,7 +1,9 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
 object Parser extends scala.util.parsing.combinator.RegexParsers {
-  def parse(s: String): ParseResult[AST.Program] =
+  import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => T }
+
+  def parse(s: String): ParseResult[T.Program] =
     parseAll(program, s)
 
   private[this] var _skipWS = true
@@ -28,17 +30,17 @@ object Parser extends scala.util.parsing.combinator.RegexParsers {
     }
   }
 
-  val name: Parser[String] = """[a-zA-Z][a-zA-Z0-9_]*""".r
-  val qname: Parser[Seq[String]] = rep1sep(name, ".")
+  val name: Parser[Name] = positioned("""[a-zA-Z][a-zA-Z0-9_]*""".r ^^ { s => Name(s) })
+  val qname: Parser[QName] = positioned(rep1sep(name, ".") ^^ { xs => QName(xs) })
 
-  lazy val program = pkg ~ struct ^^ { case p ~ s => AST.Program(p, s) }
-  lazy val pkg = kwd("package") ~> qname ^^ { _.mkString(".") }
-  lazy val struct = kwd("struct") ~> (name <~ "{") ~ rep(term) <~ "}" ^^ {
-    case n ~ ts => AST.Struct(n, ts)
-  }
+  lazy val program = positioned(pkg ~ struct ^^ { case p ~ s => T.Program(p, s) })
+  lazy val pkg = kwd("package") ~> qname
+  lazy val struct = positioned(kwd("struct") ~> (name <~ "{") ~ rep(term) <~ "}" ^^ {
+    case n ~ ts => T.Struct(n, ts)
+  })
 
-  def term: Parser[AST.Term] = tlet
-  def tlet = kwd("let") ~> (name <~ "=") ~ expr <~ ";;" ^^ { case n ~ e => AST.TLet(n, e) }
-  def expr: Parser[AST.Expr] = lit_int
-  val lit_int = """[0-9]+""".r ^^ { i => AST.LitInt(i.toInt) }
+  def term: Parser[T.Term] = tlet
+  def tlet = positioned(kwd("let") ~> (name <~ "=") ~ expr <~ ";;" ^^ { case n ~ e => T.TLet(n, e) })
+  def expr: Parser[T.Expr] = lit_int
+  val lit_int = positioned("""[0-9]+""".r ^^ { i => T.LitInt(i.toInt) })
 }

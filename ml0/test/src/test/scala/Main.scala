@@ -42,14 +42,12 @@ class Main extends FunSpec {
     val reName = """(.+)\.ml0""".r
     val className = "test.ml0." + p.getFileName() match { case `reName`(name) => name }
 
-    val rawLines = Files.readAllLines(p).asScala
+    val lines = Files.readAllLines(p).asScala
 
     val reError = """^(\s*\(\*\s*\^).*""".r
-    val (_, lines, expectedErrors) = rawLines.foldLeft((1, Seq.empty[String], Set.empty[(Int, Int)])) {
-      case ((i, a, b), reError(err)) =>
-        (i, a, b + ((i - 1, err.length + 1)))
-      case ((i, a, b), l) =>
-        (i + 1, a :+ l, b)
+    val expectedErrors = lines.zipWithIndex.collect {
+      case (reError(error), i) =>
+        (i + 1, error.length + 1)
     }
 
     val reExpected = """^\s*\(\* ([\w.]+): ([\w.]+) = (.+) \*\)\s*$""".r

@@ -11,6 +11,8 @@ import asm.{ Opcodes => op }
 import Compiler.{ Result, Error }
 
 class Compiler(baseDir: Path) extends asm.Opcodes {
+  import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TAST => TT }
+
   def compile(files: Seq[Path]): Result =
     compileContents(files.map(FileContent.read))
 
@@ -95,11 +97,11 @@ class Compiler(baseDir: Path) extends asm.Opcodes {
 
   type TResult[A] = Either[Seq[Error], A]
 
-  def typing(p: AST.Program): TResult[TAST.Program] =
-    typing(p.item).right.map(TAST.Program(p.pkg, _))
+  def typing(p: RT.Program): TResult[TT.Program] =
+    typing(p.item).right.map(TT.Program(p.pkg, _))
 
-  def typing(s: AST.Struct): TResult[TAST.Struct] =
-    validate(s.body.map(typing)).right.map(TAST.Struct(s.name, _))
+  def typing(s: RT.Struct): TResult[TT.Struct] =
+    validate(s.body.map(typing)).right.map(TT.Struct(s.name, _))
 
   private[this] def validate[A](xs: Seq[TResult[A]]): TResult[Seq[A]] = {
     val rights = xs.collect { case Right(x) => x }
@@ -107,28 +109,28 @@ class Compiler(baseDir: Path) extends asm.Opcodes {
     else Left(xs.collect { case Left(x) => x }.flatten)
   }
 
-  def typing(t: AST.Term): TResult[TAST.Term] = t match {
-    case AST.TLet(name, expr) =>
+  def typing(t: RT.Term): TResult[TT.Term] = t match {
+    case RT.TLet(name, expr) =>
       for {
         e <- typing(expr)
-      } yield TAST.TLet(name, e.tpe, e)
-    case e: AST.Expr => typing(e)
+      } yield TT.TLet(name, e.tpe, e)
+    case e: RT.Expr => typing(e)
   }
 
-  def typing(e: AST.Expr): TResult[TAST.Expr] = e match {
-    case AST.LitInt(v) => Right(TAST.LitInt(v))
+  def typing(e: RT.Expr): TResult[TT.Expr] = e match {
+    case RT.LitInt(v) => Right(TT.LitInt(v))
   }
 
-  def emit(p: TAST.Program): TResult[Unit] = {
-    emitStruct(p.pkg, p.item)
+  def emit(p: TT.Program): TResult[Unit] = {
+    emitStruct(p.pkg.value, p.item)
   }
 
   def sig(tpe: Type) = tpe match {
     case Type.Int => "Ljava/lang/Integer;"
   }
 
-  def emitStruct(pkg: String, struct: TAST.Struct): TResult[Unit] = {
-    val className = s"$pkg.${struct.name}".replaceAll("\\.", "/")
+  def emitStruct(pkg: String, struct: TT.Struct): TResult[Unit] = {
+    val className = s"$pkg.${struct.name.value}".replaceAll("\\.", "/")
     val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)
     cw.visit(
       op.V1_8,
@@ -139,14 +141,14 @@ class Compiler(baseDir: Path) extends asm.Opcodes {
       Array())
 
     struct.body.foreach {
-      case TAST.TLet(name, tpe, expr) =>
+      case TT.TLet(name, tpe, expr) =>
         cw.visitField(
           op.ACC_PUBLIC | op.ACC_STATIC,
-          name,
+          name.value,
           sig(tpe),
           null,
           null)
-      case _: TAST.Expr =>
+      case _: TT.Expr =>
       // ignore
     }
 
@@ -156,8 +158,8 @@ class Compiler(baseDir: Path) extends asm.Opcodes {
       "()V",
       null,
       Array())
-    def eval(expr: TAST.Expr) = expr match {
-      case TAST.LitInt(v) =>
+    def eval(expr: TT.Expr) = expr match {
+      case TT.LitInt(v) =>
         clinit.visitLdcInsn(v)
         clinit.visitMethodInsn(
           op.INVOKESTATIC,
@@ -166,10 +168,10 @@ class Compiler(baseDir: Path) extends asm.Opcodes {
           "(I)Ljava/lang/Integer;")
     }
     struct.body.foreach {
-      case TAST.TLet(name, tpe, expr) =>
+      case TT.TLet(name, tpe, expr) =>
         eval(expr)
-        clinit.visitFieldInsn(op.PUTSTATIC, className, name, sig(tpe))
-      case e: TAST.Expr =>
+        clinit.visitFieldInsn(op.PUTSTATIC, className, name.value, sig(tpe))
+      case e: TT.Expr =>
       // ignore for now
     }
 
@@ -179,7 +181,7 @@ class Compiler(baseDir: Path) extends asm.Opcodes {
     cw.visitEnd()
     val data = cw.toByteArray()
     val packageDir = baseDir.resolve(pkg.replaceAll("\\.", "/"))
-    val out = packageDir.resolve(s"${struct.name}.class")
+    val out = packageDir.resolve(s"${struct.name.value}.class")
     Files.createDirectories(packageDir)
     println(s"Emit: $out")
     Files.write(out, data)
