@@ -35,30 +35,66 @@ class Main extends FunSpec {
   }
 
   private[this] def test(p: Path): Unit = {
+    import com.todesking.ojaml.ml0.compiler.{ scala => scala_compiler }
     val outDir = Files.createTempDirectory("ojaml-test")
-    val c = new com.todesking.ojaml.ml0.compiler.scala.Compiler(outDir)
+    val c = new scala_compiler.Compiler(outDir)
 
     val reName = """(.+)\.ml0""".r
     val className = "test.ml0." + p.getFileName() match { case `reName`(name) => name }
 
-    val reExpected = """\(\* ([\w.]+): ([\w.]+) = (.+) \*\)""".r
-    val expects = Files.readAllLines(p).asScala.filter(_.startsWith("(* ")).map {
+    val rawLines = Files.readAllLines(p).asScala
+
+    val reError = """^(\s*\(\*\s*\^).*""".r
+    val (_, lines, expectedErrors) = rawLines.foldLeft((1, Seq.empty[String], Set.empty[(Int, Int)])) {
+      case ((i, a, b), reError(err)) =>
+        (i, a, b + ((i - 1, err.length + 1)))
+      case ((i, a, b), l) =>
+        (i + 1, a :+ l, b)
+    }
+
+    val reExpected = """^\s*\(\* ([\w.]+): ([\w.]+) = (.+) \*\)\s*$""".r
+    val expects = lines.collect {
       case `reExpected`(name, tpe, value) => (name, tpe, value)
     }
 
-    try {
-      c.compile(Seq(p))
-      val cl = new java.net.URLClassLoader(Array(outDir.toUri.toURL))
-      val klass = cl.loadClass(className)
-      expects.foreach {
-        case (fieldName, fieldTypeName, value) =>
-          val field = klass.getField(fieldName)
-          val result = field.get(null)
-          assert(fieldTypeName == field.getType.getName)
-          assert(value == s"$result")
+    assert(expectedErrors.isEmpty || expects.isEmpty)
+    if (expectedErrors.nonEmpty) {
+      val content = scala_compiler.FileContent(p, lines.mkString("\n"))
+      val result = c.compileContents(Seq(content))
+      val errors = result.errors.map { e =>
+        (e.line, e.col) -> e
+      }.toMap
+      assert(errors.size == result.errors.size)
+      val unexpected = errors.keySet -- expectedErrors
+      val notHappend = expectedErrors -- errors.keySet
+      unexpected.foreach {
+        case pos =>
+          val e = errors(pos)
+          println(s"${e.path}:${e.line}:${e.col} [Unexpected] ${e.message}")
       }
-    } finally {
-      // rm outDir
+      notHappend.foreach {
+        case (l, c) =>
+          println(s"$p:$l:$c Error expected but not happend")
+      }
+      assert(Set() == notHappend)
+      assert(unexpected.isEmpty)
+    } else {
+      try {
+        val content = scala_compiler.FileContent(p, lines.mkString("\n"))
+        val result = c.compileContents(Seq(content))
+        assert(Seq() == result.errors)
+        val cl = new java.net.URLClassLoader(Array(outDir.toUri.toURL))
+        val klass = cl.loadClass(className)
+        expects.foreach {
+          case (fieldName, fieldTypeName, value) =>
+            val field = klass.getField(fieldName)
+            val result = field.get(null)
+            assert(fieldTypeName == field.getType.getName)
+            assert(value == s"$result")
+        }
+      } finally {
+        // rm outDir
+      }
     }
   }
 }

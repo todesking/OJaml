@@ -8,19 +8,28 @@ import org.objectweb.asm
 
 import asm.{ Opcodes => op }
 
+import Compiler.{ Result, Error }
+
 class Compiler(baseDir: Path) extends asm.Opcodes {
-  def compile(files: Seq[Path]): Unit = {
-    files.foreach(compile1)
+  def compile(files: Seq[Path]): Result =
+    compileContents(files.map(FileContent.read))
+
+  def compileContents(files: Seq[FileContent]): Result = {
+    files.foreach { f =>
+      val es = compile1(f)
+      if (es.nonEmpty) return Result(es)
+    }
+    Result(Seq())
   }
-  def compile1(file: Path): Unit = {
-    val content = new String(Files.readAllBytes(file))
-    Parser.parse(content) match {
+
+  def compile1(file: FileContent): Seq[Error] = {
+    Parser.parse(file.content) match {
       case Parser.NoSuccess(msg, next) =>
         val line = next.pos.line
         val col = next.pos.column
-        throw new RuntimeException(s"$file:$line:$col Parse error: $msg\n${next.pos.longString}")
+        Seq(Error(file.path, line, col, s"Parse error: $msg\n${next.pos.longString}"))
       case Parser.Success(ast, _) =>
-        emit(typing(ast))
+        typing(ast).flatMap(emit).fold(l => l, r => Seq())
     }
 
     /*
@@ -84,24 +93,33 @@ class Compiler(baseDir: Path) extends asm.Opcodes {
     */
   }
 
-  def typing(p: AST.Program): TAST.Program =
-    TAST.Program(p.pkg, typing(p.item))
+  type TResult[A] = Either[Seq[Error], A]
 
-  def typing(s: AST.Struct): TAST.Struct =
-    TAST.Struct(s.name, s.body.map(typing))
+  def typing(p: AST.Program): TResult[TAST.Program] =
+    typing(p.item).right.map(TAST.Program(p.pkg, _))
 
-  def typing(t: AST.Term): TAST.Term = t match {
+  def typing(s: AST.Struct): TResult[TAST.Struct] =
+    validate(s.body.map(typing)).right.map(TAST.Struct(s.name, _))
+
+  private[this] def validate[A](xs: Seq[TResult[A]]): TResult[Seq[A]] = {
+    val rights = xs.collect { case Right(x) => x }
+    if (rights.size == xs.size) Right(rights)
+    else Left(xs.collect { case Left(x) => x }.flatten)
+  }
+
+  def typing(t: AST.Term): TResult[TAST.Term] = t match {
     case AST.TLet(name, expr) =>
-      val e = typing(expr)
-      TAST.TLet(name, e.tpe, e)
+      for {
+        e <- typing(expr)
+      } yield TAST.TLet(name, e.tpe, e)
     case e: AST.Expr => typing(e)
   }
 
-  def typing(e: AST.Expr): TAST.Expr = e match {
-    case AST.LitInt(v) => TAST.LitInt(v)
+  def typing(e: AST.Expr): TResult[TAST.Expr] = e match {
+    case AST.LitInt(v) => Right(TAST.LitInt(v))
   }
 
-  def emit(p: TAST.Program): Unit = {
+  def emit(p: TAST.Program): TResult[Unit] = {
     emitStruct(p.pkg, p.item)
   }
 
@@ -109,7 +127,7 @@ class Compiler(baseDir: Path) extends asm.Opcodes {
     case Type.Int => "Ljava/lang/Integer;"
   }
 
-  def emitStruct(pkg: String, struct: TAST.Struct): Unit = {
+  def emitStruct(pkg: String, struct: TAST.Struct): TResult[Unit] = {
     val className = s"$pkg.${struct.name}".replaceAll("\\.", "/")
     val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)
     cw.visit(
@@ -165,6 +183,14 @@ class Compiler(baseDir: Path) extends asm.Opcodes {
     Files.createDirectories(packageDir)
     println(s"Emit: $out")
     Files.write(out, data)
+    Right(())
+  }
+}
+
+object Compiler {
+  case class Error(path: Path, line: Int, col: Int, message: String)
+  case class Result(errors: Seq[Error]) {
+    def isSuccess = errors.isEmpty
   }
 }
 
