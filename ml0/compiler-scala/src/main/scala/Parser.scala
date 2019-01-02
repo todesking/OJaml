@@ -48,8 +48,10 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   def term: Parser[T.Term] = tlet
   def tlet = withpos(kwd("let") ~> (name <~ "=") ~ expr <~ ";;" ^^ { case n ~ e => T.TLet(n, e) })
-  def expr: Parser[T.Expr] = lit_int | var_ref
+  def expr: Parser[T.Expr] = eif | lit_bool | lit_int | var_ref
   val lit_int = withpos("""[0-9]+""".r ^^ { i => T.LitInt(i.toInt) })
+  val lit_bool = withpos(("true" | "false") ^^ { case "true" => T.LitBool(true) case "false" => T.LitBool(false) })
   val var_ref = withpos(name ^^ { n => T.Ref(n) })
+  val eif = withpos((kwd("if") ~> expr) ~ (kwd("then") ~> expr) ~ (kwd("else") ~> expr) ^^ { case cond ~ th ~ el => T.If(cond, th, el) })
 }
 

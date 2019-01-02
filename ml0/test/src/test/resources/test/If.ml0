@@ -1,0 +1,11 @@
+package test.ml0
+
+struct If {
+  let b1 = false ;;
+  let b2 = true ;;
+
+  let x = if b1 then 123 else 456 ;;
+  let y = if b2 then x else 789 ;;
+}
+(* x: java.lang.Integer = 456 *)
+(* y: java.lang.Integer = 456 *)

@@ -6,10 +6,6 @@ class Typer {
   import Compiler.Error
   import Typer.Ctx
 
-  implicit class SeqOps[A](self: Seq[A]) {
-    def mapWith[B](init: B)(f: (B, A) => (B, A)): (B, Seq[A]) = ???
-  }
-
   def typeProgram(p: RT.Program): Result[TT.Program] =
     typeStruct(p.pkg, p.item).right.map(TT.Program(p.pkg, _))
 
@@ -58,13 +54,31 @@ class Typer {
     case e: RT.Expr => typeExpr(ctx, e)
   }
 
-  def typeExpr(ctx: Ctx, e: RT.Expr): Result[(Ctx, TT.Expr)] = e match {
+  def typeExpr(ctx: Ctx, expr: RT.Expr): Result[(Ctx, TT.Expr)] = expr match {
     case RT.LitInt(v) => Right((ctx, TT.LitInt(v)))
+    case RT.LitBool(v) => Right((ctx, TT.LitBool(v)))
     case RT.Ref(name) =>
       ctx.env.get(name.value).fold[Result[(Ctx, TT.Expr)]] {
         Left(Seq(Error(name.pos.location, name.pos.line, name.pos.col, s"Name not found: ${name.value}")))
       } { ref =>
         Right((ctx, TT.Ref(ref, ctx.varTable(ref))))
+      }
+    case RT.If(cond, th, el) =>
+      typeExpr(ctx, cond).flatMap {
+        case (c, e0) =>
+          typeExpr(c, th).flatMap {
+            case (c, e1) =>
+              typeExpr(c, el).flatMap {
+                case (c, e2) =>
+                  if (e0.tpe != Type.Bool) {
+                    Left(Seq(Error(cond.pos.location, cond.pos.line, cond.pos.col, s"Condition must be bool")))
+                  } else if (e1.tpe != e2.tpe) {
+                    Left(Seq(Error(expr.pos.location, expr.pos.line, expr.pos.col, s"Then clause has thpe ${e1.tpe} but else clause has type ${e2.tpe}")))
+                  } else {
+                    Right((c, TT.If(e0, e1, e2, e1.tpe)))
+                  }
+              }
+          }
       }
   }
 

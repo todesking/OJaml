@@ -15,6 +15,7 @@ class Assembler(baseDir: Path) {
 
   def sig(tpe: Type) = tpe match {
     case Type.Int => "Ljava/lang/Integer;"
+    case Type.Bool => "Ljava/lang/Boolean;"
   }
 
   def msig(m: ModuleRef) =
@@ -49,7 +50,7 @@ class Assembler(baseDir: Path) {
       "()V",
       null,
       Array())
-    def eval(expr: TT.Expr) = expr match {
+    def eval(expr: TT.Expr): Unit = expr match {
       case TT.LitInt(v) =>
         clinit.visitLdcInsn(v)
         clinit.visitMethodInsn(
@@ -57,11 +58,33 @@ class Assembler(baseDir: Path) {
           "java/lang/Integer",
           "valueOf",
           "(I)Ljava/lang/Integer;")
+      case TT.LitBool(v) =>
+        clinit.visitLdcInsn(v)
+        clinit.visitMethodInsn(
+          op.INVOKESTATIC,
+          "java/lang/Boolean",
+          "valueOf",
+          "(Z)Ljava/lang/Boolean;")
       case TT.Ref(ref, tpe) =>
         ref match {
           case VarRef.ModuleVar(m, name) =>
             clinit.visitFieldInsn(op.GETSTATIC, msig(m), name, sig(tpe))
         }
+      case TT.If(cond, th, el, tpe) =>
+        val lElse = new asm.Label()
+        val lEnd = new asm.Label()
+        eval(cond)
+        clinit.visitMethodInsn(
+          op.INVOKEVIRTUAL,
+          "java/lang/Boolean",
+          "booleanValue",
+          "()Z")
+        clinit.visitJumpInsn(op.IFEQ, lElse)
+        eval(th)
+        clinit.visitJumpInsn(op.GOTO, lEnd)
+        clinit.visitLabel(lElse)
+        eval(el)
+        clinit.visitLabel(lEnd)
     }
     struct.body.foreach {
       case TT.TLet(name, tpe, expr) =>

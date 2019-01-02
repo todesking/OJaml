@@ -27,7 +27,9 @@ object RawAST {
 
   sealed abstract class Expr extends Term
   case class LitInt(value: Int) extends Expr
+  case class LitBool(value: Boolean) extends Expr
   case class Ref(name: Name) extends Expr
+  case class If(cond: Expr, th: Expr, el: Expr) extends Expr
 }
 
 case class ModuleRef(pkg: String, name: String)
@@ -48,8 +50,10 @@ object TAST {
   sealed abstract class Expr extends Term {
     def tpe: Type
   }
-  case class LitInt(value: Int) extends Expr {
-    override def tpe = Type.Int
-  }
+  sealed abstract class Lit(override val tpe: Type) extends Expr
+  case class LitInt(value: Int) extends Lit(Type.Int)
+  case class LitBool(value: Boolean) extends Lit(Type.Bool)
+
   case class Ref(ref: VarRef, tpe: Type) extends Expr
+  case class If(cond: Expr, th: Expr, el: Expr, tpe: Type) extends Expr
 }
