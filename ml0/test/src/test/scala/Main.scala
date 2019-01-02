@@ -81,6 +81,9 @@ class Main extends FunSpec {
       try {
         val content = scala_compiler.FileContent(p, lines.mkString("\n"))
         val result = c.compileContents(Seq(content))
+        result.errors.foreach { e =>
+          println(s"${e.location}:${e.line}:${e.col} [Unexpected] ${e.message}")
+        }
         assert(Seq() == result.errors)
         val cl = new java.net.URLClassLoader(Array(outDir.toUri.toURL))
         val klass = cl.loadClass(className)

@@ -1,0 +1,8 @@
+package test.ml0
+
+struct Ref_tlet_inner {
+  let x = 123 ;;
+  let y = x ;;
+}
+(* x: java.lang.Integer = 123 *)
+(* y: java.lang.Integer = 123 *)

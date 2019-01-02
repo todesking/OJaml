@@ -14,7 +14,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   private[this] val discard = { _: Any => () }
 
-  private[this] def commentWS: Parser[Unit] = """\s*""".r ~ comment.? ^^ discard
+  private[this] def commentWS: Parser[Unit] = """\s*""".r ~ comment.* ^^ discard
   private[this] def comment: Parser[Unit] = "(*" ~ (comment | (not("*)") ~ ".".r)).* ~ "*)" ~ """\s*""".r ^^ discard
   override protected def handleWhiteSpace(source: CharSequence, offset: Int): Int = {
     if (!_skipWS) offset
@@ -48,7 +48,8 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   def term: Parser[T.Term] = tlet
   def tlet = withpos(kwd("let") ~> (name <~ "=") ~ expr <~ ";;" ^^ { case n ~ e => T.TLet(n, e) })
-  def expr: Parser[T.Expr] = lit_int
+  def expr: Parser[T.Expr] = lit_int | var_ref
   val lit_int = withpos("""[0-9]+""".r ^^ { i => T.LitInt(i.toInt) })
+  val var_ref = withpos(name ^^ { n => T.Ref(n) })
 }
 

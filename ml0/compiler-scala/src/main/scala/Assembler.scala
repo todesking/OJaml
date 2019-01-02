@@ -17,6 +17,9 @@ class Assembler(baseDir: Path) {
     case Type.Int => "Ljava/lang/Integer;"
   }
 
+  def msig(m: ModuleRef) =
+    s"${m.pkg}.${m.name}".replaceAll("\\.", "/")
+
   def emitStruct(pkg: String, struct: TT.Struct): Unit = {
     val className = s"$pkg.${struct.name.value}".replaceAll("\\.", "/")
     val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)
@@ -54,6 +57,11 @@ class Assembler(baseDir: Path) {
           "java/lang/Integer",
           "valueOf",
           "(I)Ljava/lang/Integer;")
+      case TT.Ref(ref, tpe) =>
+        ref match {
+          case VarRef.ModuleVar(m, name) =>
+            clinit.visitFieldInsn(op.GETSTATIC, msig(m), name, sig(tpe))
+        }
     }
     struct.body.foreach {
       case TT.TLet(name, tpe, expr) =>
