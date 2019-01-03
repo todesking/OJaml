@@ -11,7 +11,7 @@ class Typer {
 
   def typeStruct(pkg: QName, s: RT.Struct): Result[TT.Struct] = {
     val currentModule = ModuleRef(pkg.value, s.name.value)
-    val init = Typer.Ctx(currentModule, Map(), Map())
+    val init = Typer.Ctx(currentModule, Map(), Map(), Map(), Nil)
 
     val (ctx, typed) =
       s.body.foldLeft((init, Seq.empty[Result[TT.Term]])) {
@@ -58,10 +58,13 @@ class Typer {
     case RT.LitInt(v) => Right((ctx, TT.LitInt(v)))
     case RT.LitBool(v) => Right((ctx, TT.LitBool(v)))
     case RT.Ref(name) =>
-      ctx.env.get(name.value).fold[Result[(Ctx, TT.Expr)]] {
+      ctx.lookupVar(name.value).fold[Result[(Ctx, TT.Expr)]] {
         Left(Seq(Error(name.pos.location, name.pos.line, name.pos.col, s"Name not found: ${name.value}")))
-      } { ref =>
-        Right((ctx, TT.Ref(ref, ctx.varTable(ref))))
+      } {
+        case ref @ VarRef.Module(m, n) =>
+          Right((ctx, TT.ModuleVarRef(m, n, ctx.varTable(ref))))
+        case ref @ VarRef.Local(_) =>
+          Right((ctx, TT.LocalRef(ctx.localIndex(ref), ctx.varTable(ref))))
       }
     case RT.If(cond, th, el) =>
       typeExpr(ctx, cond).flatMap {
@@ -80,6 +83,29 @@ class Typer {
               }
           }
       }
+    case RT.Fun(name, tpeName, body) =>
+      ctx.findType(tpeName).flatMap { tpe =>
+        typeExpr(ctx.newFrame(name.value, tpe), body).map {
+          case (ctx, tbody) =>
+            (ctx.dropFrame(), TT.Fun(tpe, tbody))
+        }
+      }
+    case RT.App(f, x) =>
+      typeExpr(ctx, f).flatMap {
+        case (c, tf) =>
+          typeExpr(c, x).flatMap {
+            case (c, tx) =>
+              tf.tpe match {
+                case Type.Fun(l, r) =>
+                  if (l == tx.tpe)
+                    Right((c, TT.App(tf, tx, r)))
+                  else
+                    Left(Seq(Error(x.pos.location, x.pos.line, x.pos.col, s"Argument type mismatch: $l required but ${tx.tpe} found")))
+                case t =>
+                  Left(Seq(Error(f.pos.location, f.pos.line, f.pos.col, s"Applying non-function type ${t}")))
+              }
+          }
+      }
   }
 
 }
@@ -88,14 +114,45 @@ object Typer {
 
   type Result[A] = Either[Seq[Compiler.Error], A]
 
-  case class Ctx(currentModule: ModuleRef, env: Map[String, VarRef], varTable: Map[VarRef, Type]) {
+  case class Ctx(
+    currentModule: ModuleRef,
+    env: Map[String, VarRef],
+    locals: Map[VarRef.Local, Int],
+    varTable: Map[VarRef, Type],
+    stack: List[Ctx]) {
+    val depth = stack.size
+
+    def lookupVar(name: String): Option[VarRef] =
+      env.get(name)
+
+    def localIndex(l: VarRef.Local) = locals(l)
+
     def tlet(name: Name, tpe: Type): Result[Ctx] = {
-      val varRef = VarRef.ModuleVar(currentModule, name.value)
+      val varRef = VarRef.Module(currentModule, name.value)
       if (varTable.contains(varRef))
         Left(Seq(Error(name.pos.location, name.pos.line, name.pos.col, s"""Name "${name.value}" is already defined in ${currentModule.name}""")))
       else
         Right(copy(env = env + (varRef.name -> varRef), varTable = varTable + (varRef -> tpe)))
     }
+
+    def findType(name: Name): Result[Type] = name.value match {
+      case "int" => Right(Type.Int)
+      case "bool" => Right(Type.Bool)
+      case unk =>
+        Left(Seq(Error(name.pos.location, name.pos.line, name.pos.col, s"Type not found: ${name.value}")))
+    }
+
+    def newFrame(name: String, tpe: Type): Ctx = {
+      val ref = VarRef.Local(name)
+      copy(
+        env = env + (name -> ref),
+        varTable = varTable + (ref -> tpe),
+        locals = locals + (ref -> depth),
+        stack = this :: stack)
+    }
+
+    def dropFrame(): Ctx =
+      stack.head
   }
 
 }

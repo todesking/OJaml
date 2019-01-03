@@ -85,7 +85,7 @@ class Main extends FunSpec {
           println(s"${e.location}:${e.line}:${e.col} [Unexpected] ${e.message}")
         }
         assert(Seq() == result.errors)
-        val cl = new java.net.URLClassLoader(Array(outDir.toUri.toURL))
+        val cl = new java.net.URLClassLoader(Array(outDir.toUri.toURL), this.getClass.getClassLoader)
         val klass = cl.loadClass(className)
         expects.foreach {
           case (fieldName, fieldTypeName, value) =>
