@@ -44,6 +44,11 @@ class Main extends FunSpec {
 
     val lines = Files.readAllLines(p).asScala
 
+    if (lines.headOption.contains("(* pending *)")) {
+      pending
+      return
+    }
+
     val reError = """^(\s*\(\*\s*\^).*""".r
     val expectedErrors = lines.zipWithIndex.collect {
       case (reError(error), i) =>
