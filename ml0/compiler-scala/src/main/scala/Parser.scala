@@ -13,7 +13,8 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     "struct",
     "let",
     "fun",
-    "if", "then", "else")
+    "if", "then", "else",
+    "jclass")
   private[this] def kwd(a: String): Parser[Unit] = {
     require(keywords contains a)
     regex(s"${java.util.regex.Pattern.quote(a)}\\s+".r) ^^ { _ => () }
@@ -78,7 +79,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
       }
   }
 
-  val expr2 = expr3 ~ rep(binop("+" | "-") ~ expr3) ^^ {
+  def expr2 = expr3 ~ rep(binop("+" | "-") ~ expr3) ^^ {
     case e ~ es =>
       es.foldLeft(e) {
         case (l, op ~ r) =>
@@ -86,7 +87,14 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
       }
   }
 
-  def expr3 = paren | eif | fun | lit_bool | lit_int | var_ref
+  def expr3 = withpos(expr4 ~ jcall.? ^^ {
+    case e ~ None => e
+    case e ~ Some(n ~ args) => T.JCall(e, n, args)
+  })
+
+  val jcall = ("#" ~> name) ~ ("(" ~> repsep(expr, ",") <~ ")")
+
+  def expr4 = paren | eif | fun | lit_bool | lit_int | var_ref | jclass
 
   def paren = ("(" ~> expr) <~ ")"
 
@@ -97,5 +105,6 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   def fun = withpos((kwd("fun") ~> name) ~ (":" ~> name) ~ ("=>" ~> expr) ^^ { case name ~ tpe ~ expr => T.Fun(name, tpe, expr) })
   def fun_param = (name <~ ":") ~ name ^^ { case n ~ t => (n, t) }
   val var_ref = withpos(name ^^ { n => T.Ref(n) })
+  val jclass = withpos(("jclass" ~ "(") ~> (qname <~ ")") ^^ { qn => T.JClass(qn) })
 }
 

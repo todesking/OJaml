@@ -29,6 +29,8 @@ object RawAST {
   case class LitInt(value: Int) extends Expr
   case class LitBool(value: Boolean) extends Expr
   case class Ref(name: Name) extends Expr
+  case class JClass(name: QName) extends Expr
+  case class JCall(receiver: Expr, name: Name, args: Seq[Expr]) extends Expr
   case class If(cond: Expr, th: Expr, el: Expr) extends Expr
   case class Fun(name: Name, tpeName: Name, body: Expr) extends Expr
   case class App(fun: Expr, arg: Expr) extends Expr
