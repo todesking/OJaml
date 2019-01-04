@@ -28,6 +28,7 @@ object RawAST {
   sealed abstract class Expr extends Term
   case class LitInt(value: Int) extends Expr
   case class LitBool(value: Boolean) extends Expr
+  case class LitString(value: String) extends Expr
   case class Ref(name: Name) extends Expr
   case class JClass(name: QName) extends Expr
   case class JCall(receiver: Expr, name: Name, args: Seq[Expr]) extends Expr
@@ -58,6 +59,7 @@ object TAST {
   sealed abstract class Lit(override val tpe: Type) extends Expr
   case class LitInt(value: Int) extends Lit(Type.Int)
   case class LitBool(value: Boolean) extends Lit(Type.Bool)
+  case class LitString(value: String) extends Lit(Type.String)
 
   case class ModuleVarRef(module: ModuleRef, name: String, tpe: Type) extends Expr
   // index: local var index, outmost = 0

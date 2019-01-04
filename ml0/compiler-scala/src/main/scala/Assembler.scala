@@ -23,6 +23,7 @@ class Assembler(baseDir: Path) {
   def tname(tpe: Type) = tpe match {
     case Type.Int => "java/lang/Integer"
     case Type.Bool => "java/lang/Boolean"
+    case Type.String => "java/lang/String"
     case Type.Fun(l, r) => funClass
   }
 
@@ -125,6 +126,8 @@ class Assembler(baseDir: Path) {
           "java/lang/Boolean",
           "valueOf",
           "(Z)Ljava/lang/Boolean;")
+      case TT.LitString(v) =>
+        method.visitLdcInsn(v)
       case TT.ModuleVarRef(module, name, tpe) =>
         method.visitFieldInsn(op.GETSTATIC, msig(module), name, sig(tpe))
       case TT.LocalRef(index, tpe) =>

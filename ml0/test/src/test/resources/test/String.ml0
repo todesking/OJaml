@@ -1,0 +1,6 @@
+package test.ml0
+
+struct String {
+  let x1 = "foo" ;;
+  (* x1: java.lang.String = foo *)
+}

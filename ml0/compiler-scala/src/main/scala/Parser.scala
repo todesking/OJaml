@@ -87,24 +87,24 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
       }
   }
 
-  def expr3 = withpos(expr4 ~ jcall.? ^^ {
+  def expr3 = eif | fun | withpos(expr4 ~ jcall.? ^^ {
     case e ~ None => e
     case e ~ Some(n ~ args) => T.JCall(e, n, args)
   })
 
   val jcall = ("#" ~> name) ~ ("(" ~> repsep(expr, ",") <~ ")")
 
-  def expr4 = paren | eif | fun | lit_bool | lit_int | var_ref | jclass
+  def expr4 = paren | lit_bool | lit_int | lit_string | var_ref
 
   def paren = ("(" ~> expr) <~ ")"
 
   val lit_int = withpos("""[0-9]+""".r ^^ { i => T.LitInt(i.toInt) })
   val lit_bool = withpos(("true" | "false") ^^ { case "true" => T.LitBool(true) case "false" => T.LitBool(false) })
+  val lit_string = withpos(("\"" ~> """[^"]+""".r) <~ "\"" ^^ { s => T.LitString(s) })
 
   val eif = withpos((kwd("if") ~> expr) ~ (kwd("then") ~> expr) ~ (kwd("else") ~> expr) ^^ { case cond ~ th ~ el => T.If(cond, th, el) })
   def fun = withpos((kwd("fun") ~> name) ~ (":" ~> name) ~ ("=>" ~> expr) ^^ { case name ~ tpe ~ expr => T.Fun(name, tpe, expr) })
   def fun_param = (name <~ ":") ~ name ^^ { case n ~ t => (n, t) }
   val var_ref = withpos(name ^^ { n => T.Ref(n) })
-  val jclass = withpos(("jclass" ~ "(") ~> (qname <~ ")") ^^ { qn => T.JClass(qn) })
 }
 

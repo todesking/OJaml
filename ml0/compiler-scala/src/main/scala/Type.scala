@@ -5,5 +5,6 @@ trait Type
 object Type {
   case object Int extends Type
   case object Bool extends Type
+  case object String extends Type
   case class Fun(l: Type, r: Type) extends Type
 }

@@ -57,6 +57,7 @@ class Typer {
   def typeExpr(ctx: Ctx, expr: RT.Expr): Result[(Ctx, TT.Expr)] = expr match {
     case RT.LitInt(v) => Right((ctx, TT.LitInt(v)))
     case RT.LitBool(v) => Right((ctx, TT.LitBool(v)))
+    case RT.LitString(v) => Right((ctx, TT.LitString(v)))
     case RT.Ref(name) =>
       ctx.lookupVar(name.value).fold[Result[(Ctx, TT.Expr)]] {
         Left(Seq(Error(name.pos.location, name.pos.line, name.pos.col, s"Name not found: ${name.value}")))
