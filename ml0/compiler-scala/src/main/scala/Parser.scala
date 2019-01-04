@@ -66,7 +66,29 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
       }
     case _ => throw new AssertionError()
   })
-  def expr1 = eif | fun | lit_bool | lit_int | var_ref
+
+  def binop(pat: Parser[String]) =
+    withpos(pat ^^ { p => Name(p) })
+
+  def expr1 = expr2 ~ rep(binop("*" | "/" | "%") ~ expr2) ^^ {
+    case e ~ es =>
+      es.foldLeft(e) {
+        case (l, op ~ r) =>
+          T.App(T.App(T.Ref(op), l), r)
+      }
+  }
+
+  val expr2 = expr3 ~ rep(binop("+" | "-") ~ expr3) ^^ {
+    case e ~ es =>
+      es.foldLeft(e) {
+        case (l, op ~ r) =>
+          T.App(T.App(T.Ref(op), l), r)
+      }
+  }
+
+  def expr3 = paren | eif | fun | lit_bool | lit_int | var_ref
+
+  def paren = ("(" ~> expr) <~ ")"
 
   val lit_int = withpos("""[0-9]+""".r ^^ { i => T.LitInt(i.toInt) })
   val lit_bool = withpos(("true" | "false") ^^ { case "true" => T.LitBool(true) case "false" => T.LitBool(false) })
