@@ -3,4 +3,4 @@ package test.ml0
 struct Let {
   let result = 2 ;;
 }
-(* result: java.lang.Integer = 2 *)
+(* result: int = 2 *)

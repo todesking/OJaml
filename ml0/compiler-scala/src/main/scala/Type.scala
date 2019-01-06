@@ -4,20 +4,24 @@ import org.objectweb.asm
 
 sealed abstract class Type {
   def boxed: Type.Reference
+  def unboxed: Option[Type.Primitive]
 }
 object Type {
-  sealed abstract class Primitive extends Type
-  case object PInt extends Primitive {
-    override def boxed = Int
+  sealed abstract class Primitive extends Type {
+    override def unboxed = None
   }
-  case object PBool extends Primitive {
-    override def boxed = Bool
+  case object Int extends Primitive {
+    override def boxed = BoxedInt
+  }
+  case object Bool extends Primitive {
+    override def boxed = BoxedBool
   }
 
   sealed abstract class Reference extends Type {
     def className: String
     def externalName = className.replaceAll("/", ".")
     override def boxed = this
+    override def unboxed = boxMap.get(className)
   }
   object Reference {
     def unapply(r: Reference): Option[String] = Some(r.className)
@@ -33,15 +37,19 @@ object Type {
     val className = "com/todesking/ojaml/ml0/runtime/Fun"
   }
 
-  val Int = Klass("java/lang/Integer")
-  val Bool = Klass("java/lang/Boolean")
+  val BoxedInt = Klass("java/lang/Integer")
+  val BoxedBool = Klass("java/lang/Boolean")
   val String = Klass("java/lang/String")
   val Unit = Klass("com/todesking/ml0/runtime/Unit")
 
+  val boxMap: Map[String, Primitive] = Map(
+    BoxedInt.className -> Int,
+    BoxedBool.className -> Bool)
+
   def from(t: asm.Type): Option[Type] = t.getSort match {
     case asm.Type.VOID => None
-    case asm.Type.INT => Some(Type.PInt)
-    case asm.Type.BOOLEAN => Some(Type.PBool)
+    case asm.Type.INT => Some(Type.Int)
+    case asm.Type.BOOLEAN => Some(Type.Bool)
     case asm.Type.OBJECT => Some(Type.Klass(t.getInternalName))
     case _ => Some(Type.Unit) // :(
   }
@@ -51,8 +59,8 @@ object Type {
     case Some(t) => toAsm(t)
   }
   def toAsm(t: Type): asm.Type = t match {
-    case PInt => asm.Type.INT_TYPE
-    case PBool => asm.Type.BOOLEAN_TYPE
+    case Int => asm.Type.INT_TYPE
+    case Bool => asm.Type.BOOLEAN_TYPE
     case Reference(name) => asm.Type.getObjectType(name)
   }
 

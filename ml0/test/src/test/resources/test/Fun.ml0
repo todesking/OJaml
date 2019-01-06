@@ -10,14 +10,14 @@ struct Fun {
   let f_false = f false ;;
 
   let x1 = f true 123 456 ;;
-  (* x1: java.lang.Integer = 123 *)
+  (* x1: int = 123 *)
 
   let x2 = f false 123 456 ;;
-  (* x2: java.lang.Integer = 456 *)
+  (* x2: int = 456 *)
 
   let x3 = f_true 123 456 ;;
-  (* x3: java.lang.Integer = 123 *)
+  (* x3: int = 123 *)
 
   let x4 = f_false 123 456 ;;
-  (* x4: java.lang.Integer = 456 *)
+  (* x4: int = 456 *)
 }

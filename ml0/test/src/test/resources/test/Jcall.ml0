@@ -10,7 +10,7 @@ struct Jcall {
   (* x2: java.lang.String = 1 *)
 
   (* auto-unboxing *)
-  let x3 = java.lang.Integer##valueOf(1) ;;
+  let x3 = java.lang.Integer##valueOf(java.lang.Integer##valueOf(1)) ;;
   (* x3: java.lang.Integer = 1 *)
 
   (* auto-boxing *)

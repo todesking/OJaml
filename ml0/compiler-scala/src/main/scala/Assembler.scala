@@ -101,6 +101,7 @@ class Assembler(baseDir: Path) {
         null,
         Array())
       eval(app, body, depth + 1)
+      box(app, body.tpe)
       app.visitInsn(op.ARETURN)
       methodEnd(app)
       cw.visitEnd()
@@ -111,18 +112,8 @@ class Assembler(baseDir: Path) {
     def eval(method: asm.MethodVisitor, expr: TT.Expr, depth: Int): Unit = expr match {
       case TT.LitInt(v) =>
         method.visitLdcInsn(v)
-        method.visitMethodInsn(
-          op.INVOKESTATIC,
-          "java/lang/Integer",
-          "valueOf",
-          "(I)Ljava/lang/Integer;")
       case TT.LitBool(v) =>
         method.visitLdcInsn(v)
-        method.visitMethodInsn(
-          op.INVOKESTATIC,
-          "java/lang/Boolean",
-          "valueOf",
-          "(Z)Ljava/lang/Boolean;")
       case TT.LitString(v) =>
         method.visitLdcInsn(v)
       case TT.ModuleVarRef(module, name, tpe) =>
@@ -131,7 +122,7 @@ class Assembler(baseDir: Path) {
         if (depth - 1 == index) {
           method.visitVarInsn(op.ALOAD, 1)
         } else {
-          method.visitVarInsn(op.ALOAD, 0) // push this
+          method.visitVarInsn(op.ALOAD, 0)
           method.visitLdcInsn(index)
           method.visitMethodInsn(
             op.INVOKEVIRTUAL,
@@ -139,24 +130,20 @@ class Assembler(baseDir: Path) {
             "getLocal",
             s"(I)$objectSig")
         }
-        method.visitTypeInsn(op.CHECKCAST, tname(tpe))
+        method.visitTypeInsn(op.CHECKCAST, tpe.boxed.className)
+        unbox(method, tpe.boxed)
       case TT.If(cond, th, el, tpe) =>
         val lElse = new asm.Label()
         val lEnd = new asm.Label()
         eval(method, cond, depth)
-        method.visitMethodInsn(
-          op.INVOKEVIRTUAL,
-          "java/lang/Boolean",
-          "booleanValue",
-          "()Z")
         method.visitJumpInsn(op.IFEQ, lElse)
         eval(method, th, depth)
         method.visitJumpInsn(op.GOTO, lEnd)
         method.visitLabel(lElse)
         eval(method, el, depth)
         method.visitLabel(lEnd)
-      case TT.Fun(tpe, body) =>
-        val klass = emitFun(tpe, body, depth)
+      case TT.Fun(argType, body) =>
+        val klass = emitFun(argType, body, depth)
         method.visitTypeInsn(op.NEW, klass)
         method.visitInsn(op.DUP)
         if (depth == 0) {
@@ -174,14 +161,14 @@ class Assembler(baseDir: Path) {
       case TT.App(f, x, tpe) =>
         eval(method, f, depth)
         eval(method, x, depth)
+        box(method, x.tpe)
         method.visitMethodInsn(
           op.INVOKEVIRTUAL,
           funClass,
           "app",
           s"($objectSig)$objectSig")
-        method.visitTypeInsn(
-          op.CHECKCAST,
-          tname(tpe))
+        method.visitTypeInsn(op.CHECKCAST, tpe.boxed.className)
+        autobox(method, tpe.boxed, tpe)
       case e @ TT.JCallStatic(target, args) =>
         args.zip(target.args).foreach {
           case (x, t) =>
@@ -219,6 +206,7 @@ class Assembler(baseDir: Path) {
     struct.body.foreach {
       case TT.TLet(name, tpe, expr) =>
         eval(clinit, expr, 0)
+        autobox(clinit, expr.tpe, tpe)
         clinit.visitFieldInsn(op.PUTSTATIC, className, name.value, descriptor(tpe))
       case e: TT.Expr =>
       // ignore for now
@@ -242,21 +230,30 @@ class Assembler(baseDir: Path) {
     if (from == to) {
       // do nothing
     } else if (from.boxed == to) {
-      // box
-      val (klass, name, desc) =
-        from.boxed match {
-          case Type.Int => (Type.Int.className, "valueOf", s"(${descriptor(Type.PInt)})${descriptor(Type.Int)}")
-        }
-      method.visitMethodInsn(op.INVOKESTATIC, klass, name, desc)
+      box(method, from)
     } else if (from == to.boxed) {
-      // unbox
-      val (klass, name, desc) =
-        from.boxed match {
-          case Type.Int => (Type.Int.className, "intValue", s"()${descriptor(Type.PInt)}")
-        }
-      method.visitMethodInsn(op.INVOKEVIRTUAL, klass, name, desc)
+      unbox(method, from)
     } else {
       throw new RuntimeException(s"$from and $to is not compatible")
+    }
+  }
+  private[this] def box(method: asm.MethodVisitor, tpe: Type) = {
+    if (tpe == tpe.boxed) {
+      // do nothing
+    } else {
+      val desc = s"(${descriptor(tpe)})${descriptor(tpe.boxed)}"
+      method.visitMethodInsn(op.INVOKESTATIC, tpe.boxed.className, "valueOf", desc)
+    }
+  }
+  private[this] def unbox(method: asm.MethodVisitor, tpe: Type) = {
+    tpe.unboxed.foreach { prim =>
+      val name =
+        prim match {
+          case Type.Int => "intValue"
+          case Type.Bool => "booleanValue"
+        }
+      val desc = s"()${descriptor(prim)}"
+      method.visitMethodInsn(op.INVOKEVIRTUAL, tpe.boxed.className, name, desc)
     }
   }
 }
