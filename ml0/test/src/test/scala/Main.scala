@@ -37,7 +37,8 @@ class Main extends FunSpec {
   private[this] def test(p: Path): Unit = {
     import com.todesking.ojaml.ml0.compiler.{ scala => scala_compiler }
     val outDir = Files.createTempDirectory("ojaml-test")
-    val c = new scala_compiler.Compiler(outDir)
+    val cl = this.getClass.getClassLoader
+    val c = new scala_compiler.Compiler(outDir, cl)
 
     val reName = """(.+)\.ml0""".r
     val className = "test.ml0." + p.getFileName() match { case `reName`(name) => name }
@@ -67,7 +68,7 @@ class Main extends FunSpec {
       val content = scala_compiler.FileContent(p, lines.mkString("\n"))
       val result = c.compileContents(Seq(content))
       val errors = result.errors.map { e =>
-        (e.line, e.col) -> e
+        (e.pos.line, e.pos.col) -> e
       }.toMap
       assert(errors.size == result.errors.size)
       val unexpected = errors.keySet -- expectedErrors
@@ -75,7 +76,7 @@ class Main extends FunSpec {
       unexpected.foreach {
         case pos =>
           val e = errors(pos)
-          println(s"${e.location}:${e.line}:${e.col} [Unexpected] ${e.message}")
+          println(s"${e.pos} [Unexpected] ${e.message}")
       }
       notHappend.foreach {
         case (l, c) =>
@@ -87,7 +88,7 @@ class Main extends FunSpec {
         val content = scala_compiler.FileContent(p, lines.mkString("\n"))
         val result = c.compileContents(Seq(content))
         result.errors.foreach { e =>
-          println(s"${e.location}:${e.line}:${e.col} [Unexpected] ${e.message}")
+          println(s"${e.pos} [Unexpected] ${e.message}")
         }
         assert(Seq() == result.errors)
         val cl = new java.net.URLClassLoader(Array(outDir.toUri.toURL), this.getClass.getClassLoader)
@@ -96,8 +97,8 @@ class Main extends FunSpec {
           case (fieldName, fieldTypeName, value) =>
             val field = klass.getField(fieldName)
             val result = field.get(null)
-            assert(fieldTypeName == field.getType.getName)
-            assert(value == s"$result")
+            assert(fieldTypeName == field.getType.getName, s"at $fieldName")
+            assert(value == s"$result", s"at $fieldName")
         }
       } finally {
         // rm outDir

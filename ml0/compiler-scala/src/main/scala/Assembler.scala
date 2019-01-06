@@ -13,18 +13,15 @@ class Assembler(baseDir: Path) {
   def emit(p: TT.Program): Unit =
     emitStruct(p.pkg.value, p.item)
 
-  val funClass = "com/todesking/ojaml/ml0/runtime/Fun"
+  val funClass = Type.Fun.className
   val funSig = s"L$funClass;"
 
   val objectClass = "java/lang/Object"
   val objectSig = s"L$objectClass;"
 
-  def sig(tpe: Type) = s"L${tname(tpe)};"
+  def descriptor(tpe: Type) = Type.toAsm(tpe).getDescriptor
   def tname(tpe: Type) = tpe match {
-    case Type.Int => "java/lang/Integer"
-    case Type.Bool => "java/lang/Boolean"
-    case Type.String => "java/lang/String"
-    case Type.Fun(l, r) => funClass
+    case Type.Reference(name) => name
   }
 
   def msig(m: ModuleRef) =
@@ -59,7 +56,7 @@ class Assembler(baseDir: Path) {
         cw.visitField(
           op.ACC_PUBLIC | op.ACC_STATIC,
           name.value,
-          sig(tpe),
+          descriptor(tpe),
           null,
           null)
       case _: TT.Expr =>
@@ -129,7 +126,7 @@ class Assembler(baseDir: Path) {
       case TT.LitString(v) =>
         method.visitLdcInsn(v)
       case TT.ModuleVarRef(module, name, tpe) =>
-        method.visitFieldInsn(op.GETSTATIC, msig(module), name, sig(tpe))
+        method.visitFieldInsn(op.GETSTATIC, msig(module), name, descriptor(tpe))
       case TT.LocalRef(index, tpe) =>
         if (depth - 1 == index) {
           method.visitVarInsn(op.ALOAD, 1)
@@ -185,6 +182,32 @@ class Assembler(baseDir: Path) {
         method.visitTypeInsn(
           op.CHECKCAST,
           tname(tpe))
+      case e @ TT.JCallStatic(target, args) =>
+        args.zip(target.args).foreach {
+          case (x, t) =>
+            eval(method, x, depth)
+            autobox(method, x.tpe, t)
+        }
+        method.visitMethodInsn(
+          op.INVOKESTATIC,
+          target.klass,
+          target.name,
+          target.descriptor)
+        autobox(method, target.ret, e.tpe)
+      case e @ TT.JCallInstance(target, receiver, args) =>
+        eval(method, receiver, depth)
+        autobox(method, receiver.tpe, receiver.tpe.boxed)
+        args.zip(target.args).foreach {
+          case (x, t) =>
+            eval(method, x, depth)
+            autobox(method, x.tpe, t)
+        }
+        method.visitMethodInsn(
+          if (target.isInterface) op.INVOKEINTERFACE else op.INVOKEVIRTUAL,
+          target.klass,
+          target.name,
+          target.descriptor)
+        autobox(method, target.ret, e.tpe)
     }
 
     val clinit = cw.visitMethod(
@@ -196,7 +219,7 @@ class Assembler(baseDir: Path) {
     struct.body.foreach {
       case TT.TLet(name, tpe, expr) =>
         eval(clinit, expr, 0)
-        clinit.visitFieldInsn(op.PUTSTATIC, className, name.value, sig(tpe))
+        clinit.visitFieldInsn(op.PUTSTATIC, className, name.value, descriptor(tpe))
       case e: TT.Expr =>
       // ignore for now
     }
@@ -206,5 +229,34 @@ class Assembler(baseDir: Path) {
     cw.visitEnd()
 
     write(pkg, struct.name.value, cw.toByteArray)
+  }
+
+  private[this] def autobox(method: asm.MethodVisitor, from: Option[Type], to: Type): Unit = from match {
+    case Some(f) => autobox(method, f, to)
+    case None =>
+      if (to != Type.Unit) throw new AssertionError(s"Unit type expected but actual is $to")
+      method.visitInsn(op.ACONST_NULL)
+      method.visitTypeInsn(op.CHECKCAST, Type.Unit.className)
+  }
+  private[this] def autobox(method: asm.MethodVisitor, from: Type, to: Type): Unit = {
+    if (from == to) {
+      // do nothing
+    } else if (from.boxed == to) {
+      // box
+      val (klass, name, desc) =
+        from.boxed match {
+          case Type.Int => (Type.Int.className, "valueOf", s"(${descriptor(Type.PInt)})${descriptor(Type.Int)}")
+        }
+      method.visitMethodInsn(op.INVOKESTATIC, klass, name, desc)
+    } else if (from == to.boxed) {
+      // unbox
+      val (klass, name, desc) =
+        from.boxed match {
+          case Type.Int => (Type.Int.className, "intValue", s"()${descriptor(Type.PInt)}")
+        }
+      method.visitMethodInsn(op.INVOKEVIRTUAL, klass, name, desc)
+    } else {
+      throw new RuntimeException(s"$from and $to is not compatible")
+    }
   }
 }

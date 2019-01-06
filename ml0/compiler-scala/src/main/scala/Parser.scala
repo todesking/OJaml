@@ -13,8 +13,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     "struct",
     "let",
     "fun",
-    "if", "then", "else",
-    "jclass")
+    "if", "then", "else")
   private[this] def kwd(a: String): Parser[Unit] = {
     require(keywords contains a)
     regex(s"${java.util.regex.Pattern.quote(a)}\\s+".r) ^^ { _ => () }
@@ -89,12 +88,20 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   def expr3 = eif | fun | withpos(expr4 ~ jcall.? ^^ {
     case e ~ None => e
-    case e ~ Some(n ~ args) => T.JCall(e, n, args)
+    case e ~ Some("#" ~ n ~ args) => T.JCall(e, n, args, false)
+    case e ~ Some("##" ~ n ~ args) => T.JCall(e, n, args, true)
+    case _ => throw new AssertionError()
   })
 
-  val jcall = ("#" ~> name) ~ ("(" ~> repsep(expr, ",") <~ ")")
+  val jcall = ("##" | "#") ~ name ~ ("(" ~> repsep(expr, ",") <~ ")")
 
-  def expr4 = paren | lit_bool | lit_int | lit_string | var_ref
+  def expr4 = withpos(expr5 ~ prop.? ^^ {
+    case e ~ None => e
+    case e ~ Some(ns) => ns.foldLeft(e) { (e, n) => T.Prop(e, n) }
+  })
+  val prop = "." ~> rep1sep(name, ".")
+
+  def expr5 = paren | lit_bool | lit_int | lit_string | var_ref
 
   def paren = ("(" ~> expr) <~ ")"
 
