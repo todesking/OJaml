@@ -81,11 +81,11 @@ object TAST {
   case class JCallStatic(method: MethodSig, args: Seq[Expr]) extends Expr {
     require(method.isStatic)
     require(method.args.size == args.size)
-    override def tpe = method.ret.map(_.boxed).getOrElse(Type.Unit)
+    override def tpe = method.ret.getOrElse(Type.Unit)
   }
   case class JCallInstance(method: MethodSig, receiver: Expr, args: Seq[Expr]) extends Expr {
     require(!method.isStatic)
     require(method.args.size == args.size)
-    override def tpe = method.ret.map(_.boxed).getOrElse(Type.Unit)
+    override def tpe = method.ret.getOrElse(Type.Unit)
   }
 }

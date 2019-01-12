@@ -13,7 +13,7 @@ struct Jcall {
   let x3 = java.lang.Integer##valueOf(java.lang.Integer##valueOf(1)) ;;
   (* x3: java.lang.Integer = 1 *)
 
-  (* auto-boxing *)
+  (* primitive types *)
   let x4 = 123#intValue() ;;
-  (* x4: java.lang.Integer = 123 *)
+  (* x4: int = 123 *)
 }

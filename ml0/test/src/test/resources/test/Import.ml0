@@ -4,5 +4,5 @@ import java.lang.Integer
 
 struct Import {
   let a = Integer##parseInt("123") ;;
-  (* a: java.lang.Integer = 123 *)
+  (* a: int = 123 *)
 }
