@@ -20,9 +20,11 @@ case class QName(parts: Seq[Name]) extends HasPos {
   def asClass = parts.map(_.value).mkString("/")
 }
 
+case class Import(qname: QName)
+
 sealed abstract class RawAST extends HasPos
 object RawAST {
-  case class Program(pkg: QName, item: Struct) extends RawAST
+  case class Program(pkg: QName, imports: Seq[Import], item: Struct) extends RawAST
   case class Struct(name: Name, body: Seq[Term]) extends RawAST
 
   sealed abstract class Term extends RawAST
@@ -44,8 +46,11 @@ case class ModuleRef(pkg: String, name: String)
 
 sealed abstract class VarRef
 object VarRef {
-  case class Module(module: ModuleRef, name: String) extends VarRef
-  case class Local(name: String) extends VarRef
+  sealed abstract class Typable extends VarRef
+  case class Class(sig: ClassSig) extends VarRef
+  case class Package(name: String) extends VarRef
+  case class Module(module: ModuleRef, name: String) extends Typable
+  case class Local(name: String) extends Typable
 }
 
 sealed abstract class TAST

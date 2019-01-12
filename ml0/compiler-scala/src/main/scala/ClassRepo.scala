@@ -29,6 +29,12 @@ case class ClassSig(name: String, parent: Option[ClassSig], interfaces: Seq[Clas
 class ClassRepo(cl: ClassLoader) {
   private[this] var _cache = Map.empty[String, ClassSig]
 
+  // I don't know why, but getResource("java") returns null even when getResource("java/lang/Integer.class") returns non-null.
+  // So package existance is not knowable.
+  // def packageExists(name: String): Boolean = cl.getResource(name) != null
+
+  def classExists(name: String): Boolean = cl.getResource(s"$name.class") != null
+
   def find(name: String): Option[ClassSig] = {
     val r = cl.getResource(s"$name.class")
     if (r == null) None
