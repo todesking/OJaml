@@ -42,17 +42,6 @@ object RawAST {
   case class Prop(expr: Expr, name: Name) extends Expr
 }
 
-case class ModuleRef(pkg: String, name: String)
-
-sealed abstract class VarRef
-object VarRef {
-  sealed abstract class Typable extends VarRef
-  case class Class(sig: ClassSig) extends VarRef
-  case class Package(name: String) extends VarRef
-  case class Module(module: ModuleRef, name: String) extends Typable
-  case class Local(name: String) extends Typable
-}
-
 sealed abstract class TypedAST
 object TypedAST {
   case class Program(pkg: QName, item: Struct) extends TypedAST
