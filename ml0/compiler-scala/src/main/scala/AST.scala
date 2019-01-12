@@ -53,12 +53,12 @@ object VarRef {
   case class Local(name: String) extends Typable
 }
 
-sealed abstract class TAST
-object TAST {
-  case class Program(pkg: QName, item: Struct) extends TAST
-  case class Struct(name: Name, body: Seq[Term]) extends TAST
+sealed abstract class TypedAST
+object TypedAST {
+  case class Program(pkg: QName, item: Struct) extends TypedAST
+  case class Struct(name: Name, body: Seq[Term]) extends TypedAST
 
-  sealed abstract class Term extends TAST
+  sealed abstract class Term extends TypedAST
   case class TLet(name: Name, tpe: Type, expr: Expr) extends Term
 
   sealed abstract class Expr extends Term {

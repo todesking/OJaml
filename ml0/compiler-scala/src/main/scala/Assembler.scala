@@ -9,7 +9,7 @@ import org.objectweb.asm
 import asm.{ Opcodes => op }
 
 class Assembler(baseDir: Path) {
-  import com.todesking.ojaml.ml0.compiler.scala.{ TAST => TT }
+  import com.todesking.ojaml.ml0.compiler.scala.{ TypedAST => TT }
   def emit(p: TT.Program): Unit =
     emitStruct(p.pkg.value, p.item)
 

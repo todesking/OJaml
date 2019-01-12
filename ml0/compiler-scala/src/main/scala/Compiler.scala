@@ -7,7 +7,7 @@ import java.nio.file.Files
 import Compiler.{ Result, Error }
 
 class Compiler(baseDir: Path, cl: ClassLoader) {
-  import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TAST => TT }
+  import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TypedAST => TT }
 
   lazy val typer = new Typer(new ClassRepo(cl))
   lazy val assembler = new Assembler(baseDir)
