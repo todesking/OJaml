@@ -5,31 +5,39 @@ import java.nio.file.Paths
 import java.nio.file.Files
 
 import Compiler.{ Result, Error }
+import Util.MapWithContext
 import Util.MapE
 
 class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TypedAST => TT }
 
   val classRepo = new ClassRepo(cl)
+  val assembler = new Assembler(baseDir)
 
   def compile(files: Seq[Path]): Result =
     compileContents(files.map(FileContent.read))
 
+  def moduleVars(t: TypedAST.Struct): Map[VarRef.Module, Type] = t.body.flatMap {
+    case TypedAST.TLet(name, tpe, _) =>
+      Seq(VarRef.Module(t.moduleRef, name.value) -> tpe)
+    case other =>
+      Seq()
+  }.toMap
+
   def compileContents(files: Seq[FileContent]): Result = {
-    files.foreach { f =>
-      val es = compile1(f)
-      if (es.nonEmpty) return Result(es)
-    }
-    Result(Seq())
+    files.mapWithContextE(Map.empty[VarRef.Module, Type])(typing)
+      .map { trees =>
+        trees.foreach(assembler.emit(_))
+      }.fold({ l => Result(l) }, {r => Result(Seq()) })
   }
 
-  def compile1(file: FileContent): Seq[Error] = {
+  def typing(moduleVars: Map[VarRef.Module, Type], file: FileContent): Either[Seq[Error], (Map[VarRef.Module, Type], TypedAST.Struct)] = {
     val parser = new Parser(file.path.toString)
     parser.parse(file.content) match {
       case parser.NoSuccess(msg, next) =>
         val line = next.pos.line
         val col = next.pos.column
-        Seq(Error(Pos(file.path.toString, line, col), s"Parse error: $msg\n${next.pos.longString}"))
+        Left(Seq(Error(Pos(file.path.toString, line, col), s"Parse error: $msg\n${next.pos.longString}")))
       case parser.Success(ast, _) =>
         val namer = new Namer(classRepo)
         namer.appProgram(ast).flatMap { namedTrees =>
@@ -46,12 +54,9 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
                 println("Phase: Typer")
                 println(AST.pretty(typed))
               }
-              val assembler = new Assembler(baseDir)
-              assembler.emit(typed)
-              Seq.empty[Error]
             }
-          }.map(_.flatten)
-        }.fold(l => l, r => r)
+          }
+        }
     }
   }
 }

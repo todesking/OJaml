@@ -92,7 +92,9 @@ object NamedAST {
 
 sealed abstract class TypedAST extends AnyAST
 object TypedAST {
-  case class Struct(pkg: QName, name: Name, body: Seq[Term]) extends TypedAST
+  case class Struct(pkg: QName, name: Name, body: Seq[Term]) extends TypedAST {
+    def moduleRef = ModuleRef(pkg.value, name.value)
+  }
 
   sealed abstract class Term extends TypedAST
   case class TLet(name: Name, tpe: Type, expr: Expr) extends Term
