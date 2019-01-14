@@ -10,8 +10,6 @@ import asm.{ Opcodes => op }
 
 class Assembler(baseDir: Path) {
   import com.todesking.ojaml.ml0.compiler.scala.{ TypedAST => TT }
-  def emit(p: TT.Program): Unit =
-    emitStruct(p.pkg.value, p.item)
 
   val funClass = Type.Fun.className
   val funSig = s"L$funClass;"
@@ -40,7 +38,8 @@ class Assembler(baseDir: Path) {
     mw.visitEnd()
   }
 
-  def emitStruct(pkg: String, struct: TT.Struct): Unit = {
+  def emit(struct: TT.Struct): Unit = {
+    val pkg = struct.pkg.value
     val className = s"$pkg.${struct.name.value}".replaceAll("\\.", "/")
     val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)
     cw.visit(
@@ -86,12 +85,11 @@ class Assembler(baseDir: Path) {
       init.visitVarInsn(op.ALOAD, 0)
       init.visitVarInsn(op.ALOAD, 1)
       init.visitVarInsn(op.ALOAD, 2)
-      init.visitLdcInsn(depth)
       init.visitMethodInsn(
         op.INVOKESPECIAL,
         funClass,
         "<init>",
-        s"(${objectSig}${funSig}I)V")
+        s"(${objectSig}${funSig})V")
       init.visitInsn(op.RETURN)
       methodEnd(init)
       val app = cw.visitMethod(
@@ -119,7 +117,7 @@ class Assembler(baseDir: Path) {
       case TT.ModuleVarRef(module, name, tpe) =>
         method.visitFieldInsn(op.GETSTATIC, msig(module), name, descriptor(tpe))
       case TT.LocalRef(index, tpe) =>
-        if (depth - 1 == index) {
+        if (depth == index) {
           method.visitVarInsn(op.ALOAD, 1)
         } else {
           method.visitVarInsn(op.ALOAD, 0)

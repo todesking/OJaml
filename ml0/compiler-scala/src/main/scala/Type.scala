@@ -5,10 +5,12 @@ import org.objectweb.asm
 sealed abstract class Type {
   def boxed: Type.Reference
   def unboxed: Option[Type.Primitive]
+  def toString(group: Boolean): String
 }
 object Type {
   sealed abstract class Primitive extends Type {
     override def unboxed = None
+    override def toString(group: Boolean) = toString
   }
   case object Int extends Primitive {
     override def boxed = BoxedInt
@@ -22,6 +24,7 @@ object Type {
     def externalName = className.replaceAll("/", ".")
     override def boxed = this
     override def unboxed = boxMap.get(className)
+    override def toString(group: Boolean) = toString
   }
   object Reference {
     def unapply(r: Reference): Option[String] = Some(r.className)
@@ -32,6 +35,11 @@ object Type {
   }
   case class Fun(l: Type, r: Type) extends Reference {
     override def className = Fun.className
+    override def toString = toString(false)
+    override def toString(group: Boolean) = {
+      val naked = s"${l.toString(true)} -> $r"
+      if (group) s"($naked)" else naked
+    }
   }
   object Fun {
     val className = "com/todesking/ojaml/ml0/runtime/Fun"

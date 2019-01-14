@@ -6,10 +6,12 @@ import java.nio.file.Files
 
 import Compiler.{ Result, Error }
 
-class Compiler(baseDir: Path, cl: ClassLoader) {
+class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TypedAST => TT }
 
-  lazy val typer = new Typer(new ClassRepo(cl))
+  val classRepo = new ClassRepo(cl)
+  lazy val namer = new Namer(classRepo)
+  lazy val typer = new Typer(classRepo)
   lazy val assembler = new Assembler(baseDir)
 
   def compile(files: Seq[Path]): Result =
@@ -31,7 +33,20 @@ class Compiler(baseDir: Path, cl: ClassLoader) {
         val col = next.pos.column
         Seq(Error(Pos(file.path.toString, line, col), s"Parse error: $msg\n${next.pos.longString}"))
       case parser.Success(ast, _) =>
-        typer.typeProgram(ast).fold(l => l, { r => assembler.emit(r); Seq() })
+        namer.appProgram(ast).flatMap { named =>
+          if (debugPrint) {
+            println("Phase: Namer")
+            println(AST.pretty(named))
+          }
+          typer.appStruct(named).map { typed =>
+            if (debugPrint) {
+              println("Phase: Typer")
+              println(AST.pretty(typed))
+            }
+            assembler.emit(typed)
+            Seq.empty[Error]
+          }
+        }.fold(l => l, r => r)
     }
   }
 }

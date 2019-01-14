@@ -36,10 +36,6 @@ class Main extends FunSpec {
 
   private[this] def test(p: Path): Unit = {
     import com.todesking.ojaml.ml0.compiler.{ scala => scala_compiler }
-    val outDir = Files.createTempDirectory("ojaml-test")
-    val cl = this.getClass.getClassLoader
-    val c = new scala_compiler.Compiler(outDir, cl)
-
     val reName = """(.+)\.ml0""".r
     val className = "test.ml0." + p.getFileName() match { case `reName`(name) => name }
 
@@ -49,6 +45,11 @@ class Main extends FunSpec {
       pending
       return
     }
+    val debugPrint = lines.headOption.contains("(* debug *)")
+
+    val outDir = Files.createTempDirectory("ojaml-test")
+    val cl = this.getClass.getClassLoader
+    val c = new scala_compiler.Compiler(outDir, cl, debugPrint)
 
     val reError = """^(\s*\(\*\s*\^).*""".r
     val expectedErrors = lines.zipWithIndex.collect {
@@ -102,6 +103,7 @@ class Main extends FunSpec {
         }
       } catch {
         case e: VerifyError => throw new RuntimeException(e)
+        case e: ExceptionInInitializerError => throw new RuntimeException(e)
       } finally {
         // rm outDir
       }

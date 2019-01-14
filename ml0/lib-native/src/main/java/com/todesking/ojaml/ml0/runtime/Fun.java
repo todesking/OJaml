@@ -5,23 +5,23 @@ public abstract class Fun {
   public final Fun parent;
   public final int depth;
 
-  public Fun(Object local, Fun parent, int depth) {
+  public Fun(Object local, Fun parent) {
+    // System.out.println("new Fun(" + local + ", " + parent + ", " + depth + ")");
     this.local = local;
     this.parent = parent;
-    this.depth = depth;
+    if(parent == null) this.depth = 0;
+    else this.depth = parent.depth + 1;
   }
 
   public abstract Object app(Object x);
 
   protected Object getLocal(int index) {
-    if(depth == 0) {
-      throw new AssertionError("[BUG] getLocal(" + index + ") called but depth = 0");
+    if(index > depth) {
+      throw new AssertionError("[BUG] getLocal(" + index + ") called when depth = " + depth);
     } if(index < 0) {
       throw new AssertionError("[BUG] getLocal(" + index + ") called");
-    } else if(index == depth - 1) {
+    } else if(index == depth) {
       return this.local;
-    } else if(parent == null) {
-      throw new AssertionError("[BUG] getLocal(" + index + ") called but parent is null");
     } else {
       return parent.getLocal(index);
     }

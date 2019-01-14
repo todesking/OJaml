@@ -1,46 +1,27 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
 class Typer(classRepo: ClassRepo) {
-  import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TypedAST => TT }
+  import com.todesking.ojaml.ml0.compiler.scala.{ NamedAST => NT, TypedAST => TT }
   import Typer.Result
   import Compiler.Error
   import Typer.Ctx
   import Typer.QuasiValue
+  import Typer.{ QuasiValue => Q }
   import Typer.error
 
-  def typeProgram(p: RT.Program): Result[TT.Program] =
-    typeStruct(p.pkg, p.imports, p.item).right.map(TT.Program(p.pkg, _))
-
-  def typeStruct(pkg: QName, imports: Seq[Import], s: RT.Struct): Result[TT.Struct] = {
-    val currentModule = ModuleRef(pkg.value, s.name.value)
-    val init = Typer.Ctx(classRepo, currentModule)
-    imports.foldLeft[Result[Ctx]](Right(init)) { (c, i) =>
-      c.flatMap(_.addImport(i))
-    }.flatMap { ctx =>
-      val (_, typed) =
-        s.body.foldLeft((ctx, Seq.empty[Result[TT.Term]])) {
-          case ((c, a), t) =>
-            typeTerm(c, t).fold({ l =>
-              (c, a :+ Left(l))
-            }, {
-              case (cc, tt) =>
-                (cc, a :+ Right(tt))
-            })
-        }
-      validate(typed).flatMap(mkStruct(s.name, _))
-    }
-  }
-
-  def mkStruct(name: Name, terms: Seq[TT.Term]): Result[TT.Struct] = {
-    val letNames = terms.collect { case TT.TLet(n, _, _) => n }
-    val (errors, _) =
-      letNames.foldLeft((Seq.empty[Error], Set.empty[String])) {
-        case ((es, ns), n) =>
-          if (ns(n.value)) (es :+ Error(n.pos, s"""Name "${n.value}" is already defined."""), ns)
-          else (es, ns + n.value)
+  def appStruct(s: NT.Struct): Result[TT.Struct] = {
+    val init = Typer.Ctx(s.moduleRef, classRepo)
+    val (_, typed) =
+      s.body.foldLeft((init, Seq.empty[Result[TT.Term]])) {
+        case ((c, a), t) =>
+          appTerm(c, t).fold({ l =>
+            (c, a :+ Left(l))
+          }, {
+            case (cc, tt) =>
+              (cc, a :+ Right(tt))
+          })
       }
-    if (errors.isEmpty) Right(TT.Struct(name, terms))
-    else Left(errors)
+    validate(typed).map(TT.Struct(s.pkg, s.name, _))
   }
 
   private[this] def validate[A](xs: Seq[Result[A]]): Result[Seq[A]] = {
@@ -49,59 +30,48 @@ class Typer(classRepo: ClassRepo) {
     else Left(xs.collect { case Left(x) => x }.flatten)
   }
 
-  def typeTerm(ctx: Ctx, t: RT.Term): Result[(Ctx, TT.Term)] = t match {
-    case RT.TLet(name, expr) =>
+  def appTerm(ctx: Ctx, t: NT.Term): Result[(Ctx, TT.Term)] = t match {
+    case NT.TLet(name, expr) =>
       for {
-        e <- typeExpr(ctx, expr)
-        c <- ctx.tlet(name, e.tpe)
+        e <- appExpr(ctx, expr)
+        c <- ctx.bindModuleValue(name, e.tpe)
       } yield {
         (c, TT.TLet(name, e.tpe, e))
       }
-    case e: RT.Expr =>
-      typeExpr(ctx, e).map { te => (ctx, te) }
+    case e: NT.Expr =>
+      appExpr(ctx, e).map { te => (ctx, te) }
   }
 
-  def typeExpr(ctx: Ctx, expr: RT.Expr): Result[TT.Expr] = typeExprQ(ctx, expr).flatMap {
-    case QuasiValue.ClassValue(sig) =>
+  def appExpr(ctx: Ctx, expr: NT.Expr): Result[TT.Expr] = appExprQ(ctx, expr).flatMap {
+    case Q.ClassValue(sig) =>
       error(expr.pos, s"Class ${sig.name} is not a value")
-    case QuasiValue.PackageValue(name) =>
+    case Q.PackageValue(name) =>
       error(expr.pos, s"Package ${name} is not a value")
-    case QuasiValue.Value(value) =>
+    case Q.Value(value) =>
       Right(value)
   }
 
-  def okQ(expr: TT.Expr) = Right(QuasiValue.Value(expr))
+  def okQ(expr: TT.Expr) = Right(Q.Value(expr))
 
-  def varRefToQ(ctx: Ctx, v: VarRef) = v match {
-    case VarRef.Class(sig) => Right(QuasiValue.ClassValue(sig))
-    case VarRef.Package(name) => Right(QuasiValue.PackageValue(name))
-    case ref @ VarRef.Module(m, name) => okQ(TT.ModuleVarRef(m, name, ctx.varTable(ref)))
-    case ref @ VarRef.Local(name) => okQ(TT.LocalRef(ctx.localIndex(ref), ctx.varTable(ref)))
+  def varRefToQ(ctx: Ctx, v: VarRef, pos: Pos): Result[QuasiValue] = v match {
+    case VarRef.Class(name) => ctx.findClass(name).map(Q.ClassValue(_)).toRight(
+      Seq(Error(pos, s"Class not found: $name")))
+    case VarRef.Package(name) => Right(Q.PackageValue(name))
+    case ref @ VarRef.Module(m, name) => okQ(TT.ModuleVarRef(m, name, ctx.typeOf(ref)))
+    case ref @ VarRef.Local(index) => okQ(TT.LocalRef(index, ctx.typeOf(ref)))
   }
 
-  def typeExprQ(ctx: Ctx, expr: RT.Expr): Result[QuasiValue] = expr match {
-    case RT.Ref(name) =>
-      ctx.findValue(name.value).fold[Result[QuasiValue]] {
-        error(name.pos, s"Value ${name.value} is not found")
-      }(varRefToQ(ctx, _))
-    case RT.Prop(e, n) =>
-      typeExprQ(ctx, e).flatMap {
-        case QuasiValue.PackageValue(name) =>
-          ctx.findPackageMember(name, n.value).toRight(
-            Seq(Error(n.pos, s"Value ${n.value} is not found in $name")))
-        case QuasiValue.ClassValue(name) =>
-          error(n.pos, s"Property not supported for class")
-        case QuasiValue.Value(e) =>
-          error(n.pos, s"Property not supported for value")
-      }
-    case RT.LitInt(v) => okQ(TT.LitInt(v))
-    case RT.LitBool(v) => okQ(TT.LitBool(v))
-    case RT.LitString(v) => okQ(TT.LitString(v))
-    case RT.If(cond, th, el) =>
+  def appExprQ(ctx: Ctx, expr: NT.Expr): Result[QuasiValue] = expr match {
+    case NT.Ref(ref) =>
+      varRefToQ(ctx, ref, expr.pos)
+    case NT.LitInt(v) => okQ(TT.LitInt(v))
+    case NT.LitBool(v) => okQ(TT.LitBool(v))
+    case NT.LitString(v) => okQ(TT.LitString(v))
+    case NT.If(cond, th, el) =>
       for {
-        e0 <- typeExpr(ctx, cond)
-        e1 <- typeExpr(ctx, th)
-        e2 <- typeExpr(ctx, el)
+        e0 <- appExpr(ctx, cond)
+        e1 <- appExpr(ctx, th)
+        e2 <- appExpr(ctx, el)
         ret <- if (e0.tpe != Type.Bool) {
           error(cond.pos, s"Condition must be bool")
         } else if (e1.tpe != e2.tpe) {
@@ -110,17 +80,14 @@ class Typer(classRepo: ClassRepo) {
           okQ(TT.If(e0, e1, e2, e1.tpe))
         }
       } yield ret
-    case RT.Fun(name, tpeName, body) =>
-      (for {
-        tpe <- ctx.findType(tpeName)
-        tbody <- typeExpr(ctx.newFrame(name.value, tpe), body)
-      } yield {
-        TT.Fun(tpe, tbody)
-      }).map(QuasiValue.Value.apply)
-    case RT.App(f, x) =>
+    case NT.Fun(param, tpe, body) =>
+      appExpr(ctx.bindLocal(param, tpe), body)
+        .map(TT.Fun(tpe, _))
+        .map(Q.Value.apply)
+    case NT.App(f, x) =>
       for {
-        tf <- typeExpr(ctx, f)
-        tx <- typeExpr(ctx, x)
+        tf <- appExpr(ctx, f)
+        tx <- appExpr(ctx, x)
         ret <- tf.tpe match {
           case Type.Fun(l, r) =>
             if (l == tx.tpe)
@@ -131,23 +98,21 @@ class Typer(classRepo: ClassRepo) {
             error(f.pos, s"Applying non-function type ${t}")
         }
       } yield ret
-    case RT.JCall(expr, name, args, isStatic) =>
-      validate(args.map(typeExpr(ctx, _))).flatMap { targs =>
+    case NT.JCall(expr, name, args, isStatic) =>
+      validate(args.map(appExpr(ctx, _))).flatMap { targs =>
         if (isStatic) {
-          typeExprQ(ctx, expr).flatMap {
-            case QuasiValue.PackageValue(name) =>
-              error(expr.pos, s"Class required but $name is package")
-            case QuasiValue.Value(e) =>
-              error(expr.pos, s"Class required")
+          appExprQ(ctx, expr).flatMap {
             case QuasiValue.ClassValue(klass) =>
               klass.findStaticMethod(name.value, targs.map(_.tpe)).fold[Result[QuasiValue]] {
                 error(name.pos, s"Static method ${Type.prettyMethod(name.value, targs.map(_.tpe))} is not found in class ${klass.name}")
               } { method =>
                 okQ(TT.JCallStatic(method, targs))
               }
+            case _ =>
+              error(expr.pos, s"Class required")
           }
         } else {
-          typeExpr(ctx, expr).flatMap { receiver =>
+          appExpr(ctx, expr).flatMap { receiver =>
             ctx.findClass(receiver.tpe.boxed.className).fold[Result[QuasiValue]] {
               error(expr.pos, s"Class ${receiver.tpe.boxed.className} not found. Check classpath.")
             } { klass =>
@@ -176,78 +141,20 @@ object Typer {
 
   type Result[A] = Either[Seq[Compiler.Error], A]
 
-  object Ctx {
-    def apply(repo: ClassRepo, currentModule: ModuleRef): Ctx =
-      apply(
-        repo = repo,
-        currentModule = currentModule,
-        venv = Map(),
-        locals = Map(),
-        varTable = Map(),
-        stack = Nil)
-  }
   case class Ctx(
-    repo: ClassRepo,
     currentModule: ModuleRef,
-    venv: Map[String, VarRef],
-    locals: Map[VarRef.Local, Int], // todo: add depth and type to VarRef.Local
-    varTable: Map[VarRef.Typable, Type],
-    stack: List[Ctx]) {
-    val depth = stack.size
-
-    def localIndex(l: VarRef.Local) = locals(l)
-
-    def tlet(name: Name, tpe: Type): Result[Ctx] = {
-      val varRef = VarRef.Module(currentModule, name.value)
-      if (varTable.contains(varRef))
-        Left(Seq(Error(name.pos, s"""Name "${name.value}" is already defined in ${currentModule.name}""")))
-      else
-        Right(copy(venv = venv + (varRef.name -> varRef), varTable = varTable + (varRef -> tpe)))
-    }
-
-    def findValue(name: String): Option[VarRef] =
-      venv.get(name) orElse {
-        repo.find(name).map(VarRef.Class.apply)
-      } orElse {
-        Some(VarRef.Package(name))
-      }
-    def findPackageMember(pkg: String, name: String): Option[QuasiValue] = {
-      repo.find(s"$pkg/$name").fold[Option[QuasiValue]] {
-        Some(QuasiValue.PackageValue(s"$pkg/$name"))
-      } { klass =>
-        Some(QuasiValue.ClassValue(klass))
-      }
-    }
-
-    def findType(name: Name): Result[Type] = name.value match {
-      case "int" => Right(Type.Int)
-      case "bool" => Right(Type.Bool)
-      case unk =>
-        Left(Seq(Error(name.pos, s"Type not found: ${name.value}")))
-    }
-
+    repo: ClassRepo,
+    typeTable: Map[VarRef.Typable, Type] = Map()) {
+    def typeOf(ref: VarRef.Typable): Type =
+      typeTable(ref) // If lookup failed, that means a bug.
     def findClass(name: String): Option[ClassSig] = repo.find(name)
-
-    def newFrame(name: String, tpe: Type): Ctx = {
-      val ref = VarRef.Local(name)
-      copy(
-        venv = venv + (name -> ref),
-        varTable = varTable + (ref -> tpe),
-        locals = locals + (ref -> depth),
-        stack = this :: stack)
+    def bindModuleValue(name: Name, tpe: Type): Result[Ctx] = {
+      val ref = VarRef.Module(currentModule, name.value)
+      if (typeTable.contains(ref)) Left(Seq(Error(name.pos, s"Member ${name} is already defined")))
+      else Right(copy(typeTable = typeTable + (ref -> tpe)))
     }
-
-    def dropFrame(): Ctx =
-      stack.head
-
-    def addImport(i: Import): Result[Ctx] = {
-      val name = i.qname.asClass
-      val aliasName = i.qname.parts.last.value
-      findValue(name).toRight(
-        Seq(Error(i.qname.pos, s"Name not found: ${i.qname.value}"))).map { v =>
-          copy(venv = venv + (aliasName -> v))
-        }
-    }
+    def bindLocal(ref: VarRef.Local, tpe: Type): Ctx =
+      copy(typeTable = typeTable + (ref -> tpe))
   }
 
 }

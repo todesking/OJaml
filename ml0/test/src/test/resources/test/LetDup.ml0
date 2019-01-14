@@ -1,13 +1,8 @@
 package test.ml0
 
 struct LetDup {
-  let result = 2 ;;
-  let result = 2 ;;
+  let x = 2 ;;
+  let y = 3 ;;
+  let x = 4 ;;
 (*    ^ *)
-  let x = 10 ;;
-  let y = 20 ;;
-  let result = 30 ;;
-(*    ^ *)
-  let   x  = 10 ;;
-(*      ^ *)
 }
