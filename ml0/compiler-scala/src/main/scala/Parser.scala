@@ -72,21 +72,21 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   def binop(pat: Parser[String]) =
     withpos(pat ^^ { p => Name(p) })
 
-  def expr1 = expr2 ~ rep(binop("*" | "/" | "%") ~ expr2) ^^ {
+  def expr1 = withpos(expr2 ~ rep(binop("*" | "/" | "%") ~ expr2) ^^ {
     case e ~ es =>
       es.foldLeft(e) {
         case (l, op ~ r) =>
-          T.App(T.App(T.Ref(op), l), r)
+          T.App(Pos.fill(T.App(Pos.fill(T.Ref(op), op.pos), l), op.pos), r)
       }
-  }
+  })
 
-  def expr2 = expr3 ~ rep(binop("+" | "-") ~ expr3) ^^ {
+  def expr2 = withpos(expr3 ~ rep(binop("+" | "-") ~ expr3) ^^ {
     case e ~ es =>
       es.foldLeft(e) {
         case (l, op ~ r) =>
-          T.App(T.App(T.Ref(op), l), r)
+          T.App(Pos.fill(T.App(Pos.fill(T.Ref(op), op.pos), l), op.pos), r)
       }
-  }
+  })
 
   def expr3 = eif | fun | withpos(expr4 ~ jcall.? ^^ {
     case e ~ None => e
@@ -99,7 +99,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   def expr4 = withpos(expr5 ~ prop.? ^^ {
     case e ~ None => e
-    case e ~ Some(ns) => ns.foldLeft(e) { (e, n) => T.Prop(e, n) }
+    case e ~ Some(ns) => ns.foldLeft(e) { (e, n) => Pos.fill(T.Prop(e, n), n.pos) }
   })
   val prop = "." ~> rep1sep(name, ".")
 

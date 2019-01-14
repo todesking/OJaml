@@ -34,7 +34,7 @@ class Namer(repo: ClassRepo) {
   }
 
   def appTerm(ctx: Ctx, t: RT.Term): Result[(Ctx, NT.Term)] = {
-    appTerm0(ctx, t).map { case (ctx, tt) => tt.fillPos(t.pos); (ctx, tt) }
+    appTerm0(ctx, t).map { case (ctx, tt) => (ctx, Pos.fill(tt, t.pos)) }
   }
   private[this] def appTerm0(ctx: Ctx, t: RT.Term): Result[(Ctx, NT.Term)] = t match {
     case RT.TLet(name, expr) =>
@@ -54,8 +54,10 @@ class Namer(repo: ClassRepo) {
     else Left(xs.collect { case Left(x) => x }.flatten)
   }
 
-  def appExpr(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] =
+  def appExpr(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = {
+    if (expr.pos == null) println(s"[WARN] NOPOS: $expr")
     appExpr0(ctx, expr).map(Pos.fill(_, expr.pos))
+  }
 
   private[this] def appExpr0(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = expr match {
     case RT.Ref(name) =>
