@@ -7,29 +7,25 @@ class Namer(repo: ClassRepo) {
   import Namer.Result
   import Namer.Ctx
   import Namer.error
+  import Util.MapWithContext
 
-  def appProgram(p: RT.Program): Result[NT.Struct] =
-    appStruct(p.pkg, p.imports, p.item)
+  def appProgram(p: RT.Program): Result[Seq[NT.Struct]] =
+    p.items.mapWithContextE(Seq.empty[ModuleRef]) { (ms, x) =>
+      appStruct(p.pkg, p.imports, ms, x).map { named =>
+        (ms :+ named.moduleRef, named)
+      }
+    }
 
-  def appStruct(pkg: QName, imports: Seq[Import], s: RT.Struct): Result[NT.Struct] = {
+  def appStruct(pkg: QName, imports: Seq[Import], modules: Seq[ModuleRef], s: RT.Struct): Result[NT.Struct] = {
     val currentModule = ModuleRef(pkg.value, s.name.value)
     val init = Ctx(repo, currentModule)
     imports.foldLeft[Result[Ctx]](Right(init)) { (c, i) =>
       c.flatMap(_.addImport(i))
     }.flatMap { ctx =>
-      val (_, named) =
-        s.body.foldLeft[(Ctx, Result[Seq[NT.Term]])]((ctx, Right(Seq.empty[NT.Term]))) {
-          case ((c, Right(a)), t) =>
-            appTerm(c, t).fold({ l =>
-              (c, Left(l))
-            }, {
-              case (cc, tt) =>
-                (cc, Right(a :+ tt))
-            })
-          case ((c, Left(e)), t) =>
-            (c, Left(e))
-        }
-      named.map(NT.Struct(pkg, s.name, _)).map(Pos.fill(_, s.pos))
+      s.body.mapWithContextE(ctx) {
+        case (c, t) =>
+          appTerm(c, t)
+      }.map(NT.Struct(pkg, s.name, _)).map(Pos.fill(_, s.pos))
     }
   }
 

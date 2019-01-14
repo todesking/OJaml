@@ -5,14 +5,12 @@ import java.nio.file.Paths
 import java.nio.file.Files
 
 import Compiler.{ Result, Error }
+import Util.MapE
 
 class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TypedAST => TT }
 
   val classRepo = new ClassRepo(cl)
-  lazy val namer = new Namer(classRepo)
-  lazy val typer = new Typer(classRepo)
-  lazy val assembler = new Assembler(baseDir)
 
   def compile(files: Seq[Path]): Result =
     compileContents(files.map(FileContent.read))
@@ -33,19 +31,26 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
         val col = next.pos.column
         Seq(Error(Pos(file.path.toString, line, col), s"Parse error: $msg\n${next.pos.longString}"))
       case parser.Success(ast, _) =>
-        namer.appProgram(ast).flatMap { named =>
+        val namer = new Namer(classRepo)
+        namer.appProgram(ast).flatMap { namedTrees =>
           if (debugPrint) {
             println("Phase: Namer")
-            println(AST.pretty(named))
-          }
-          typer.appStruct(named).map { typed =>
-            if (debugPrint) {
-              println("Phase: Typer")
-              println(AST.pretty(typed))
+            namedTrees.foreach { nt =>
+              println(AST.pretty(nt))
             }
-            assembler.emit(typed)
-            Seq.empty[Error]
           }
+          namedTrees.mapE { nt =>
+            val typer = new Typer(classRepo)
+            typer.appStruct(nt).map { typed =>
+              if (debugPrint) {
+                println("Phase: Typer")
+                println(AST.pretty(typed))
+              }
+              val assembler = new Assembler(baseDir)
+              assembler.emit(typed)
+              Seq.empty[Error]
+            }
+          }.map(_.flatten)
         }.fold(l => l, r => r)
     }
   }

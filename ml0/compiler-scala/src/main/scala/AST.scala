@@ -48,7 +48,7 @@ trait AnyAST extends Product
 
 sealed abstract class RawAST extends HasPos with AnyAST
 object RawAST {
-  case class Program(pkg: QName, imports: Seq[Import], item: Struct) extends RawAST
+  case class Program(pkg: QName, imports: Seq[Import], items: Seq[Struct]) extends RawAST
   case class Struct(name: Name, body: Seq[Term]) extends RawAST
 
   sealed abstract class Term extends RawAST

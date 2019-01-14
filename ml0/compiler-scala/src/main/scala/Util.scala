@@ -1,0 +1,21 @@
+package com.todesking.ojaml.ml0.compiler.scala
+
+object Util {
+  implicit class MapWithContext[A](self: Seq[A]) {
+    def mapWithContext[B, C](init: B)(f: (B, A) => (B, C)): Seq[C] =
+      self.foldLeft((init, Seq.empty[C])) {
+        case ((c, a), x) =>
+          val (cc, y) = f(c, x)
+          (cc, a :+ y)
+      }._2
+    def mapWithContextE[B, C, E](init: B)(f: (B, A) => Either[E, (B, C)]): Either[E, Seq[C]] =
+      self.foldLeft[Either[E, (B, Seq[C])]](Right((init, Seq.empty[C]))) {
+        case (Right((c, a)), x) => f(c, x).map { case (cc, y) => (cc, a :+ y) }
+        case (Left(e), x) => Left(e)
+      }.map(_._2)
+  }
+  implicit class MapE[A](self: Seq[A]) {
+    def mapE[B, E](f: A => Either[E, B]): Either[E, Seq[B]] =
+      self.mapWithContextE(()) { (_, x) => f(x).map { y => ((), y) } }
+  }
+}

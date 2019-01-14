@@ -1,0 +1,10 @@
+package test.ml0
+
+struct Module1 {
+  let x = 42 ;;
+}
+
+struct Module2 {
+  let y = Module1.x ;;
+  (* y: int = 42 *)
+}
