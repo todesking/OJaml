@@ -1,0 +1,9 @@
+package test.ml0
+
+import test.ml0.modules.Module1
+import test.ml0.modules.Module2
+
+module Module3 {
+  let z = Module1.x + Module2.y ;;
+  (* z: int = 42 *)
+}

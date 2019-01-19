@@ -1,0 +1,7 @@
+package test.ml0
+
+struct Cond_should_boolean {
+  let x = if true then 2 else 3 ;;
+  let y = if 1 then 2 else 3 ;;
+  (*         ^ *)
+}
