@@ -2,23 +2,27 @@ package com.todesking.ojaml.ml0.compiler.scala
 
 import Compiler.Error
 
-class Namer(repo: ClassRepo) {
+class Namer(packageEnv: PackageEnv) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, NamedAST => NT }
   import Namer.Result
   import Namer.Ctx
   import Namer.error
   import Util.MapWithContext
 
+  def memberNames(s: NT.Struct): Set[String] = s.body.collect {
+    case NT.TLet(name, _) => name.value
+  }.toSet
+
   def appProgram(p: RT.Program): Result[Seq[NT.Struct]] =
-    p.items.mapWithContextE(Seq.empty[ModuleRef]) { (ms, x) =>
-      appStruct(p.pkg, p.imports, ms, x).map { named =>
-        (ms :+ named.moduleRef, named)
+    p.items.mapWithContextE(packageEnv) { (penv, x) =>
+      appStruct(p.pkg, p.imports, penv, x).map { named =>
+        (penv.addModule(named.moduleRef), named)
       }
     }
 
-  def appStruct(pkg: QName, imports: Seq[Import], modules: Seq[ModuleRef], s: RT.Struct): Result[NT.Struct] = {
-    val currentModule = ModuleRef(pkg.value, s.name.value)
-    val init = Ctx(repo, currentModule)
+  def appStruct(pkg: QName, imports: Seq[Import], penv: PackageEnv, s: RT.Struct): Result[NT.Struct] = {
+    val currentModule = ModuleRef(PackageRef.fromInternalName(pkg.internalName), s.name.value)
+    val init = Ctx(penv, currentModule)
     imports.foldLeft[Result[Ctx]](Right(init)) { (c, i) =>
       c.flatMap(_.addImport(i))
     }.flatMap { ctx =>
@@ -63,12 +67,16 @@ class Namer(repo: ClassRepo) {
       appExpr(ctx, e).flatMap {
         case NT.Ref(r) =>
           r match {
-            case VarRef.Class(name) =>
-              error(n.pos, s"Property not supported for class")
-            case VarRef.Package(name) =>
-              ctx.findPackageMember(name, n.value).map(NT.Ref(_)).toRight(
-                Seq(Error(n.pos, s"Value ${n.value} is not found in $name")))
-            case VarRef.Module(m, name) =>
+            case VarRef.TopLevel(pm) => pm match {
+              case PackageMember.Class(c) =>
+                error(n.pos, s"Property not supported for class")
+              case PackageMember.Package(p) =>
+                ctx.findPackageMember(p, n.value).map(NT.Ref(_)).toRight(
+                  Seq(Error(n.pos, s"Value ${n.value} is not found in ${p.fullName}")))
+              case PackageMember.Module(m) =>
+                Right(NT.Ref(VarRef.ModuleMember(m, n.value)))
+            }
+            case VarRef.ModuleMember(m, name) =>
               error(n.pos, s"Property not supported")
             case VarRef.Local(name) =>
               error(n.pos, s"Property not supported")
@@ -107,51 +115,62 @@ class Namer(repo: ClassRepo) {
   }
 }
 
+sealed abstract class PackageMember
+object PackageMember {
+  case class Package(ref: PackageRef) extends PackageMember
+  case class Class(ref: ClassRef) extends PackageMember
+  case class Module(ref: ModuleRef) extends PackageMember
+}
+
+case class PackageEnv(cr: ClassRepo, modules: Map[PackageRef, Set[String]] = Map()) {
+  def findMember(pkg: PackageRef, name: String): Option[PackageMember] =
+    if(modules.get(pkg).exists(_.contains(name)))
+      Some(PackageMember.Module(ModuleRef(pkg, name)))
+    else if(cr.classExists(pkg, name))
+      Some(PackageMember.Class(ClassRef(pkg, name)))
+    else Some(PackageMember.Package(pkg.packageRef(name))) // TODO: Check package existence
+  def addModule(m: ModuleRef) = modules.get(m.pkg).fold {
+    copy(modules = Map(m.pkg -> Set(m.name)))
+  } { names =>
+    copy(modules = Map(m.pkg -> (names + m.name)))
+  }
+}
+
 object Namer {
   type Result[A] = Either[Seq[Compiler.Error], A]
   def error[A](pos: Pos, msg: String): Result[A] = Left(Seq(Error(pos, msg)))
 
-  object Ctx {
-    def apply(repo: ClassRepo, currentModule: ModuleRef): Ctx =
-      apply(
-        repo = repo,
-        currentModule = currentModule,
-        venv = Map(),
-        locals = Map(),
-        stack = Nil)
-  }
   case class Ctx(
-    repo: ClassRepo,
+    penv: PackageEnv,
     currentModule: ModuleRef,
-    venv: Map[String, VarRef],
-    locals: Map[VarRef.Local, Int], // todo: add depth and type to VarRef.Local
-    stack: List[Ctx]) {
+    venv: Map[String, VarRef] = Map(),
+    locals: Map[VarRef.Local, Int] = Map(),
+    moduleMembers: Map[ModuleRef, Set[String]] = Map(),
+    stack: List[Ctx] = Nil) {
     val depth = stack.size
 
     def localIndex(l: VarRef.Local) = locals(l)
 
     def tlet(name: Name): Result[Ctx] = {
       require(stack.isEmpty)
-      val varRef = VarRef.Module(currentModule, name.value)
+      val varRef = VarRef.ModuleMember(currentModule, name.value)
       if (venv.contains(name.value))
         Left(Seq(Error(name.pos, s"""Name "${name.value}" is already defined in ${currentModule.name}""")))
       else
         Right(copy(venv = venv + (varRef.name -> varRef)))
     }
 
+    // TODO: check name conflict
+    def bindModules(ms: Map[ModuleRef, Set[String]]): Ctx =
+      copy(
+        penv = ms.keys.foldLeft(penv) { (e, m) => e.addModule(m) },
+        moduleMembers = moduleMembers ++ ms
+      )
     def findValue(name: String): Option[VarRef] =
-      venv.get(name) orElse {
-        repo.find(name).map { klass => VarRef.Class(klass.name) }
-      } orElse {
-        Some(VarRef.Package(name))
-      }
-    def findPackageMember(pkg: String, name: String): Option[VarRef.Special] = {
-      repo.find(s"$pkg/$name").fold[Option[VarRef.Special]] {
-        Some(VarRef.Package(s"$pkg/$name"))
-      } { klass =>
-        Some(VarRef.Class(klass.name))
-      }
-    }
+      venv.get(name) orElse penv.findMember(PackageRef.Root, name).map(VarRef.TopLevel.apply)
+
+    def findPackageMember(pkg: PackageRef, name: String): Option[VarRef.TopLevel] =
+      penv.findMember(pkg, name).map(VarRef.TopLevel.apply)
 
     def findType(name: Name): Result[Type] = name.value match {
       case "int" => Right(Type.Int)
@@ -159,8 +178,6 @@ object Namer {
       case unk =>
         Left(Seq(Error(name.pos, s"Type not found: ${name.value}")))
     }
-
-    def findClass(name: String): Option[ClassSig] = repo.find(name)
 
     def bindLocal(name: String): (VarRef.Local, Ctx) = {
       val ref = VarRef.Local(depth + 1)

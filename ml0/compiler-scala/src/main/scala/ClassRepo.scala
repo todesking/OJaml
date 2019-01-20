@@ -4,7 +4,41 @@ import java.nio.file.Path
 
 import org.objectweb.asm
 
-case class MethodSig(klass: String, isStatic: Boolean, isInterface: Boolean, name: String, args: Seq[Type], ret: Option[Type]) {
+sealed abstract class PackageRef {
+  def parts: Seq[String]
+  def fullName: String = parts.mkString(".")
+  def internalName: String = parts.mkString("/")
+  def classRef(name: String) = ClassRef(this, name)
+  def packageRef(name: String) = PackageRef.Child(this, name)
+}
+object PackageRef {
+  case object Root extends PackageRef {
+    override def parts = Seq()
+  }
+  case class Child(parent: PackageRef, name: String) extends PackageRef {
+    override def parts = parent.parts :+ name
+  }
+
+  // TODO: Handle ""
+  def fromInternalName(n: String) = { require(n.nonEmpty); fromParts(n.split("/")) }
+  def fromParts(parts: Seq[String]) =
+    parts.foldLeft[PackageRef](Root) { (p, n) => Child(p, n) }
+}
+
+case class ClassRef(pkg: PackageRef, name: String) {
+  def parts = pkg.parts :+ name
+  def fullName = parts.mkString(".")
+  def internalName = parts.mkString("/")
+  def resourceName = s"$internalName.class"
+}
+object ClassRef {
+  def fromInternalName(n: String) =
+    fromParts(n.split("/"))
+  def fromParts(parts: Seq[String]) =
+    ClassRef(PackageRef.fromParts(parts.init), parts.last)
+}
+
+case class MethodSig(klass: ClassRef, isStatic: Boolean, isInterface: Boolean, name: String, args: Seq[Type], ret: Option[Type]) {
   require(!(isStatic && isInterface))
 
   def isInstance = !isStatic
@@ -12,7 +46,7 @@ case class MethodSig(klass: String, isStatic: Boolean, isInterface: Boolean, nam
   lazy val descriptor =
     asm.Type.getMethodType(Type.toAsm(ret), args.map(Type.toAsm).toArray: _*).getDescriptor
 }
-case class ClassSig(name: String, parent: Option[ClassSig], interfaces: Seq[ClassSig], methods: Seq[MethodSig]) {
+case class ClassSig(ref: ClassRef, parent: Option[ClassSig], interfaces: Seq[ClassSig], methods: Seq[MethodSig]) {
   def findAnyMethod(name: String, args: Seq[Type]): Option[MethodSig] =
     methods.find(m => m.name == name && assignableFrom(m.args, args))
   def findStaticMethod(name: String, args: Seq[Type]): Option[MethodSig] =
@@ -27,33 +61,38 @@ case class ClassSig(name: String, parent: Option[ClassSig], interfaces: Seq[Clas
 }
 
 class ClassRepo(cl: ClassLoader) {
-  private[this] var _cache = Map.empty[String, ClassSig]
+  private[this] var _cache = Map.empty[ClassRef, ClassSig]
 
   // I don't know why, but getResource("java") returns null even when getResource("java/lang/Integer.class") returns non-null.
   // So package existance is not knowable.
   // def packageExists(name: String): Boolean = cl.getResource(name) != null
 
-  def classExists(name: String): Boolean = cl.getResource(s"$name.class") != null
+  def classExists(pkg: PackageRef, name: String): Boolean = classExists(pkg.classRef(name))
+  def classExists(ref: ClassRef): Boolean = cl.getResource(ref.resourceName) != null
 
-  def find(name: String): Option[ClassSig] = {
-    val r = cl.getResource(s"$name.class")
+  def find(pkg: PackageRef, name: String): Option[ClassSig] =
+    find(ClassRef(pkg, name))
+
+  def find(ref: ClassRef): Option[ClassSig] = {
+    val r = cl.getResource(ref.resourceName)
     if (r == null) None
-    else Some(load(name))
+    else Some(load(ref))
   }
 
-  private[this] def load(name: String): ClassSig = _cache.get(name).getOrElse {
-    val c = load0(name)
-    this._cache = _cache + (name -> c)
+  private[this] def load(ref: ClassRef): ClassSig = _cache.get(ref).getOrElse {
+    val c = load0(ref)
+    this._cache = _cache + (ref -> c)
     c
   }
 
-  private[this] def load0(name: String) = {
-    val f = parse(name)
-    ClassSig(f.name, f.superName.map(load), f.interfaces.map(load), f.methods)
+  private[this] def load0(ref: ClassRef) = {
+    val f = parse(ref.resourceName)
+    assert(f.ref == ref)
+    ClassSig(ref, f.superRef.map(load), f.interfaces.map(load), f.methods)
   }
 
-  private[this] def parse(name: String): ClassRepo.ClassFile = {
-    val s = cl.getResourceAsStream(s"$name.class")
+  private[this] def parse(resourceName: String): ClassRepo.ClassFile = {
+    val s = cl.getResourceAsStream(resourceName)
     val cr = new asm.ClassReader(s)
     val p = new ClassRepo.ClassParser
     cr.accept(p, asm.ClassReader.SKIP_CODE)
@@ -62,18 +101,18 @@ class ClassRepo(cl: ClassLoader) {
 }
 
 object ClassRepo {
-  case class ClassFile(name: String, superName: Option[String], interfaces: Seq[String], methods: Seq[MethodSig])
+  case class ClassFile(ref: ClassRef, superRef: Option[ClassRef], interfaces: Seq[ClassRef], methods: Seq[MethodSig])
   class ClassParser extends asm.ClassVisitor(asm.Opcodes.ASM7) {
-    private[this] var name: String = null
-    private[this] var superName: String = null
-    private[this] var interfaces: Seq[String] = null
+    private[this] var ref: ClassRef = null
+    private[this] var superRef: ClassRef = null
+    private[this] var interfaces: Seq[ClassRef] = null
     private[this] var methods = Seq.empty[MethodSig]
     private[this] var isInterface: Boolean = _
 
     override def visit(version: Int, access: Int, name: String, signature: String, superName: String, interfaces: Array[String]) = {
-      this.name = name
-      this.superName = superName
-      this.interfaces = interfaces.toSeq
+      this.ref = ClassRef.fromInternalName(name)
+      this.superRef = if(superName == null) null else ClassRef.fromInternalName(superName)
+      this.interfaces = interfaces.toSeq.map(ClassRef.fromInternalName)
       this.isInterface = (access & asm.Opcodes.ACC_INTERFACE) != 0
       super.visit(version, access, name, signature, superName, interfaces)
     }
@@ -81,15 +120,15 @@ object ClassRepo {
     override def visitMethod(access: Int, mname: String, descriptor: String, signature: String, exceptions: Array[String]) = {
       val isStatic = (access & asm.Opcodes.ACC_STATIC) != 0
       val t = asm.Type.getType(descriptor)
-      val m = MethodSig(name, isStatic, isInterface, mname, t.getArgumentTypes.map(translate(_, mname, signature)), Type.from(t.getReturnType))
+      val m = MethodSig(ref, isStatic, isInterface, mname, t.getArgumentTypes.map(translate(_, mname, signature)), Type.from(t.getReturnType))
       this.methods = this.methods :+ m
       super.visitMethod(access, mname, descriptor, signature, exceptions)
     }
 
     private[this] def translate(t: asm.Type, mname: String, signature: String): Type = Type.from(t) getOrElse {
-      throw new RuntimeException(s"Void argument type not allowed: $name$signature")
+      throw new RuntimeException(s"Void argument type not allowed: ${ref.fullName}$signature")
     }
 
-    def result() = ClassFile(name, Option(superName), interfaces, methods)
+    def result() = ClassFile(ref, Option(superRef), interfaces, methods)
   }
 }

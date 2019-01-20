@@ -68,10 +68,10 @@ class Main extends FunSpec {
     if (expectedErrors.nonEmpty) {
       val content = scala_compiler.FileContent(p, lines.mkString("\n"))
       val result = c.compileContents(Seq(content))
-      val errors = result.errors.map { e =>
+      val errors = result.map { e =>
         (e.pos.line, e.pos.col) -> e
       }.toMap
-      assert(errors.size == result.errors.size)
+      assert(errors.size == result.size)
       val unexpected = errors.keySet -- expectedErrors
       val notHappend = expectedErrors -- errors.keySet
       unexpected.foreach {
@@ -88,10 +88,10 @@ class Main extends FunSpec {
       try {
         val content = scala_compiler.FileContent(p, lines.mkString("\n"))
         val result = c.compileContents(Seq(content))
-        result.errors.foreach { e =>
+        result.foreach { e =>
           println(s"${e.pos} [Unexpected] ${e.message}")
         }
-        assert(Seq() == result.errors)
+        assert(Seq() == result)
         val cl = new java.net.URLClassLoader(Array(outDir.toUri.toURL), this.getClass.getClassLoader)
         val klass = cl.loadClass(className)
         expects.foreach {

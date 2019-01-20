@@ -14,24 +14,28 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   val classRepo = new ClassRepo(cl)
   val assembler = new Assembler(baseDir)
 
-  def compile(files: Seq[Path]): Result =
+  def compile(files: Seq[Path]): Seq[Error] =
     compileContents(files.map(FileContent.read))
 
-  def moduleVars(t: TypedAST.Struct): Map[VarRef.Module, Type] = t.body.flatMap {
+  def extractMV(t: TypedAST.Struct): Map[VarRef.ModuleMember, Type] = t.body.flatMap {
     case TypedAST.TLet(name, tpe, _) =>
-      Seq(VarRef.Module(t.moduleRef, name.value) -> tpe)
+      Seq(VarRef.ModuleMember(t.moduleRef, name.value) -> tpe)
     case other =>
       Seq()
   }.toMap
 
-  def compileContents(files: Seq[FileContent]): Result = {
-    files.mapWithContextE(Map.empty[VarRef.Module, Type])(typing)
+  def compileContents(files: Seq[FileContent]): Seq[Error] = {
+    files.mapWithContextE(Map.empty[VarRef.ModuleMember, Type])(typing)
+      .map(_.flatten)
       .map { trees =>
         trees.foreach(assembler.emit(_))
-      }.fold({ l => Result(l) }, {r => Result(Seq()) })
+        Seq.empty[Error]
+      }.merge
   }
 
-  def typing(moduleVars: Map[VarRef.Module, Type], file: FileContent): Either[Seq[Error], (Map[VarRef.Module, Type], TypedAST.Struct)] = {
+  type ModuleEnv = Map[VarRef.ModuleMember, Type]
+
+  def typing(penv: PackageEnv, moduleVars: ModuleEnv, file: FileContent): Result[(ModuleEnv, Seq[TypedAST.Struct])] = {
     val parser = new Parser(file.path.toString)
     parser.parse(file.content) match {
       case parser.NoSuccess(msg, next) =>
@@ -39,7 +43,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
         val col = next.pos.column
         Left(Seq(Error(Pos(file.path.toString, line, col), s"Parse error: $msg\n${next.pos.longString}")))
       case parser.Success(ast, _) =>
-        val namer = new Namer(classRepo)
+        val namer = new Namer(classRepo, moduleVars.keys.map { mv => mv.module -> })
         namer.appProgram(ast).flatMap { namedTrees =>
           if (debugPrint) {
             println("Phase: Namer")
@@ -47,15 +51,19 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
               println(AST.pretty(nt))
             }
           }
-          namedTrees.mapE { nt =>
-            val typer = new Typer(classRepo)
+          namedTrees.mapWithContextE(moduleVars) { (mvs, nt) =>
+            val typer = new Typer(classRepo, mvs)
             typer.appStruct(nt).map { typed =>
               if (debugPrint) {
                 println("Phase: Typer")
                 println(AST.pretty(typed))
               }
+              (mvs, typed)
             }
           }
+        }.map { trees =>
+          val mvs = moduleVars ++ trees.flatMap(extractMV)
+          (mvs, trees)
         }
     }
   }
@@ -63,8 +71,6 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
 
 object Compiler {
   case class Error(pos: Pos, message: String)
-  case class Result(errors: Seq[Error]) {
-    def isSuccess = errors.isEmpty
-  }
+  type Result[A] = Either[Seq[Error], A]
 }
 

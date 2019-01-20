@@ -1,6 +1,6 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
-class Typer(classRepo: ClassRepo) {
+class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
   import com.todesking.ojaml.ml0.compiler.scala.{ NamedAST => NT, TypedAST => TT }
   import Typer.Result
   import Compiler.Error
@@ -56,8 +56,10 @@ class Typer(classRepo: ClassRepo) {
   def varRefToQ(ctx: Ctx, v: VarRef, pos: Pos): Result[QuasiValue] = v match {
     case VarRef.Class(name) => ctx.findClass(name).map(Q.ClassValue(_)).toRight(
       Seq(Error(pos, s"Class not found: $name")))
+    case VarRef.Module(ref) => ???
     case VarRef.Package(name) => Right(Q.PackageValue(name))
-    case ref @ VarRef.Module(m, name) => okQ(TT.ModuleVarRef(m, name, ctx.typeOf(ref)))
+    case ref @ VarRef.ModuleMember(m, name) =>
+      okQ(TT.ModuleVarRef(m, name, ctx.typeOf(ref)))
     case ref @ VarRef.Local(index) => okQ(TT.LocalRef(index, ctx.typeOf(ref)))
   }
 
@@ -149,7 +151,7 @@ object Typer {
       typeTable(ref) // If lookup failed, that means a bug.
     def findClass(name: String): Option[ClassSig] = repo.find(name)
     def bindModuleValue(name: Name, tpe: Type): Result[Ctx] = {
-      val ref = VarRef.Module(currentModule, name.value)
+      val ref = VarRef.ModuleMember(currentModule, name.value)
       if (typeTable.contains(ref)) Left(Seq(Error(name.pos, s"Member ${name} is already defined")))
       else Right(copy(typeTable = typeTable + (ref -> tpe)))
     }
