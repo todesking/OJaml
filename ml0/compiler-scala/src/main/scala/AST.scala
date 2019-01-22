@@ -25,6 +25,7 @@ case class QName(parts: Seq[Name]) extends HasPos {
   require(parts.nonEmpty)
   def value = parts.map(_.value).mkString(".")
   def internalName = parts.map(_.value).mkString("/")
+  def asPackage = PackageRef.fromParts(parts.map(_.value))
   override def toString = s"QName($value)"
 }
 
@@ -69,7 +70,7 @@ object RawAST {
 sealed abstract class NamedAST extends HasPos with AnyAST
 object NamedAST {
   case class Struct(pkg: QName, name: Name, body: Seq[Term]) extends NamedAST {
-    def moduleRef = ModuleRef(pkg.value, name.value)
+    def moduleRef = ModuleRef(pkg.asPackage, name.value)
   }
 
   sealed abstract class Term extends NamedAST
@@ -93,7 +94,7 @@ object NamedAST {
 sealed abstract class TypedAST extends AnyAST
 object TypedAST {
   case class Struct(pkg: QName, name: Name, body: Seq[Term]) extends TypedAST {
-    def moduleRef = ModuleRef(pkg.value, name.value)
+    def moduleRef = ModuleRef(pkg.asPackage, name.value)
   }
 
   sealed abstract class Term extends TypedAST

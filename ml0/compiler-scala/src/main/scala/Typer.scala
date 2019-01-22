@@ -44,9 +44,9 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
 
   def appExpr(ctx: Ctx, expr: NT.Expr): Result[TT.Expr] = appExprQ(ctx, expr).flatMap {
     case Q.ClassValue(sig) =>
-      error(expr.pos, s"Class ${sig.name} is not a value")
-    case Q.PackageValue(name) =>
-      error(expr.pos, s"Package ${name} is not a value")
+      error(expr.pos, s"Class ${sig.ref.fullName} is not a value")
+    case Q.PackageValue(ref) =>
+      error(expr.pos, s"Package ${ref.fullName} is not a value")
     case Q.Value(value) =>
       Right(value)
   }
@@ -54,10 +54,15 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
   def okQ(expr: TT.Expr) = Right(Q.Value(expr))
 
   def varRefToQ(ctx: Ctx, v: VarRef, pos: Pos): Result[QuasiValue] = v match {
-    case VarRef.Class(name) => ctx.findClass(name).map(Q.ClassValue(_)).toRight(
-      Seq(Error(pos, s"Class not found: $name")))
-    case VarRef.Module(ref) => ???
-    case VarRef.Package(name) => Right(Q.PackageValue(name))
+    case VarRef.TopLevel(pm) => pm match {
+      case PackageMember.Class(ref) =>
+        ctx.findClass(ref).map(Q.ClassValue(_)).toRight(
+          Seq(Error(pos, s"Class not found: ${ref.fullName}")))
+      case PackageMember.Module(ref) =>
+        ???
+      case PackageMember.Package(ref) =>
+        Right(Q.PackageValue(ref))
+    }
     case ref @ VarRef.ModuleMember(m, name) =>
       okQ(TT.ModuleVarRef(m, name, ctx.typeOf(ref)))
     case ref @ VarRef.Local(index) => okQ(TT.LocalRef(index, ctx.typeOf(ref)))
@@ -106,7 +111,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
           appExprQ(ctx, expr).flatMap {
             case QuasiValue.ClassValue(klass) =>
               klass.findStaticMethod(name.value, targs.map(_.tpe)).fold[Result[QuasiValue]] {
-                error(name.pos, s"Static method ${Type.prettyMethod(name.value, targs.map(_.tpe))} is not found in class ${klass.name}")
+                error(name.pos, s"Static method ${Type.prettyMethod(name.value, targs.map(_.tpe))} is not found in class ${klass.ref.fullName}")
               } { method =>
                 okQ(TT.JCallStatic(method, targs))
               }
@@ -115,11 +120,11 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
           }
         } else {
           appExpr(ctx, expr).flatMap { receiver =>
-            ctx.findClass(receiver.tpe.boxed.className).fold[Result[QuasiValue]] {
-              error(expr.pos, s"Class ${receiver.tpe.boxed.className} not found. Check classpath.")
+            ctx.findClass(receiver.tpe.boxed.ref).fold[Result[QuasiValue]] {
+              error(expr.pos, s"Class ${receiver.tpe.boxed.ref.fullName} not found. Check classpath.")
             } { klass =>
               klass.findInstanceMethod(name.value, targs.map(_.tpe)).fold[Result[QuasiValue]] {
-                error(name.pos, s"Instance method ${Type.prettyMethod(name.value, targs.map(_.tpe))} is not found in class ${receiver.tpe.boxed.className}")
+                error(name.pos, s"Instance method ${Type.prettyMethod(name.value, targs.map(_.tpe))} is not found in class ${receiver.tpe.boxed.ref.fullName}")
               } { method =>
                 okQ(TT.JCallInstance(method, receiver, targs))
               }
@@ -137,7 +142,7 @@ object Typer {
   sealed abstract class QuasiValue
   object QuasiValue {
     case class ClassValue(sig: ClassSig) extends QuasiValue
-    case class PackageValue(name: String) extends QuasiValue
+    case class PackageValue(ref: PackageRef) extends QuasiValue
     case class Value(expr: TypedAST.Expr) extends QuasiValue
   }
 
@@ -149,7 +154,7 @@ object Typer {
     typeTable: Map[VarRef.Typable, Type] = Map()) {
     def typeOf(ref: VarRef.Typable): Type =
       typeTable(ref) // If lookup failed, that means a bug.
-    def findClass(name: String): Option[ClassSig] = repo.find(name)
+    def findClass(ref: ClassRef): Option[ClassSig] = repo.find(ref)
     def bindModuleValue(name: Name, tpe: Type): Result[Ctx] = {
       val ref = VarRef.ModuleMember(currentModule, name.value)
       if (typeTable.contains(ref)) Left(Seq(Error(name.pos, s"Member ${name} is already defined")))

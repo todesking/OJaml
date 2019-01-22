@@ -20,21 +20,22 @@ object Type {
   }
 
   sealed abstract class Reference extends Type {
-    def className: String
-    def externalName = className.replaceAll("/", ".")
+    def ref: ClassRef
     override def boxed = this
-    override def unboxed = boxMap.get(className)
+    override def unboxed = boxMap.get(ref.internalName)
     override def toString(group: Boolean) = toString
   }
   object Reference {
-    def unapply(r: Reference): Option[String] = Some(r.className)
+    def unapply(r: Reference): Option[ClassRef] = Some(r.ref)
   }
 
-  case class Klass(className: String) extends Reference {
-    require(!className.contains("."), s"Need internal name: $className")
+  case class Klass(ref: ClassRef) extends Reference
+  object Klass {
+    def apply(internalName: String): Klass =
+      Klass(ClassRef.fromInternalName(internalName))
   }
   case class Fun(l: Type, r: Type) extends Reference {
-    override def className = Fun.className
+    override def ref = Fun.ref
     override def toString = toString(false)
     override def toString(group: Boolean) = {
       val naked = s"${l.toString(true)} -> $r"
@@ -42,7 +43,7 @@ object Type {
     }
   }
   object Fun {
-    val className = "com/todesking/ojaml/ml0/runtime/Fun"
+    val ref = ClassRef.fromInternalName("com/todesking/ojaml/ml0/runtime/Fun")
   }
 
   val BoxedInt = Klass("java/lang/Integer")
@@ -51,8 +52,8 @@ object Type {
   val Unit = Klass("com/todesking/ml0/runtime/Unit")
 
   val boxMap: Map[String, Primitive] = Map(
-    BoxedInt.className -> Int,
-    BoxedBool.className -> Bool)
+    BoxedInt.ref.internalName -> Int,
+    BoxedBool.ref.internalName -> Bool)
 
   def from(t: asm.Type): Option[Type] = t.getSort match {
     case asm.Type.VOID => None
@@ -69,7 +70,7 @@ object Type {
   def toAsm(t: Type): asm.Type = t match {
     case Int => asm.Type.INT_TYPE
     case Bool => asm.Type.BOOLEAN_TYPE
-    case Reference(name) => asm.Type.getObjectType(name)
+    case Reference(ref) => asm.Type.getObjectType(ref.internalName)
   }
 
   def prettyMethod(name: String, args: Seq[Type], ret: Option[Type]): String = {

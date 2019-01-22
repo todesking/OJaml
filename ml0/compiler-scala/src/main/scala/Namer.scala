@@ -1,20 +1,21 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
 import Compiler.Error
+import Util.SeqSyntax
 
 class Namer(packageEnv: PackageEnv) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, NamedAST => NT }
   import Namer.Result
   import Namer.Ctx
   import Namer.error
-  import Util.MapWithContext
+  import Util.SeqSyntax
 
   def memberNames(s: NT.Struct): Set[String] = s.body.collect {
     case NT.TLet(name, _) => name.value
   }.toSet
 
-  def appProgram(p: RT.Program): Result[Seq[NT.Struct]] =
-    p.items.mapWithContextE(packageEnv) { (penv, x) =>
+  def appProgram(p: RT.Program): Result[(PackageEnv, Seq[NT.Struct])] =
+    p.items.foldLeftE(packageEnv) { (penv, x) =>
       appStruct(p.pkg, p.imports, penv, x).map { named =>
         (penv.addModule(named.moduleRef), named)
       }
@@ -74,6 +75,7 @@ class Namer(packageEnv: PackageEnv) {
                 ctx.findPackageMember(p, n.value).map(NT.Ref(_)).toRight(
                   Seq(Error(n.pos, s"Value ${n.value} is not found in ${p.fullName}")))
               case PackageMember.Module(m) =>
+                // TODO: check member existence
                 Right(NT.Ref(VarRef.ModuleMember(m, n.value)))
             }
             case VarRef.ModuleMember(m, name) =>
@@ -124,9 +126,9 @@ object PackageMember {
 
 case class PackageEnv(cr: ClassRepo, modules: Map[PackageRef, Set[String]] = Map()) {
   def findMember(pkg: PackageRef, name: String): Option[PackageMember] =
-    if(modules.get(pkg).exists(_.contains(name)))
+    if (modules.get(pkg).exists(_.contains(name)))
       Some(PackageMember.Module(ModuleRef(pkg, name)))
-    else if(cr.classExists(pkg, name))
+    else if (cr.classExists(pkg, name))
       Some(PackageMember.Class(ClassRef(pkg, name)))
     else Some(PackageMember.Package(pkg.packageRef(name))) // TODO: Check package existence
   def addModule(m: ModuleRef) = modules.get(m.pkg).fold {
@@ -164,8 +166,7 @@ object Namer {
     def bindModules(ms: Map[ModuleRef, Set[String]]): Ctx =
       copy(
         penv = ms.keys.foldLeft(penv) { (e, m) => e.addModule(m) },
-        moduleMembers = moduleMembers ++ ms
-      )
+        moduleMembers = moduleMembers ++ ms)
     def findValue(name: String): Option[VarRef] =
       venv.get(name) orElse penv.findMember(PackageRef.Root, name).map(VarRef.TopLevel.apply)
 
@@ -191,12 +192,33 @@ object Namer {
       stack.head
 
     def addImport(i: Import): Result[Ctx] = {
-      val name = i.qname.internalName
+      val nameParts = i.qname.parts
       val aliasName = i.qname.parts.last.value
-      findValue(name).toRight(
-        Seq(Error(i.qname.pos, s"Name not found: ${i.qname.value}"))).map { v =>
+      findPackageMember(PackageRef.Root, nameParts.head.value).toRight(Seq(Error(i.qname.pos, s"Value not found: ${nameParts.head.value}"))).flatMap { head =>
+        nameParts.tail.foldLeft[Result[VarRef]](Right(head)) { (v, n) =>
+          v.flatMap {
+            case VarRef.TopLevel(pm) => pm match {
+              case PackageMember.Package(ref) =>
+                findPackageMember(ref, n.value).toRight(
+                  Seq(Error(n.pos, s"Package member not found: ${n.value}")))
+              case PackageMember.Module(ref) =>
+                moduleMembers
+                  .get(ref)
+                  .filter(_.contains(n.value))
+                  .map { _ => VarRef.ModuleMember(ref, n.value) }
+                  .toRight(Seq(Error(n.pos, s"Value ${n.value} is not found in module ${ref.name}")))
+              case PackageMember.Class(ref) =>
+                Left(Seq(Error(n.pos, s"${ref.fullName} is class and field reference not supported")))
+            }
+            case VarRef.ModuleMember(ref, name) =>
+              Left(Seq(Error(n.pos, s"$name is value")))
+            case VarRef.Local(_) =>
+              throw new AssertionError(s"WTF: $v, $n")
+          }
+        }.map { v =>
           copy(venv = venv + (aliasName -> v))
         }
+      }
     }
   }
 }

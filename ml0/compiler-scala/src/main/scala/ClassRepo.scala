@@ -16,6 +16,7 @@ object PackageRef {
     override def parts = Seq()
   }
   case class Child(parent: PackageRef, name: String) extends PackageRef {
+    require(!name.contains(".") && !name.contains("/"), name)
     override def parts = parent.parts :+ name
   }
 
@@ -26,6 +27,7 @@ object PackageRef {
 }
 
 case class ClassRef(pkg: PackageRef, name: String) {
+  require(!name.contains(".") && !name.contains("/"), name)
   def parts = pkg.parts :+ name
   def fullName = parts.mkString(".")
   def internalName = parts.mkString("/")
@@ -87,7 +89,7 @@ class ClassRepo(cl: ClassLoader) {
 
   private[this] def load0(ref: ClassRef) = {
     val f = parse(ref.resourceName)
-    assert(f.ref == ref)
+    assert(f.ref == ref, s"${f.ref} == $ref")
     ClassSig(ref, f.superRef.map(load), f.interfaces.map(load), f.methods)
   }
 
@@ -111,7 +113,7 @@ object ClassRepo {
 
     override def visit(version: Int, access: Int, name: String, signature: String, superName: String, interfaces: Array[String]) = {
       this.ref = ClassRef.fromInternalName(name)
-      this.superRef = if(superName == null) null else ClassRef.fromInternalName(superName)
+      this.superRef = if (superName == null) null else ClassRef.fromInternalName(superName)
       this.interfaces = interfaces.toSeq.map(ClassRef.fromInternalName)
       this.isInterface = (access & asm.Opcodes.ACC_INTERFACE) != 0
       super.visit(version, access, name, signature, superName, interfaces)

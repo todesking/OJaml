@@ -102,8 +102,7 @@ class Main extends FunSpec {
             assert(value == s"$result", s"at $fieldName")
         }
       } catch {
-        case e: VerifyError => throw new RuntimeException(e)
-        case e: ExceptionInInitializerError => throw new RuntimeException(e)
+        case e: LinkageError => throw new RuntimeException(e)
       } finally {
         // rm outDir
       }

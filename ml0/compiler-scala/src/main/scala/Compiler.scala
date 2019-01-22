@@ -5,8 +5,7 @@ import java.nio.file.Paths
 import java.nio.file.Files
 
 import Compiler.{ Result, Error }
-import Util.MapWithContext
-import Util.MapE
+import Util.SeqSyntax
 
 class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TypedAST => TT }
@@ -25,7 +24,11 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   }.toMap
 
   def compileContents(files: Seq[FileContent]): Seq[Error] = {
-    files.mapWithContextE(Map.empty[VarRef.ModuleMember, Type])(typing)
+    val penv = PackageEnv(classRepo)
+    files.mapWithContextE((penv, Map.empty[VarRef.ModuleMember, Type])) {
+      case ((pe, me), f) =>
+        typing(pe, me, f).map { case (p, m, t) => ((p, m), t) }
+    }
       .map(_.flatten)
       .map { trees =>
         trees.foreach(assembler.emit(_))
@@ -35,7 +38,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
 
   type ModuleEnv = Map[VarRef.ModuleMember, Type]
 
-  def typing(penv: PackageEnv, moduleVars: ModuleEnv, file: FileContent): Result[(ModuleEnv, Seq[TypedAST.Struct])] = {
+  def typing(penv: PackageEnv, moduleVars: ModuleEnv, file: FileContent): Result[(PackageEnv, ModuleEnv, Seq[TypedAST.Struct])] = {
     val parser = new Parser(file.path.toString)
     parser.parse(file.content) match {
       case parser.NoSuccess(msg, next) =>
@@ -43,27 +46,28 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
         val col = next.pos.column
         Left(Seq(Error(Pos(file.path.toString, line, col), s"Parse error: $msg\n${next.pos.longString}")))
       case parser.Success(ast, _) =>
-        val namer = new Namer(classRepo, moduleVars.keys.map { mv => mv.module -> })
-        namer.appProgram(ast).flatMap { namedTrees =>
-          if (debugPrint) {
-            println("Phase: Namer")
-            namedTrees.foreach { nt =>
-              println(AST.pretty(nt))
-            }
-          }
-          namedTrees.mapWithContextE(moduleVars) { (mvs, nt) =>
-            val typer = new Typer(classRepo, mvs)
-            typer.appStruct(nt).map { typed =>
-              if (debugPrint) {
-                println("Phase: Typer")
-                println(AST.pretty(typed))
+        val namer = new Namer(penv)
+        namer.appProgram(ast).flatMap {
+          case (pe, namedTrees) =>
+            if (debugPrint) {
+              println("Phase: Namer")
+              namedTrees.foreach { nt =>
+                println(AST.pretty(nt))
               }
-              (mvs, typed)
             }
-          }
-        }.map { trees =>
-          val mvs = moduleVars ++ trees.flatMap(extractMV)
-          (mvs, trees)
+            namedTrees.foldLeftE(moduleVars) { (mvs, nt) =>
+              val typer = new Typer(classRepo, mvs)
+              typer.appStruct(nt).map { typed =>
+                if (debugPrint) {
+                  println("Phase: Typer")
+                  println(AST.pretty(typed))
+                }
+                (mvs, typed)
+              }
+            }.map { case (mvs, typed) => (pe, mvs, typed) }
+        }.map {
+          case (pe, mvs, typed) =>
+            (pe, mvs, typed)
         }
     }
   }

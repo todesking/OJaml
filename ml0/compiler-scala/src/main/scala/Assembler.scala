@@ -11,7 +11,7 @@ import asm.{ Opcodes => op }
 class Assembler(baseDir: Path) {
   import com.todesking.ojaml.ml0.compiler.scala.{ TypedAST => TT }
 
-  val funClass = Type.Fun.className
+  val funClass = Type.Fun.ref.internalName
   val funSig = s"L$funClass;"
 
   val objectClass = "java/lang/Object"
@@ -23,7 +23,7 @@ class Assembler(baseDir: Path) {
   }
 
   def msig(m: ModuleRef) =
-    s"${m.pkg}.${m.name}".replaceAll("\\.", "/")
+    s"${m.pkg.internalName}/${m.name}"
 
   def write(pkg: String, name: String, data: Array[Byte]) = {
     val packageDir = baseDir.resolve(pkg.replaceAll("\\.", "/"))
@@ -128,7 +128,7 @@ class Assembler(baseDir: Path) {
             "getLocal",
             s"(I)$objectSig")
         }
-        method.visitTypeInsn(op.CHECKCAST, tpe.boxed.className)
+        method.visitTypeInsn(op.CHECKCAST, tpe.boxed.ref.internalName)
         unbox(method, tpe.boxed)
       case TT.If(cond, th, el, tpe) =>
         val lElse = new asm.Label()
@@ -165,7 +165,7 @@ class Assembler(baseDir: Path) {
           funClass,
           "app",
           s"($objectSig)$objectSig")
-        method.visitTypeInsn(op.CHECKCAST, tpe.boxed.className)
+        method.visitTypeInsn(op.CHECKCAST, tpe.boxed.ref.internalName)
         autobox(method, tpe.boxed, tpe)
       case e @ TT.JCallStatic(target, args) =>
         args.zip(target.args).foreach {
@@ -175,7 +175,7 @@ class Assembler(baseDir: Path) {
         }
         method.visitMethodInsn(
           op.INVOKESTATIC,
-          target.klass,
+          target.klass.internalName,
           target.name,
           target.descriptor)
         autobox(method, target.ret, e.tpe)
@@ -189,7 +189,7 @@ class Assembler(baseDir: Path) {
         }
         method.visitMethodInsn(
           if (target.isInterface) op.INVOKEINTERFACE else op.INVOKEVIRTUAL,
-          target.klass,
+          target.klass.internalName,
           target.name,
           target.descriptor)
         autobox(method, target.ret, e.tpe)
@@ -222,7 +222,7 @@ class Assembler(baseDir: Path) {
     case None =>
       if (to != Type.Unit) throw new AssertionError(s"Unit type expected but actual is $to")
       method.visitInsn(op.ACONST_NULL)
-      method.visitTypeInsn(op.CHECKCAST, Type.Unit.className)
+      method.visitTypeInsn(op.CHECKCAST, Type.Unit.ref.internalName)
   }
   private[this] def autobox(method: asm.MethodVisitor, from: Type, to: Type): Unit = {
     if (from == to) {
@@ -240,7 +240,7 @@ class Assembler(baseDir: Path) {
       // do nothing
     } else {
       val desc = s"(${descriptor(tpe)})${descriptor(tpe.boxed)}"
-      method.visitMethodInsn(op.INVOKESTATIC, tpe.boxed.className, "valueOf", desc)
+      method.visitMethodInsn(op.INVOKESTATIC, tpe.boxed.ref.internalName, "valueOf", desc)
     }
   }
   private[this] def unbox(method: asm.MethodVisitor, tpe: Type) = {
@@ -251,7 +251,7 @@ class Assembler(baseDir: Path) {
           case Type.Bool => "booleanValue"
         }
       val desc = s"()${descriptor(prim)}"
-      method.visitMethodInsn(op.INVOKEVIRTUAL, tpe.boxed.className, name, desc)
+      method.visitMethodInsn(op.INVOKEVIRTUAL, tpe.boxed.ref.internalName, name, desc)
     }
   }
 }
