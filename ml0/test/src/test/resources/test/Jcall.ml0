@@ -1,3 +1,4 @@
+(* debug *)
 package test.ml0
 
 struct Jcall {

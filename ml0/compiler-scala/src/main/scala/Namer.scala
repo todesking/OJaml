@@ -136,6 +136,10 @@ case class PackageEnv(cr: ClassRepo, modules: Map[PackageRef, Set[String]] = Map
   } { names =>
     copy(modules = Map(m.pkg -> (names + m.name)))
   }
+  def pretty = "PackageEnv\n" + modules.toSeq.sortBy(_._1.fullName).map {
+    case (k, vs) =>
+      s"  package ${k.fullName}\n" + vs.toSeq.sorted.map { v => s"  - module $v" }.mkString("\n")
+  }.mkString("")
 }
 
 object Namer {
@@ -168,7 +172,11 @@ object Namer {
         penv = ms.keys.foldLeft(penv) { (e, m) => e.addModule(m) },
         moduleMembers = moduleMembers ++ ms)
     def findValue(name: String): Option[VarRef] =
-      venv.get(name) orElse penv.findMember(PackageRef.Root, name).map(VarRef.TopLevel.apply)
+      venv.get(name) orElse {
+        penv.findMember(currentModule.pkg, name)
+          .orElse(penv.findMember(PackageRef.Root, name))
+          .map(VarRef.TopLevel.apply)
+      }
 
     def findPackageMember(pkg: PackageRef, name: String): Option[VarRef.TopLevel] =
       penv.findMember(pkg, name).map(VarRef.TopLevel.apply)

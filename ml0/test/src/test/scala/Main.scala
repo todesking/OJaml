@@ -150,7 +150,13 @@ object TestMain {
       val reAssertion = """^\s*\(\* ([\w.]+): ([\w.]+) = (.+) \*\)\s*$""".r
       val assertions = lines.collect {
         case `reAssertion`(name, tpe, value) =>
-          Assertion(defaultClassName, name, tpe, value)
+          if (name.contains(".")) {
+            val className = "test.ml0." + name.split("\\.").init.mkString(".")
+            val n = name.split("\\.").last
+            Assertion(className, n, tpe, value)
+          } else {
+            Assertion(defaultClassName, name, tpe, value)
+          }
       }
       Target(
         path,

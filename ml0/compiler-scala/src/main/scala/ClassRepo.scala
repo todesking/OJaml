@@ -4,42 +4,6 @@ import java.nio.file.Path
 
 import org.objectweb.asm
 
-sealed abstract class PackageRef {
-  def parts: Seq[String]
-  def fullName: String = parts.mkString(".")
-  def internalName: String = parts.mkString("/")
-  def classRef(name: String) = ClassRef(this, name)
-  def packageRef(name: String) = PackageRef.Child(this, name)
-}
-object PackageRef {
-  case object Root extends PackageRef {
-    override def parts = Seq()
-  }
-  case class Child(parent: PackageRef, name: String) extends PackageRef {
-    require(!name.contains(".") && !name.contains("/"), name)
-    override def parts = parent.parts :+ name
-  }
-
-  // TODO: Handle ""
-  def fromInternalName(n: String) = { require(n.nonEmpty); fromParts(n.split("/")) }
-  def fromParts(parts: Seq[String]) =
-    parts.foldLeft[PackageRef](Root) { (p, n) => Child(p, n) }
-}
-
-case class ClassRef(pkg: PackageRef, name: String) {
-  require(!name.contains(".") && !name.contains("/"), name)
-  def parts = pkg.parts :+ name
-  def fullName = parts.mkString(".")
-  def internalName = parts.mkString("/")
-  def resourceName = s"$internalName.class"
-}
-object ClassRef {
-  def fromInternalName(n: String) =
-    fromParts(n.split("/"))
-  def fromParts(parts: Seq[String]) =
-    ClassRef(PackageRef.fromParts(parts.init), parts.last)
-}
-
 case class MethodSig(klass: ClassRef, isStatic: Boolean, isInterface: Boolean, name: String, args: Seq[Type], ret: Option[Type]) {
   require(!(isStatic && isInterface))
 

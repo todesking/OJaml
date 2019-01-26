@@ -10,7 +10,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
   import Typer.error
 
   def appStruct(s: NT.Struct): Result[TT.Struct] = {
-    val init = Typer.Ctx(s.moduleRef, classRepo)
+    val init = Typer.Ctx(s.moduleRef, classRepo).bindModuleValues(moduleVars)
     val (_, typed) =
       s.body.foldLeft((init, Seq.empty[Result[TT.Term]])) {
         case ((c, a), t) =>
@@ -139,6 +139,11 @@ object Typer {
 
   def error(pos: Pos, msg: String) = Left(Seq(Error(pos, msg)))
 
+  def moduleVarsOf(s: TypedAST.Struct): Map[VarRef.ModuleMember, Type] = s.body.collect {
+    case TypedAST.TLet(name, tpe, _) =>
+      VarRef.ModuleMember(s.moduleRef, name.value) -> tpe
+  }.toMap
+
   sealed abstract class QuasiValue
   object QuasiValue {
     case class ClassValue(sig: ClassSig) extends QuasiValue
@@ -152,14 +157,21 @@ object Typer {
     currentModule: ModuleRef,
     repo: ClassRepo,
     typeTable: Map[VarRef.Typable, Type] = Map()) {
+
     def typeOf(ref: VarRef.Typable): Type =
       typeTable(ref) // If lookup failed, that means a bug.
+
     def findClass(ref: ClassRef): Option[ClassSig] = repo.find(ref)
+
     def bindModuleValue(name: Name, tpe: Type): Result[Ctx] = {
       val ref = VarRef.ModuleMember(currentModule, name.value)
       if (typeTable.contains(ref)) Left(Seq(Error(name.pos, s"Member ${name} is already defined")))
       else Right(copy(typeTable = typeTable + (ref -> tpe)))
     }
+
+    def bindModuleValues(mvs: Map[VarRef.ModuleMember, Type]): Ctx =
+      copy(typeTable = typeTable ++ mvs)
+
     def bindLocal(ref: VarRef.Local, tpe: Type): Ctx =
       copy(typeTable = typeTable + (ref -> tpe))
   }

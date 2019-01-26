@@ -54,15 +54,25 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
               namedTrees.foreach { nt =>
                 println(AST.pretty(nt))
               }
+              println(pe.pretty)
             }
             namedTrees.foldLeftE(moduleVars) { (mvs, nt) =>
               val typer = new Typer(classRepo, mvs)
               typer.appStruct(nt).map { typed =>
+                val newMvs = mvs ++ Typer.moduleVarsOf(typed)
                 if (debugPrint) {
                   println("Phase: Typer")
                   println(AST.pretty(typed))
+                  println("Module members")
+                  newMvs.toSeq
+                    .map { case (k, v) => s"${k.module.fullName}.${k.name}" -> v }
+                    .sortBy(_._1)
+                    .foreach {
+                      case (k, v) =>
+                        println(s"- $k: $v")
+                    }
                 }
-                (mvs, typed)
+                (newMvs, typed)
               }
             }.map { case (mvs, typed) => (pe, mvs, typed) }
         }.map {

@@ -6,5 +6,5 @@ struct Module1 {
 
 struct Module2 {
   let y = Module1.x ;;
-  (* y: int = 42 *)
+  (* Module2.y: int = 42 *)
 }
