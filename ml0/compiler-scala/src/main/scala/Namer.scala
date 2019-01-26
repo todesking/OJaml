@@ -130,7 +130,10 @@ case class PackageEnv(cr: ClassRepo, modules: Map[PackageRef, Set[String]] = Map
       Some(PackageMember.Module(ModuleRef(pkg, name)))
     else if (cr.classExists(pkg, name))
       Some(PackageMember.Class(ClassRef(pkg, name)))
-    else Some(PackageMember.Package(pkg.packageRef(name))) // TODO: Check package existence
+    else if (cr.packageExists(pkg, name))
+      Some(PackageMember.Package(pkg.packageRef(name)))
+    else
+      None
   def addModule(m: ModuleRef) = modules.get(m.pkg).fold {
     copy(modules = Map(m.pkg -> Set(m.name)))
   } { names =>

@@ -29,9 +29,17 @@ case class ClassSig(ref: ClassRef, parent: Option[ClassSig], interfaces: Seq[Cla
 class ClassRepo(cl: ClassLoader) {
   private[this] var _cache = Map.empty[ClassRef, ClassSig]
 
-  // I don't know why, but getResource("java") returns null even when getResource("java/lang/Integer.class") returns non-null.
-  // So package existance is not knowable.
-  // def packageExists(name: String): Boolean = cl.getResource(name) != null
+  // Note: Some jar contains only file, not directory.
+  // i.e. contains "java/lang/Integer.class" but no "java/"
+  // So this hack required.
+  val knownPackages = Set(
+    "java",
+    "java/lang",
+    "java/util")
+  def packageExists(pkg: PackageRef, name: String): Boolean = {
+    val path = pkg.packageRef(name).internalName
+    cl.getResource(path) != null || knownPackages.contains(path)
+  }
 
   def classExists(pkg: PackageRef, name: String): Boolean = classExists(pkg.classRef(name))
   def classExists(ref: ClassRef): Boolean = cl.getResource(ref.resourceName) != null
