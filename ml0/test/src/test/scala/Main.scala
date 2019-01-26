@@ -89,6 +89,10 @@ class Main extends FunSpec {
         }
         assert(Seq() == result)
         val cl = new java.net.URLClassLoader(Array(outDir.toUri.toURL), this.getClass.getClassLoader)
+
+        // make sure all classes are valid
+        targets.flatMap(_.classNames).foreach { cn => cl.loadClass(cn) }
+
         assertions.foreach {
           case Assertion(klassName, fieldName, typeName, value) =>
             val klass = cl.loadClass(klassName)
@@ -123,10 +127,13 @@ object TestMain {
 
   object Target {
     def from(path: Path): Target = {
-      val reName = """(.+)\.ml0""".r
-      val className = "test.ml0." + path.getFileName() match { case `reName`(name) => name }
-
       val lines = Files.readAllLines(path).asScala
+
+      val reModuleName = """module\s+([^\s]+)""".r
+      val classNames = lines.collect { case `reModuleName`(name) => s"test.ml0.$name" }
+
+      println(path.getFileName)
+      val defaultClassName = "test.ml0." + path.getFileName.toString.split("\\.")(0)
 
       val pending = lines.headOption.contains("(* pending *)")
       val debugPrint = lines.headOption.contains("(* debug *)")
@@ -142,14 +149,14 @@ object TestMain {
       val reAssertion = """^\s*\(\* ([\w.]+): ([\w.]+) = (.+) \*\)\s*$""".r
       val assertions = lines.collect {
         case `reAssertion`(name, tpe, value) =>
-          Assertion(className, name, tpe, value)
+          Assertion(defaultClassName, name, tpe, value)
       }
       Target(
         path,
         content = lines.mkString("\n"),
         expectedErrors = expectedErrors,
         assertions = assertions,
-        classNames = Seq(className),
+        classNames = classNames,
         pending = pending,
         debugPrint = debugPrint)
     }
