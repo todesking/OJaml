@@ -24,6 +24,8 @@ class Namer(packageEnv: PackageEnv) {
 
   def appStruct(pkg: QName, imports: Seq[Import], penv: PackageEnv, s: RT.Struct): Result[(PackageEnv, NT.Struct)] = {
     val currentModule = ModuleRef(PackageRef.fromInternalName(pkg.internalName), s.name.value)
+    if (penv.memberExists(currentModule.pkg, currentModule.name))
+      return Left(Seq(Error(s.name.pos, s"${currentModule.fullName} already defined")))
     val init = Ctx(penv.addModule(currentModule), currentModule)
     imports.foldLeft[Result[Ctx]](Right(init)) { (c, i) =>
       c.flatMap(_.addImport(i))
@@ -138,6 +140,9 @@ case class PackageEnv(cr: ClassRepo, modules: Map[PackageRef, Set[String]] = Map
       Some(PackageMember.Package(pkg.packageRef(name)))
     else
       None
+
+  def memberExists(pkg: PackageRef, name: String) =
+    findMember(pkg, name).nonEmpty
 
   def addModule(m: ModuleRef) = modules.get(m.pkg).fold {
     copy(modules = Map(m.pkg -> Set(m.name)))

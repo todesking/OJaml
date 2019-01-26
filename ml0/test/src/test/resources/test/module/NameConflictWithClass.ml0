@@ -1,6 +1,5 @@
-(* pending *)
 package java.lang
 
-module Integer {
+struct Integer {
 (*     ^ *)
 }

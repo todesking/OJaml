@@ -1,0 +1,6 @@
+package test.ml0
+
+struct A {}
+
+struct A{}
+(*     ^ *)

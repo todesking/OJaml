@@ -45,7 +45,7 @@ class Main extends FunSpec {
     import TestMain.Assertion
     import com.todesking.ojaml.ml0.compiler.{ scala => scala_compiler }
 
-    val targets = paths.map(Target.from)
+    val targets = paths.sortBy(_.toString).map(Target.from)
     val debugPrint = targets.exists(_.debugPrint)
     val pending = targets.exists(_.pending)
     if (pending) this.pending

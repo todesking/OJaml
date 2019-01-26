@@ -1,0 +1,3 @@
+package test.ml0
+
+struct A {}
