@@ -1,0 +1,8 @@
+package ml0.test
+
+struct Tlet_error1 {
+  let f = fun a: int => x ;;
+  let y = x ;;
+  (*      ^ *)
+  let x = 10 ;;
+}
