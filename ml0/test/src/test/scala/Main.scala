@@ -81,7 +81,9 @@ class Main extends FunSpec {
         case (p, l, c) =>
           println(s"$p:$l:$c Error expected but not happend")
       }
-      assert((Set(), Set()) == (notHappend, unexpected))
+      if (unexpected.nonEmpty || notHappend.nonEmpty) {
+        fail("Unexpected/Missing errors: See error log")
+      }
     } else {
       try {
         result.foreach { e =>
@@ -132,7 +134,6 @@ object TestMain {
       val reModuleName = """module\s+([^\s]+)""".r
       val classNames = lines.collect { case `reModuleName`(name) => s"test.ml0.$name" }
 
-      println(path.getFileName)
       val defaultClassName = "test.ml0." + path.getFileName.toString.split("\\.")(0)
 
       val pending = lines.headOption.contains("(* pending *)")
