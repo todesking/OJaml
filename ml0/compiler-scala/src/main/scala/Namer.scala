@@ -16,21 +16,25 @@ class Namer(packageEnv: PackageEnv) {
 
   def appProgram(p: RT.Program): Result[(PackageEnv, Seq[NT.Struct])] =
     p.items.foldLeftE(packageEnv) { (penv, x) =>
-      appStruct(p.pkg, p.imports, penv, x).map { named =>
-        (penv.addModule(named.moduleRef), named)
+      appStruct(p.pkg, p.imports, penv, x).map {
+        case (pe, named) =>
+          (pe, named)
       }
     }
 
-  def appStruct(pkg: QName, imports: Seq[Import], penv: PackageEnv, s: RT.Struct): Result[NT.Struct] = {
+  def appStruct(pkg: QName, imports: Seq[Import], penv: PackageEnv, s: RT.Struct): Result[(PackageEnv, NT.Struct)] = {
     val currentModule = ModuleRef(PackageRef.fromInternalName(pkg.internalName), s.name.value)
-    val init = Ctx(penv, currentModule)
+    val init = Ctx(penv.addModule(currentModule), currentModule)
     imports.foldLeft[Result[Ctx]](Right(init)) { (c, i) =>
       c.flatMap(_.addImport(i))
     }.flatMap { ctx =>
-      s.body.mapWithContextE(ctx) {
+      s.body.foldLeftE(ctx) {
         case (c, t) =>
           appTerm(c, t)
-      }.map(NT.Struct(pkg, s.name, _)).map(Pos.fill(_, s.pos))
+      }.map {
+        case (c, ts) =>
+          (c.penv, Pos.fill(NT.Struct(pkg, s.name, ts), s.pos))
+      }
     }
   }
 
@@ -43,7 +47,7 @@ class Namer(packageEnv: PackageEnv) {
         e <- appExpr(ctx, expr)
         c <- ctx.tlet(name)
       } yield {
-        (c, NT.TLet(name, e))
+        (c.addModuleMember(name.value), NT.TLet(name, e))
       }
     case e: RT.Expr =>
       appExpr(ctx, e).map { te => (ctx, te) }
@@ -76,7 +80,7 @@ class Namer(packageEnv: PackageEnv) {
                   Seq(Error(n.pos, s"Value ${n.value} is not found in ${p.fullName}")))
               case PackageMember.Module(m) =>
                 // TODO: check member existence
-                Right(NT.Ref(VarRef.ModuleMember(m, n.value)))
+                ctx.findModuleMember(m, n).map(NT.Ref.apply)
             }
             case VarRef.ModuleMember(m, name) =>
               error(n.pos, s"Property not supported")
@@ -124,7 +128,7 @@ object PackageMember {
   case class Module(ref: ModuleRef) extends PackageMember
 }
 
-case class PackageEnv(cr: ClassRepo, modules: Map[PackageRef, Set[String]] = Map()) {
+case class PackageEnv(cr: ClassRepo, modules: Map[PackageRef, Set[String]] = Map(), moduleMembers: Map[ModuleRef, Set[String]] = Map()) {
   def findMember(pkg: PackageRef, name: String): Option[PackageMember] =
     if (modules.get(pkg).exists(_.contains(name)))
       Some(PackageMember.Module(ModuleRef(pkg, name)))
@@ -134,11 +138,25 @@ case class PackageEnv(cr: ClassRepo, modules: Map[PackageRef, Set[String]] = Map
       Some(PackageMember.Package(pkg.packageRef(name)))
     else
       None
+
   def addModule(m: ModuleRef) = modules.get(m.pkg).fold {
     copy(modules = Map(m.pkg -> Set(m.name)))
   } { names =>
     copy(modules = Map(m.pkg -> (names + m.name)))
   }
+
+  def addModuleMember(m: ModuleRef, name: String) = {
+    require(modules.get(m.pkg).exists(_.contains(m.name)), s"Module ${m.fullName} not found")
+    moduleMembers.get(m).fold {
+      copy(moduleMembers = moduleMembers + (m -> Set(name)))
+    } { ms =>
+      copy(moduleMembers = moduleMembers + (m -> (ms + name)))
+    }
+  }
+
+  def moduleMemberExists(m: ModuleRef, name: String) =
+    moduleMembers.get(m).exists(_.contains(name))
+
   def pretty = "PackageEnv\n" + modules.toSeq.sortBy(_._1.fullName).map {
     case (k, vs) =>
       s"  package ${k.fullName}\n" + vs.toSeq.sorted.map { v => s"  - module $v" }.mkString("\n")
@@ -154,7 +172,6 @@ object Namer {
     currentModule: ModuleRef,
     venv: Map[String, VarRef] = Map(),
     locals: Map[VarRef.Local, Int] = Map(),
-    moduleMembers: Map[ModuleRef, Set[String]] = Map(),
     stack: List[Ctx] = Nil) {
     val depth = stack.size
 
@@ -169,11 +186,6 @@ object Namer {
         Right(copy(venv = venv + (varRef.name -> varRef)))
     }
 
-    // TODO: check name conflict
-    def bindModules(ms: Map[ModuleRef, Set[String]]): Ctx =
-      copy(
-        penv = ms.keys.foldLeft(penv) { (e, m) => e.addModule(m) },
-        moduleMembers = moduleMembers ++ ms)
     def findValue(name: String): Option[VarRef] =
       venv.get(name) orElse {
         penv.findMember(currentModule.pkg, name)
@@ -199,8 +211,12 @@ object Namer {
         stack = this :: stack))
     }
 
-    def dropFrame(): Ctx =
-      stack.head
+    def addModuleMember(name: String) = copy(penv = penv.addModuleMember(currentModule, name))
+    def findModuleMember(m: ModuleRef, name: Name): Result[VarRef.ModuleMember] =
+      if (penv.moduleMemberExists(m, name.value))
+        Right(VarRef.ModuleMember(m, name.value))
+      else
+        Left(Seq(Error(name.pos, s"Member ${name.value} is not found in module ${m.fullName}")))
 
     def addImport(i: Import): Result[Ctx] = {
       val nameParts = i.qname.parts
@@ -212,12 +228,8 @@ object Namer {
               case PackageMember.Package(ref) =>
                 findPackageMember(ref, n.value).toRight(
                   Seq(Error(n.pos, s"Package member not found: ${n.value}")))
-              case PackageMember.Module(ref) =>
-                moduleMembers
-                  .get(ref)
-                  .filter(_.contains(n.value))
-                  .map { _ => VarRef.ModuleMember(ref, n.value) }
-                  .toRight(Seq(Error(n.pos, s"Value ${n.value} is not found in module ${ref.name}")))
+              case PackageMember.Module(m) =>
+                findModuleMember(m, n)
               case PackageMember.Class(ref) =>
                 Left(Seq(Error(n.pos, s"${ref.fullName} is class and field reference not supported")))
             }

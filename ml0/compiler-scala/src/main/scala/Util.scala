@@ -2,7 +2,7 @@ package com.todesking.ojaml.ml0.compiler.scala
 
 object Util {
   implicit class SeqSyntax[A](self: Seq[A]) {
-    // TODO: This is not foldLeft
+    // TODO: This is NOT foldLeft
     def foldLeftE[B, C, E](init: B)(f: (B, A) => Either[E, (B, C)]): Either[E, (B, Seq[C])] =
       self.foldLeft[Either[E, (B, Seq[C])]](Right((init, Seq.empty[C]))) {
         case (Right((c, a)), x) => f(c, x).map { case (cc, y) => (cc, a :+ y) }

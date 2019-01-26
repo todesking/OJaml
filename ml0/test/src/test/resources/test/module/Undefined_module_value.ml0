@@ -1,0 +1,10 @@
+package test.ml0
+
+struct Module1 {
+  let x = 42 ;;
+}
+
+struct Undefined_module_value {
+  let x = Module1.y ;;
+  (*              ^ *)
+}
