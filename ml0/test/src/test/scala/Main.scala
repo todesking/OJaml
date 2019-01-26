@@ -20,12 +20,18 @@ class Main extends FunSpec {
 
   private[this] def registerTest(base: Path, p: Path): Unit = {
     if (Files.isDirectory(p)) {
-      describe(base.relativize(p).toString) {
-        listFiles(p).foreach(registerTest(p, _))
+      if (p.getFileName.toString.endsWith(".ml0")) {
+        it(base.relativize(p).toString) {
+          test(listFiles(p))
+        }
+      } else {
+        describe(base.relativize(p).toString) {
+          listFiles(p).foreach(registerTest(p, _))
+        }
       }
     } else if (p.getFileName.toString.endsWith(".ml0")) {
       it(base.relativize(p).toString) {
-        test(p)
+        test(Seq(p))
       }
     } else {
       it(base.relativize(p).toString) {
@@ -34,42 +40,34 @@ class Main extends FunSpec {
     }
   }
 
-  private[this] def test(p: Path): Unit = {
+  private[this] def test(paths: Seq[Path]): Unit = {
+    import TestMain.Target
+    import TestMain.Assertion
     import com.todesking.ojaml.ml0.compiler.{ scala => scala_compiler }
-    val reName = """(.+)\.ml0""".r
-    val className = "test.ml0." + p.getFileName() match { case `reName`(name) => name }
 
-    val lines = Files.readAllLines(p).asScala
+    val targets = paths.map(Target.from)
+    val debugPrint = targets.exists(_.debugPrint)
+    val pending = targets.exists(_.pending)
+    if (pending) this.pending
 
-    if (lines.headOption.contains("(* pending *)")) {
-      pending
-      return
-    }
-    val debugPrint = lines.headOption.contains("(* debug *)")
+    val expectedErrors = targets.flatMap { t =>
+      t.expectedErrors.map { case (l, c) => (t.path.toString, l, c) }
+    }.toSet
+    val assertions = targets.flatMap(_.assertions)
+
+    val contents = targets.map { t => scala_compiler.FileContent(t.path, t.content) }
 
     val outDir = Files.createTempDirectory("ojaml-test")
     val cl = this.getClass.getClassLoader
     val c = new scala_compiler.Compiler(outDir, cl, debugPrint)
 
-    val reError = """^(\s*\(\*\s*\^).*""".r
-    val expectedErrors = lines.zipWithIndex.collect {
-      case (reError(error), i) =>
-        val line = i // line = i +1(1-origin) -1(above line)
-        val col = error.length
-        (line, col)
-    }.toSet
+    assert(expectedErrors.isEmpty || assertions.isEmpty)
 
-    val reExpected = """^\s*\(\* ([\w.]+): ([\w.]+) = (.+) \*\)\s*$""".r
-    val expects = lines.collect {
-      case `reExpected`(name, tpe, value) => (name, tpe, value)
-    }
+    val result = c.compileContents(contents)
 
-    assert(expectedErrors.isEmpty || expects.isEmpty)
     if (expectedErrors.nonEmpty) {
-      val content = scala_compiler.FileContent(p, lines.mkString("\n"))
-      val result = c.compileContents(Seq(content))
       val errors = result.map { e =>
-        (e.pos.line, e.pos.col) -> e
+        (e.pos.location, e.pos.line, e.pos.col) -> e
       }.toMap
       assert(errors.size == result.size)
       val unexpected = errors.keySet -- expectedErrors
@@ -80,32 +78,80 @@ class Main extends FunSpec {
           println(s"${e.pos} [Unexpected] ${e.message}")
       }
       notHappend.foreach {
-        case (l, c) =>
+        case (p, l, c) =>
           println(s"$p:$l:$c Error expected but not happend")
       }
       assert((Set(), Set()) == (notHappend, unexpected))
     } else {
       try {
-        val content = scala_compiler.FileContent(p, lines.mkString("\n"))
-        val result = c.compileContents(Seq(content))
         result.foreach { e =>
           println(s"${e.pos} [Unexpected] ${e.message}")
         }
         assert(Seq() == result)
         val cl = new java.net.URLClassLoader(Array(outDir.toUri.toURL), this.getClass.getClassLoader)
-        val klass = cl.loadClass(className)
-        expects.foreach {
-          case (fieldName, fieldTypeName, value) =>
+        assertions.foreach {
+          case Assertion(klassName, fieldName, typeName, value) =>
+            val klass = cl.loadClass(klassName)
             val field = klass.getField(fieldName)
-            val result = field.get(null)
-            assert(fieldTypeName == field.getType.getName, s"at $fieldName")
-            assert(value == s"$result", s"at $fieldName")
+            val actual = field.get(null)
+            assert(typeName == field.getType.getName, s"at $fieldName")
+            assert(value == s"$actual", s"at $fieldName")
         }
       } catch {
         case e: LinkageError => throw new RuntimeException(e)
       } finally {
         // rm outDir
       }
+    }
+  }
+}
+
+object TestMain {
+  case class Assertion(
+    klass: String,
+    field: String,
+    tpe: String,
+    value: String)
+  case class Target(
+    path: Path,
+    content: String,
+    expectedErrors: Set[(Int, Int)],
+    assertions: Seq[Assertion],
+    classNames: Seq[String],
+    pending: Boolean,
+    debugPrint: Boolean)
+
+  object Target {
+    def from(path: Path): Target = {
+      val reName = """(.+)\.ml0""".r
+      val className = "test.ml0." + path.getFileName() match { case `reName`(name) => name }
+
+      val lines = Files.readAllLines(path).asScala
+
+      val pending = lines.headOption.contains("(* pending *)")
+      val debugPrint = lines.headOption.contains("(* debug *)")
+
+      val reError = """^(\s*\(\*\s*\^).*""".r
+      val expectedErrors = lines.zipWithIndex.collect {
+        case (reError(error), i) =>
+          val line = i // line = i +1(1-origin) -1(above line)
+          val col = error.length
+          (line, col)
+      }.toSet
+
+      val reAssertion = """^\s*\(\* ([\w.]+): ([\w.]+) = (.+) \*\)\s*$""".r
+      val assertions = lines.collect {
+        case `reAssertion`(name, tpe, value) =>
+          Assertion(className, name, tpe, value)
+      }
+      Target(
+        path,
+        content = lines.mkString("\n"),
+        expectedErrors = expectedErrors,
+        assertions = assertions,
+        classNames = Seq(className),
+        pending = pending,
+        debugPrint = debugPrint)
     }
   }
 }
