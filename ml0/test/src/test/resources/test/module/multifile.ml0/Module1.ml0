@@ -1,5 +1,5 @@
 package test.ml0.modules
 
 struct Module1 {
-  let x = 32 ;;
+  let x = 10 ;;
 }

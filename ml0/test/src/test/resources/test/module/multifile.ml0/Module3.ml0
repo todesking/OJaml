@@ -1,4 +1,3 @@
-(* pending *)
 package test.ml0
 
 import test.ml0.modules.Module1
