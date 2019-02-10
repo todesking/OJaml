@@ -1,0 +1,5 @@
+package test.ml0.p1
+
+struct M1 {
+  let x = 10 ;;
+}

@@ -10,10 +10,6 @@ class Namer(packageEnv: PackageEnv) {
   import Namer.error
   import Util.SeqSyntax
 
-  def memberNames(s: NT.Struct): Set[String] = s.body.collect {
-    case NT.TLet(name, _) => name.value
-  }.toSet
-
   def appProgram(p: RT.Program): Result[(PackageEnv, Seq[NT.Struct])] =
     p.items.foldLeftE(packageEnv) { (penv, x) =>
       appStruct(p.pkg, p.imports, penv, x).map {
@@ -79,7 +75,7 @@ class Namer(packageEnv: PackageEnv) {
                 error(n.pos, s"Property not supported for class")
               case PackageMember.Package(p) =>
                 ctx.findPackageMember(p, n.value).map(NT.Ref(_)).toRight(
-                  Seq(Error(n.pos, s"Value ${n.value} is not found in ${p.fullName}")))
+                  Seq(Error(n.pos, s"Value ${n.value} is not found in package ${p.fullName}")))
               case PackageMember.Module(m) =>
                 // TODO: check member existence
                 ctx.findModuleMember(m, n).map(NT.Ref.apply)
@@ -130,25 +126,35 @@ object PackageMember {
   case class Module(ref: ModuleRef) extends PackageMember
 }
 
-case class PackageEnv(cr: ClassRepo, modules: Map[PackageRef, Set[String]] = Map(), moduleMembers: Map[ModuleRef, Set[String]] = Map()) {
-  def findMember(pkg: PackageRef, name: String): Option[PackageMember] =
+case class PackageEnv(cr: ClassRepo, moduleMembers: Map[ModuleRef, Set[String]] = Map()) {
+  def findMember(pkg: PackageRef, name: String): Option[PackageMember] = {
     if (modules.get(pkg).exists(_.contains(name)))
       Some(PackageMember.Module(ModuleRef(pkg, name)))
     else if (cr.classExists(pkg, name))
       Some(PackageMember.Class(ClassRef(pkg, name)))
-    else if (cr.packageExists(pkg, name))
+    else if (packageExists(pkg, name))
       Some(PackageMember.Package(pkg.packageRef(name)))
     else
       None
+  }
+
+  lazy val modulePackages = moduleMembers.keys.flatMap { m =>
+    m.pkg.parts.inits.map(PackageRef.fromParts)
+  }.toSet
+
+  lazy val modules = moduleMembers.keys.map { m =>
+    m.pkg -> m.name
+  }.groupBy(_._1).map { case (p, ns) => p -> ns.map(_._2).toSet }
+
+  def packageExists(pkg: PackageRef, name: String) =
+    cr.packageExists(pkg, name) || modulePackages.contains(pkg.packageRef(name))
 
   def memberExists(pkg: PackageRef, name: String) =
     findMember(pkg, name).nonEmpty
 
-  def addModule(m: ModuleRef) = modules.get(m.pkg).fold {
-    copy(modules = Map(m.pkg -> Set(m.name)))
-  } { names =>
-    copy(modules = Map(m.pkg -> (names + m.name)))
-  }
+  def addModule(m: ModuleRef) =
+    if (moduleMembers.contains(m)) this
+    else copy(moduleMembers = moduleMembers + (m -> Set.empty[String]))
 
   def addModuleMember(m: ModuleRef, name: String) = {
     require(modules.get(m.pkg).exists(_.contains(m.name)), s"Module ${m.fullName} not found")
