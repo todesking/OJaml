@@ -46,7 +46,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     }
   }
 
-  val name: Parser[Name] = withpos("""[a-zA-Z][a-zA-Z0-9_]*""".r ^? { case s if !keywords(s) => Name(s) })
+  val name: Parser[Name] = withpos("""(?:[a-zA-Z][a-zA-Z0-9_]*)|(?:[-+*/%])""".r ^? { case s if !keywords(s) => Name(s) })
   val qname: Parser[QName] = withpos(rep1sep(name, ".") ^^ { xs => QName(xs) })
 
   lazy val program = withpos(pkg ~ rep(`import`) ~ rep1(struct) ^^ { case p ~ is ~ ss => T.Program(p, is, ss) })
