@@ -1,0 +1,11 @@
+package com.todesking.ojaml.ml0.lib
+
+import com.todesking.ojaml.ml0.runtime.Int
+
+struct Predef {
+  let + = fun l: int => fun r: int => Int##add(l, r) ;;
+  let - = fun l: int => fun r: int => Int##sub(l, r) ;;
+  let * = fun l: int => fun r: int => Int##mul(l, r) ;;
+  let / = fun l: int => fun r: int => Int##div(l, r) ;;
+  let % = fun l: int => fun r: int => Int##mod(l, r) ;;
+}

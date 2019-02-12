@@ -171,7 +171,7 @@ case class PackageEnv(cr: ClassRepo, moduleMembers: Map[ModuleRef, Set[String]] 
   def pretty = "PackageEnv\n" + modules.toSeq.sortBy(_._1.fullName).map {
     case (k, vs) =>
       s"  package ${k.fullName}\n" + vs.toSeq.sorted.map { v => s"  - module $v" }.mkString("\n")
-  }.mkString("")
+  }.mkString("\n")
 }
 
 object Namer {

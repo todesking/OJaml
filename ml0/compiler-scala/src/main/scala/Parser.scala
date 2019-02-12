@@ -46,7 +46,9 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     }
   }
 
-  val name: Parser[Name] = withpos("""(?:[a-zA-Z][a-zA-Z0-9_]*)|(?:[-+*/%])""".r ^? { case s if !keywords(s) => Name(s) })
+  val normalName = """[a-zA-Z][a-zA-Z0-9_]*""".r
+  val opName = """[-+*/%]""".r
+  val name: Parser[Name] = withpos((normalName | opName) ^? { case s if !keywords(s) => Name(s) })
   val qname: Parser[QName] = withpos(rep1sep(name, ".") ^^ { xs => QName(xs) })
 
   lazy val program = withpos(pkg ~ rep(`import`) ~ rep1(struct) ^^ { case p ~ is ~ ss => T.Program(p, is, ss) })
@@ -72,7 +74,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   def binop(pat: Parser[String]) =
     withpos(pat ^^ { p => Name(p) })
 
-  def expr1 = withpos(expr2 ~ rep(binop("*" | "/" | "%") ~ expr2) ^^ {
+  def expr1 = withpos(expr2 ~ rep(binop("+" | "-") ~ expr2) ^^ {
     case e ~ es =>
       es.foldLeft(e) {
         case (l, op ~ r) =>
@@ -80,7 +82,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
       }
   })
 
-  def expr2 = withpos(expr3 ~ rep(binop("+" | "-") ~ expr3) ^^ {
+  def expr2 = withpos(expr3 ~ rep(binop("*" | "/" | "%") ~ expr3) ^^ {
     case e ~ es =>
       es.foldLeft(e) {
         case (l, op ~ r) =>

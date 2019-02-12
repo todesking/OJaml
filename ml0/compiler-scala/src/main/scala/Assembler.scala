@@ -11,6 +11,26 @@ import asm.{ Opcodes => op }
 class Assembler(baseDir: Path) {
   import com.todesking.ojaml.ml0.compiler.scala.{ TypedAST => TT }
 
+  val sym2name: Map[Char, String] = """
+  |+ plus
+  |- minus
+  |/ slash
+  |% percent
+  |* asterisk""".stripMargin
+    .drop(1)
+    .split("\n")
+    .map(_.split(" "))
+    .map { case Array(a, b) => a(0) -> b }
+    .toMap
+
+  def escape(name: String) = name.map { c =>
+    sym2name.get(c).fold {
+      c.toString
+    } { n =>
+      s"$$${n}_"
+    }
+  }.mkString("")
+
   val funClass = Type.Fun.ref.internalName
   val funSig = s"L$funClass;"
 
@@ -54,7 +74,7 @@ class Assembler(baseDir: Path) {
       case TT.TLet(name, tpe, expr) =>
         cw.visitField(
           op.ACC_PUBLIC | op.ACC_STATIC,
-          name.value,
+          escape(name.value),
           descriptor(tpe),
           null,
           null)
@@ -115,7 +135,7 @@ class Assembler(baseDir: Path) {
       case TT.LitString(v) =>
         method.visitLdcInsn(v)
       case TT.ModuleVarRef(module, name, tpe) =>
-        method.visitFieldInsn(op.GETSTATIC, msig(module), name, descriptor(tpe))
+        method.visitFieldInsn(op.GETSTATIC, msig(module), escape(name), descriptor(tpe))
       case TT.LocalRef(index, tpe) =>
         if (depth == index) {
           method.visitVarInsn(op.ALOAD, 1)
@@ -205,7 +225,7 @@ class Assembler(baseDir: Path) {
       case TT.TLet(name, tpe, expr) =>
         eval(clinit, expr, 0)
         autobox(clinit, expr.tpe, tpe)
-        clinit.visitFieldInsn(op.PUTSTATIC, className, name.value, descriptor(tpe))
+        clinit.visitFieldInsn(op.PUTSTATIC, className, escape(name.value), descriptor(tpe))
       case e: TT.Expr =>
       // ignore for now
     }

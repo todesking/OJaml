@@ -7,10 +7,11 @@ import java.nio.file.Files
 import scala.collection.JavaConverters._
 
 class Main extends FunSpec {
+  private[this] val classLoader = getClass.getClassLoader
   init()
 
   def init(): Unit = {
-    val baseDir = new java.io.File(getClass.getClassLoader.getResource("test").toURI).toPath
+    val baseDir = new java.io.File(classLoader.getResource("test").toURI).toPath
 
     listFiles(baseDir).foreach(registerTest(baseDir, _))
   }
@@ -45,7 +46,11 @@ class Main extends FunSpec {
     import TestMain.Assertion
     import com.todesking.ojaml.ml0.compiler.{ scala => scala_compiler }
 
+    lazy val predefPath = new java.io.File(classLoader.getResource("lib/Predef.ml0").toURI).toPath
+    lazy val predefContent = scala_compiler.FileContent(predefPath, Files.readAllLines(predefPath).asScala.mkString("\n"))
+
     val targets = paths.sortBy(_.toString).map(Target.from)
+    val predef = targets.exists(_.predef)
     val debugPrint = targets.exists(_.debugPrint)
     val pending = targets.exists(_.pending)
     if (pending) this.pending
@@ -55,7 +60,8 @@ class Main extends FunSpec {
     }.toSet
     val assertions = targets.flatMap(_.assertions)
 
-    val contents = targets.map { t => scala_compiler.FileContent(t.path, t.content) }
+    val testContents = targets.map { t => scala_compiler.FileContent(t.path, t.content) }
+    val contents = if (predef) predefContent +: testContents else testContents
 
     val outDir = Files.createTempDirectory("ojaml-test")
     val cl = this.getClass.getClassLoader
@@ -124,6 +130,7 @@ object TestMain {
     expectedErrors: Set[(Int, Int)],
     assertions: Seq[Assertion],
     classNames: Seq[String],
+    predef: Boolean,
     pending: Boolean,
     debugPrint: Boolean)
 
@@ -138,6 +145,7 @@ object TestMain {
 
       val pending = lines.headOption.contains("(* pending *)")
       val debugPrint = lines.headOption.contains("(* debug *)")
+      val predef = lines.contains("(* using: Predef *)")
 
       val reError = """^(\s*\(\*\s*\^).*""".r
       val expectedErrors = lines.zipWithIndex.collect {
@@ -164,6 +172,7 @@ object TestMain {
         expectedErrors = expectedErrors,
         assertions = assertions,
         classNames = classNames,
+        predef = predef,
         pending = pending,
         debugPrint = debugPrint)
     }
