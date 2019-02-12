@@ -56,14 +56,17 @@ object RawAST {
   case class TLet(name: Name, expr: Expr) extends Term
 
   sealed abstract class Expr extends Term
+
   case class LitInt(value: Int) extends Expr
   case class LitBool(value: Boolean) extends Expr
   case class LitString(value: String) extends Expr
+
   case class Ref(name: Name) extends Expr
   case class JCall(expr: Expr, name: Name, args: Seq[Expr], isStatic: Boolean) extends Expr
   case class If(cond: Expr, th: Expr, el: Expr) extends Expr
   case class Fun(name: Name, tpeName: Name, body: Expr) extends Expr
   case class App(fun: Expr, arg: Expr) extends Expr
+  case class ELet(name: Name, value: Expr, body: Expr) extends Expr
   case class Prop(expr: Expr, name: Name) extends Expr
 }
 
@@ -87,7 +90,7 @@ object NamedAST {
   case class If(cond: Expr, th: Expr, el: Expr) extends Expr
   case class App(fun: Expr, arg: Expr) extends Expr
   case class Fun(param: VarRef.Local, tpe: Type, body: Expr) extends Expr
-
+  case class ELet(ref: VarRef.Local, value: Expr, body: Expr) extends Expr
   case class JCall(receiver: Expr, methodName: Name, args: Seq[Expr], isStatic: Boolean) extends Expr
 }
 

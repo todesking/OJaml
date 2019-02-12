@@ -105,6 +105,14 @@ class Namer(packageEnv: PackageEnv) {
       } yield {
         NT.Fun(ref, tpe, tbody)
       })
+    case RT.ELet(name, value, body) =>
+      for {
+        v <- appExpr(ctx, value)
+        (ref, c) = ctx.bindLocal(name.value)
+        b <- appExpr(c, body)
+      } yield {
+        NT.ELet(ref, v, b)
+      }
     case RT.App(f, x) =>
       for {
         e0 <- appExpr(ctx, f)

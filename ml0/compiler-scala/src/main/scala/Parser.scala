@@ -13,6 +13,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     "import",
     "module",
     "let",
+    "in",
     "fun",
     "if", "then", "else")
   private[this] def kwd(a: String): Parser[Unit] = {
@@ -105,7 +106,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   })
   val prop = "." ~> rep1sep(name, ".")
 
-  def expr5 = paren | lit_bool | lit_int | lit_string | var_ref
+  def expr5 = paren | lit_bool | lit_int | lit_string | var_ref | elet
 
   def paren = ("(" ~> expr) <~ ")"
 
@@ -117,5 +118,9 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   def fun = withpos((kwd("fun") ~> name) ~ (":" ~> name) ~ ("=>" ~> expr) ^^ { case name ~ tpe ~ expr => T.Fun(name, tpe, expr) })
   def fun_param = (name <~ ":") ~ name ^^ { case n ~ t => (n, t) }
   val var_ref = withpos(name ^^ { n => T.Ref(n) })
+  val elet = withpos((kwd("let") ~> name) ~ ("=" ~> expr) ~ (kwd("in") ~> expr) ^^ {
+    case name ~ e1 ~ e2 =>
+      T.ELet(name, e1, e2)
+  })
 }
 

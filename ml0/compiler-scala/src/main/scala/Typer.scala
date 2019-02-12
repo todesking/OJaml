@@ -91,6 +91,18 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       appExpr(ctx.bindLocal(param, tpe), body)
         .map(TT.Fun(tpe, _))
         .map(Q.Value.apply)
+    case NT.ELet(ref, value, body) =>
+      appExpr(ctx, value).flatMap { v =>
+        val fun = NT.Fun(ref, v.tpe, body)
+        fun.fillPos(expr.pos)
+        appExpr(ctx, fun).map {
+          case f @ TT.Fun(argType, b) =>
+            assert(argType == v.tpe)
+            Q.Value(TT.App(f, v, f.tpe.r))
+          case unk =>
+            throw new AssertionError(s"$unk")
+        }
+      }
     case NT.App(f, x) =>
       for {
         tf <- appExpr(ctx, f)
