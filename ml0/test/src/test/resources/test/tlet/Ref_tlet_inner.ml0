@@ -1,6 +1,6 @@
 package test.ml0
 
-struct Ref_tlet_inner {
+module Ref_tlet_inner {
   let x = 123 ;;
   let y = x ;;
 }

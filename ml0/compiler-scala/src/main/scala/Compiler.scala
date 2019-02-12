@@ -16,7 +16,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   def compile(files: Seq[Path]): Seq[Error] =
     compileContents(files.map(FileContent.read))
 
-  def extractMV(t: TypedAST.Struct): Map[VarRef.ModuleMember, Type] = t.body.flatMap {
+  def extractMV(t: TypedAST.Module): Map[VarRef.ModuleMember, Type] = t.body.flatMap {
     case TypedAST.TLet(name, tpe, _) =>
       Seq(VarRef.ModuleMember(t.moduleRef, name.value) -> tpe)
     case other =>
@@ -38,7 +38,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
 
   type ModuleEnv = Map[VarRef.ModuleMember, Type]
 
-  def typing(penv: PackageEnv, moduleVars: ModuleEnv, file: FileContent): Result[(PackageEnv, ModuleEnv, Seq[TypedAST.Struct])] = {
+  def typing(penv: PackageEnv, moduleVars: ModuleEnv, file: FileContent): Result[(PackageEnv, ModuleEnv, Seq[TypedAST.Module])] = {
     val parser = new Parser(file.path.toString)
     parser.parse(file.content) match {
       case parser.NoSuccess(msg, next) =>
@@ -58,7 +58,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
             }
             namedTrees.foldLeftE(moduleVars) { (mvs, nt) =>
               val typer = new Typer(classRepo, mvs)
-              typer.appStruct(nt).map { typed =>
+              typer.appModule(nt).map { typed =>
                 val newMvs = mvs ++ Typer.moduleVarsOf(typed)
                 if (debugPrint) {
                   println("Phase: Typer")

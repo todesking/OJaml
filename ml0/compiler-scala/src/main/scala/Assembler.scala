@@ -58,7 +58,7 @@ class Assembler(baseDir: Path) {
     mw.visitEnd()
   }
 
-  def emit(struct: TT.Struct): Unit = {
+  def emit(struct: TT.Module): Unit = {
     val pkg = struct.pkg.value
     val className = s"$pkg.${struct.name.value}".replaceAll("\\.", "/")
     val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)

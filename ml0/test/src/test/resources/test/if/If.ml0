@@ -1,6 +1,6 @@
 package test.ml0
 
-struct If {
+module If {
   let b1 = false ;;
   let b2 = true ;;
 

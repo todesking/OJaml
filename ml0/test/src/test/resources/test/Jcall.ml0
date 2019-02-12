@@ -1,6 +1,6 @@
 package test.ml0
 
-struct Jcall {
+module Jcall {
   (* static call *)
   let x1 = java.lang.Integer##valueOf("123") ;;
   (* x1: java.lang.Integer = 123 *)

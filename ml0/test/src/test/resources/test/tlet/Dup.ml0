@@ -1,6 +1,6 @@
 package test.ml0
 
-struct LetDup {
+module LetDup {
   let x = 2 ;;
   let y = 3 ;;
   let x = 4 ;;

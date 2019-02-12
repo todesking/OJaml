@@ -11,7 +11,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   val keywords = Set(
     "package",
     "import",
-    "struct",
+    "module",
     "let",
     "fun",
     "if", "then", "else")
@@ -51,11 +51,11 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   val name: Parser[Name] = withpos((normalName | opName) ^? { case s if !keywords(s) => Name(s) })
   val qname: Parser[QName] = withpos(rep1sep(name, ".") ^^ { xs => QName(xs) })
 
-  lazy val program = withpos(pkg ~ rep(`import`) ~ rep1(struct) ^^ { case p ~ is ~ ss => T.Program(p, is, ss) })
+  lazy val program = withpos(pkg ~ rep(`import`) ~ rep1(module) ^^ { case p ~ is ~ ss => T.Program(p, is, ss) })
   lazy val pkg = kwd("package") ~> qname
   lazy val `import` = kwd("import") ~> qname ^^ { qn => Import(qn) }
-  lazy val struct = withpos(kwd("struct") ~> (name <~ "{") ~ rep(term) <~ "}" ^^ {
-    case n ~ ts => T.Struct(n, ts)
+  lazy val module = withpos(kwd("module") ~> (name <~ "{") ~ rep(term) <~ "}" ^^ {
+    case n ~ ts => T.Module(n, ts)
   })
 
   def term: Parser[T.Term] = tlet

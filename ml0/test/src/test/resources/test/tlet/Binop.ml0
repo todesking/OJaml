@@ -1,6 +1,6 @@
 package test.ml0
 
-struct Binop {
+module Binop {
   let + = fun x: int => fun y: int => y ;;
   let % = fun x: int => fun y: int => x ;;
 

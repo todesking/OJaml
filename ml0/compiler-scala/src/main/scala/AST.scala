@@ -49,8 +49,8 @@ trait AnyAST extends Product
 
 sealed abstract class RawAST extends HasPos with AnyAST
 object RawAST {
-  case class Program(pkg: QName, imports: Seq[Import], items: Seq[Struct]) extends RawAST
-  case class Struct(name: Name, body: Seq[Term]) extends RawAST
+  case class Program(pkg: QName, imports: Seq[Import], items: Seq[Module]) extends RawAST
+  case class Module(name: Name, body: Seq[Term]) extends RawAST
 
   sealed abstract class Term extends RawAST
   case class TLet(name: Name, expr: Expr) extends Term
@@ -69,7 +69,7 @@ object RawAST {
 
 sealed abstract class NamedAST extends HasPos with AnyAST
 object NamedAST {
-  case class Struct(pkg: QName, name: Name, body: Seq[Term]) extends NamedAST {
+  case class Module(pkg: QName, name: Name, body: Seq[Term]) extends NamedAST {
     def moduleRef = ModuleRef(pkg.asPackage, name.value)
   }
 
@@ -93,7 +93,7 @@ object NamedAST {
 
 sealed abstract class TypedAST extends AnyAST
 object TypedAST {
-  case class Struct(pkg: QName, name: Name, body: Seq[Term]) extends TypedAST {
+  case class Module(pkg: QName, name: Name, body: Seq[Term]) extends TypedAST {
     def moduleRef = ModuleRef(pkg.asPackage, name.value)
   }
 

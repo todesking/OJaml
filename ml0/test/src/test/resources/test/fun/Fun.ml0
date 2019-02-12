@@ -1,6 +1,6 @@
 package test.ml0
 
-struct Fun {
+module Fun {
   let f = fun x: bool =>
     fun y: int =>
       fun z: int =>

@@ -10,15 +10,15 @@ class Namer(packageEnv: PackageEnv) {
   import Namer.error
   import Util.SeqSyntax
 
-  def appProgram(p: RT.Program): Result[(PackageEnv, Seq[NT.Struct])] =
+  def appProgram(p: RT.Program): Result[(PackageEnv, Seq[NT.Module])] =
     p.items.foldLeftE(packageEnv) { (penv, x) =>
-      appStruct(p.pkg, p.imports, penv, x).map {
+      appModule(p.pkg, p.imports, penv, x).map {
         case (pe, named) =>
           (pe, named)
       }
     }
 
-  def appStruct(pkg: QName, imports: Seq[Import], penv: PackageEnv, s: RT.Struct): Result[(PackageEnv, NT.Struct)] = {
+  def appModule(pkg: QName, imports: Seq[Import], penv: PackageEnv, s: RT.Module): Result[(PackageEnv, NT.Module)] = {
     val currentModule = ModuleRef(PackageRef.fromInternalName(pkg.internalName), s.name.value)
     if (penv.memberExists(currentModule.pkg, currentModule.name))
       return Left(Seq(Error(s.name.pos, s"${currentModule.fullName} already defined")))
@@ -31,7 +31,7 @@ class Namer(packageEnv: PackageEnv) {
           appTerm(c, t)
       }.map {
         case (c, ts) =>
-          (c.penv, Pos.fill(NT.Struct(pkg, s.name, ts), s.pos))
+          (c.penv, Pos.fill(NT.Module(pkg, s.name, ts), s.pos))
       }
     }
   }

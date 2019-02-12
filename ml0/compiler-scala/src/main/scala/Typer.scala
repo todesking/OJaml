@@ -9,7 +9,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
   import Typer.{ QuasiValue => Q }
   import Typer.error
 
-  def appStruct(s: NT.Struct): Result[TT.Struct] = {
+  def appModule(s: NT.Module): Result[TT.Module] = {
     val init = Typer.Ctx(s.moduleRef, classRepo).bindModuleValues(moduleVars)
     val (_, typed) =
       s.body.foldLeft((init, Seq.empty[Result[TT.Term]])) {
@@ -21,7 +21,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
               (cc, a :+ Right(tt))
           })
       }
-    validate(typed).map(TT.Struct(s.pkg, s.name, _))
+    validate(typed).map(TT.Module(s.pkg, s.name, _))
   }
 
   private[this] def validate[A](xs: Seq[Result[A]]): Result[Seq[A]] = {
@@ -139,7 +139,7 @@ object Typer {
 
   def error(pos: Pos, msg: String) = Left(Seq(Error(pos, msg)))
 
-  def moduleVarsOf(s: TypedAST.Struct): Map[VarRef.ModuleMember, Type] = s.body.collect {
+  def moduleVarsOf(s: TypedAST.Module): Map[VarRef.ModuleMember, Type] = s.body.collect {
     case TypedAST.TLet(name, tpe, _) =>
       VarRef.ModuleMember(s.moduleRef, name.value) -> tpe
   }.toMap

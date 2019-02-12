@@ -3,7 +3,7 @@ package test.ml0
 import test.ml0.modules.Module1
 import test.ml0.modules.Module2
 
-struct Module3 {
+module Module3 {
   let x = Module1.x ;;
   (* x: int = 10 *)
   let y = Module2.y ;;

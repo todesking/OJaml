@@ -2,7 +2,7 @@
 package ml0.test
 
 (* NOTE: Initialize functions first(e.g. f, g, and then x) *)
-struct Tlet_is_rec_by_default {
+module Tlet_is_rec_by_default {
   let f = fun x: int => g false x ;;
 
   let x = f true 100 ;;

@@ -2,7 +2,7 @@ package com.todesking.ojaml.ml0.lib
 
 import com.todesking.ojaml.ml0.runtime.Int
 
-struct Predef {
+module Predef {
   let + = fun l: int => fun r: int => Int##add(l, r) ;;
   let - = fun l: int => fun r: int => Int##sub(l, r) ;;
   let * = fun l: int => fun r: int => Int##mul(l, r) ;;

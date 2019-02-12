@@ -1,6 +1,6 @@
 package test.ml0.modules
 
-struct Module2 {
+module Module2 {
   let y = 32 ;;
 }
 

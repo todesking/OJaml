@@ -10,7 +10,7 @@ import com.todesking.ojaml.ml0.lib.Predef.*
 import com.todesking.ojaml.ml0.lib.Predef./
 import com.todesking.ojaml.ml0.lib.Predef.%
 
-struct Int {
+module Int {
   let x1 = 1 + 2 ;;
   (* x1: int = 3 *)
 

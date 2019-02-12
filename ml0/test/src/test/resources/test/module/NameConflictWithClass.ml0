@@ -1,5 +1,5 @@
 package java.lang
 
-struct Integer {
+module Integer {
 (*     ^ *)
 }

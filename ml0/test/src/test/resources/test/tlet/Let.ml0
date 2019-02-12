@@ -1,6 +1,6 @@
 package test.ml0
 
-struct Let {
+module Let {
   let result = 2 ;;
 }
 (* result: int = 2 *)

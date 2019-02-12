@@ -1,4 +1,4 @@
 package test.ml0
 
-struct A {}
+module A {}
 (*     ^ *)

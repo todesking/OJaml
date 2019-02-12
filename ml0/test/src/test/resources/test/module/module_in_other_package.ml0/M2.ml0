@@ -1,6 +1,6 @@
 package test.ml0.p2
 
-struct M2 {
+module M2 {
   let x = test.ml0.p1.M1.x ;;
   (* p2.M2.x: int = 10 *)
 }
