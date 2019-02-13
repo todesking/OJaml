@@ -48,7 +48,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   }
 
   val normalName = """[a-zA-Z][a-zA-Z0-9_]*""".r
-  val opName = """[-+*/%]""".r
+  val opName = """==|<=|>=|[-+*/%<>&|]""".r
   val name: Parser[Name] = withpos((normalName | opName) ^? { case s if !keywords(s) => Name(s) })
   val qname: Parser[QName] = withpos(rep1sep(name, ".") ^^ { xs => QName(xs) })
 
@@ -75,21 +75,27 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   def binop(pat: Parser[String]) =
     withpos(pat ^^ { p => Name(p) })
 
-  def expr1 = withpos(expr2 ~ rep(binop("+" | "-") ~ expr2) ^^ {
-    case e ~ es =>
-      es.foldLeft(e) {
-        case (l, op ~ r) =>
-          T.App(Pos.fill(T.App(Pos.fill(T.Ref(op), op.pos), l), op.pos), r)
-      }
-  })
+  def bin_expr(expr: Parser[T.Expr], pat: Parser[Name]): Parser[T.Expr] = withpos(
+    expr ~ rep(pat ~ expr) ^^ {
+      case e ~ es =>
+        es.foldLeft(e) {
+          case (l, op ~ r) =>
+            T.App(Pos.fill(T.App(Pos.fill(T.Ref(op), op.pos), l), op.pos), r)
+        }
+    })
 
-  def expr2 = withpos(expr3 ~ rep(binop("*" | "/" | "%") ~ expr3) ^^ {
-    case e ~ es =>
-      es.foldLeft(e) {
-        case (l, op ~ r) =>
-          T.App(Pos.fill(T.App(Pos.fill(T.Ref(op), op.pos), l), op.pos), r)
+  def expr1: Parser[T.Expr] =
+    Seq(
+      binop("&" | "|"),
+      binop("==" | "<" | "<=" | ">=" | ">"),
+      binop("+" | "-"),
+      binop("*" | "/" | "%")).foldRight(expr3) { (op, e) =>
+        bin_expr(e, op)
       }
-  })
+
+  // def expr1 = bin_expr(expr2, binop("+" | "-"))
+
+  // def expr2 = bin_expr(expr3, binop("*" | "/" | "%"))
 
   def expr3 = eif | fun | withpos(expr4 ~ jcall.? ^^ {
     case e ~ None => e
