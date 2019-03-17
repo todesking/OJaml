@@ -1,0 +1,13 @@
+package test.ml0
+
+(* using: Predef *)
+
+import com.todesking.ojaml.ml0.lib.Predef.*
+import com.todesking.ojaml.ml0.lib.Predef.+
+
+module Fun_app_precedence {
+  let f = fun x: int => x * 10 ;;
+  let x = f 10 + 20 ;;
+  (* x: int = 120 *)
+}
+

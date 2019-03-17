@@ -82,7 +82,7 @@ class Namer(packageEnv: PackageEnv) {
             }
             case VarRef.ModuleMember(m, name) =>
               error(n.pos, s"Property not supported")
-            case VarRef.Local(name) =>
+            case VarRef.Local(_, _) =>
               error(n.pos, s"Property not supported")
           }
         case e =>
@@ -105,6 +105,14 @@ class Namer(packageEnv: PackageEnv) {
       } yield {
         NT.Fun(ref, tpe, tbody)
       })
+    case RT.ELetRec(bs, body) =>
+      for {
+        x <- ctx.bindLocals(bs.map(_._1))
+        (refs, c) = x
+        ts <- validate(bs.map(_._2).map(c.findType(_)))
+        vs <- validate(bs.map(_._3).map(appExpr(c, _))).map(_.map(_.asInstanceOf[NT.Fun]))
+        b <- appExpr(c, body)
+      } yield NT.ELetRec(refs.zip(ts).zip(vs).map { case ((r, t), v) => (r, t, v) }, b)
     case RT.ELet(name, value, body) =>
       for {
         v <- appExpr(ctx, value)
@@ -190,11 +198,8 @@ object Namer {
     penv: PackageEnv,
     currentModule: ModuleRef,
     venv: Map[String, VarRef] = Map(),
-    locals: Map[VarRef.Local, Int] = Map(),
     stack: List[Ctx] = Nil) {
     val depth = stack.size
-
-    def localIndex(l: VarRef.Local) = locals(l)
 
     def tlet(name: Name): Result[Ctx] = {
       require(stack.isEmpty)
@@ -215,19 +220,40 @@ object Namer {
     def findPackageMember(pkg: PackageRef, name: String): Option[VarRef.TopLevel] =
       penv.findMember(pkg, name).map(VarRef.TopLevel.apply)
 
-    def findType(name: Name): Result[Type] = name.value match {
-      case "int" => Right(Type.Int)
-      case "bool" => Right(Type.Bool)
-      case unk =>
-        Left(Seq(Error(name.pos, s"Type not found: ${name.value}")))
+    def findType(tname: TypeName): Result[Type] = tname match {
+      case TypeName.Atom(n) => n match {
+        case "int" => Right(Type.Int)
+        case "bool" => Right(Type.Bool)
+        case unk => Left(Seq(Error(tname.pos, s"Type not found: ${unk}")))
+      }
+      case TypeName.Fun(l, r) =>
+        for {
+          tl <- findType(l)
+          tr <- findType(r)
+        } yield Type.Fun(tl, tr)
     }
 
     def bindLocal(name: String): (VarRef.Local, Ctx) = {
-      val ref = VarRef.Local(depth + 1)
+      val ref = VarRef.Local(depth + 1, 0)
       (ref, copy(
         venv = venv + (name -> ref),
-        locals = locals + (ref -> depth),
         stack = this :: stack))
+    }
+
+    def bindLocals(names: Seq[Name]): Result[(Seq[VarRef.Local], Ctx)] = {
+      names.foldLeftE(Set.empty[String]) { (a, name) =>
+        if (a.contains(name.value))
+          Left(Seq(Error(name.pos, s"Name conflict: ${name.value}")))
+        else
+          Right((a + name.value, name.value))
+      }.map {
+        case (_, ns) =>
+          val refs = ns.zipWithIndex.map { case (_, i) => VarRef.Local(depth, i + 1) }
+          val c = copy(
+            venv = venv ++ ns.zip(refs),
+            stack = this :: stack)
+          (refs, c)
+      }
     }
 
     def addModuleMember(name: String) = copy(penv = penv.addModuleMember(currentModule, name))
@@ -254,7 +280,7 @@ object Namer {
             }
             case VarRef.ModuleMember(ref, name) =>
               Left(Seq(Error(n.pos, s"$name is value")))
-            case VarRef.Local(_) =>
+            case VarRef.Local(_, _) =>
               throw new AssertionError(s"WTF: $v, $n")
           }
         }.map { v =>

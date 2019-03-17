@@ -1,0 +1,12 @@
+(* pending *)
+
+package test.ml0
+
+import java.lang
+import lang.Integer
+
+module Import {
+  let a = Integer##parseInt("123") ;;
+  (* a: int = 123 *)
+}
+

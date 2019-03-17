@@ -28,6 +28,11 @@ case class QName(parts: Seq[Name]) extends HasPos {
   def asPackage = PackageRef.fromParts(parts.map(_.value))
   override def toString = s"QName($value)"
 }
+sealed abstract class TypeName extends HasPos
+object TypeName {
+  case class Atom(name: String) extends TypeName
+  case class Fun(l: TypeName, r: TypeName) extends TypeName
+}
 
 case class Import(qname: QName)
 
@@ -64,9 +69,10 @@ object RawAST {
   case class Ref(name: Name) extends Expr
   case class JCall(expr: Expr, name: Name, args: Seq[Expr], isStatic: Boolean) extends Expr
   case class If(cond: Expr, th: Expr, el: Expr) extends Expr
-  case class Fun(name: Name, tpeName: Name, body: Expr) extends Expr
+  case class Fun(name: Name, tpeName: TypeName, body: Expr) extends Expr
   case class App(fun: Expr, arg: Expr) extends Expr
   case class ELet(name: Name, value: Expr, body: Expr) extends Expr
+  case class ELetRec(bindings: Seq[(Name, TypeName, Fun)], body: Expr) extends Expr
   case class Prop(expr: Expr, name: Name) extends Expr
 }
 
@@ -91,6 +97,7 @@ object NamedAST {
   case class App(fun: Expr, arg: Expr) extends Expr
   case class Fun(param: VarRef.Local, tpe: Type, body: Expr) extends Expr
   case class ELet(ref: VarRef.Local, value: Expr, body: Expr) extends Expr
+  case class ELetRec(bindings: Seq[(VarRef.Local, Type, Fun)], body: Expr) extends Expr
   case class JCall(receiver: Expr, methodName: Name, args: Seq[Expr], isStatic: Boolean) extends Expr
 }
 
@@ -112,8 +119,10 @@ object TypedAST {
   case class LitString(value: String) extends Lit(Type.String)
 
   case class ModuleVarRef(module: ModuleRef, name: String, tpe: Type) extends Expr
-  // index: local var index, outmost = 0
-  case class LocalRef(index: Int, tpe: Type) extends Expr
+  case class LocalRef(depth: Int, index: Int, tpe: Type) extends Expr
+  case class LetRec(values: Seq[Fun], body: Expr) extends Expr {
+    override def tpe = body.tpe
+  }
   case class If(cond: Expr, th: Expr, el: Expr, tpe: Type) extends Expr
   case class App(fun: Expr, arg: Expr, tpe: Type) extends Expr
   case class Fun(argType: Type, body: Expr) extends Expr {

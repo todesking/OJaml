@@ -7,5 +7,5 @@ object VarRef {
 
   sealed abstract class Typable extends VarRef
   case class ModuleMember(module: ModuleRef, name: String) extends Typable
-  case class Local(depth: Int) extends Typable
+  case class Local(depth: Int, index: Int) extends Typable
 }

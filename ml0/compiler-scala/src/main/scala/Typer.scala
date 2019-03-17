@@ -65,7 +65,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
     }
     case ref @ VarRef.ModuleMember(m, name) =>
       okQ(TT.ModuleVarRef(m, name, ctx.typeOf(ref)))
-    case ref @ VarRef.Local(index) => okQ(TT.LocalRef(index, ctx.typeOf(ref)))
+    case ref @ VarRef.Local(depth, index) => okQ(TT.LocalRef(depth, index, ctx.typeOf(ref)))
   }
 
   def appExprQ(ctx: Ctx, expr: NT.Expr): Result[QuasiValue] = expr match {
@@ -101,6 +101,26 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
             Q.Value(TT.App(f, v, f.tpe.r))
           case unk =>
             throw new AssertionError(s"$unk")
+        }
+      }
+    case NT.ELetRec(bindings, body) =>
+      val c = bindings.foldLeft(ctx) {
+        case (c, (r, t, e)) =>
+          c.bindLocal(r, t)
+      }
+
+      validate(bindings.map {
+        case (ref, tpe, e) =>
+          appExpr(c, e).flatMap {
+            case te: TT.Fun =>
+              if (te.tpe != tpe) error(e.pos, s"Expression type ${te.tpe} is not compatible to ${tpe}")
+              else Right(te)
+            case _ =>
+              throw new AssertionError()
+          }
+      }).flatMap { bs =>
+        appExpr(c, body).map { tb =>
+          Q.Value(TT.LetRec(bs, tb))
         }
       }
     case NT.App(f, x) =>

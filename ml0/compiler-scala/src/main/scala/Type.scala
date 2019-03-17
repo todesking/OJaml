@@ -34,6 +34,7 @@ object Type {
     def apply(internalName: String): Klass =
       Klass(ClassRef.fromInternalName(internalName))
   }
+  val Object = Klass("java/lang/Object")
   case class Fun(l: Type, r: Type) extends Reference {
     override def ref = Fun.ref
     override def toString = toString(false)

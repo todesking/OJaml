@@ -83,7 +83,7 @@ class Assembler(baseDir: Path) {
     }
 
     var funID = 0
-    def emitFun(argType: Type, body: TT.Expr, depth: Int): String = {
+    def emitFun(body: TT.Expr, depth: Int, recValues: Option[Seq[TT.Expr]]): String = {
       val cname = s"${struct.name.value}$$$funID"
       val qcname = s"${pkg}.$cname".replaceAll("\\.", "/")
       funID += 1
@@ -118,6 +118,20 @@ class Assembler(baseDir: Path) {
         s"($objectSig)$objectSig",
         null,
         Array())
+      recValues.foreach { rvs =>
+        app.visitVarInsn(op.ALOAD, 0)
+        app.visitFieldInsn(op.GETFIELD, qcname, "local", objectSig)
+        app.visitTypeInsn(op.CHECKCAST, s"[$objectSig")
+        rvs.zipWithIndex.foreach {
+          case (rv, i) =>
+            app.visitInsn(op.DUP)
+            app.visitLdcInsn(i)
+            eval(app, rv, depth + 1)
+            autobox(app, rv.tpe, rv.tpe.boxed)
+            app.visitInsn(op.AASTORE)
+        }
+        app.visitLdcInsn(op.POP)
+      }
       eval(app, body, depth + 1)
       box(app, body.tpe)
       app.visitInsn(op.ARETURN)
@@ -136,20 +150,43 @@ class Assembler(baseDir: Path) {
         method.visitLdcInsn(v)
       case TT.ModuleVarRef(module, name, tpe) =>
         method.visitFieldInsn(op.GETSTATIC, msig(module), escape(name), descriptor(tpe))
-      case TT.LocalRef(index, tpe) =>
-        if (depth == index) {
+      case TT.LocalRef(d, index, tpe) =>
+        if (depth == d && index == 0) {
           method.visitVarInsn(op.ALOAD, 1)
         } else {
           method.visitVarInsn(op.ALOAD, 0)
+          method.visitLdcInsn(d)
           method.visitLdcInsn(index)
           method.visitMethodInsn(
             op.INVOKEVIRTUAL,
             funClass,
             "getLocal",
-            s"(I)$objectSig")
+            s"(II)$objectSig")
         }
         method.visitTypeInsn(op.CHECKCAST, tpe.boxed.ref.internalName)
         unbox(method, tpe.boxed)
+      case TT.LetRec(values, body) =>
+        val klass = emitFun(body, depth, Some(values))
+        method.visitTypeInsn(op.NEW, klass)
+        method.visitInsn(op.DUP)
+        method.visitLdcInsn(values.size)
+        method.visitTypeInsn(op.ANEWARRAY, Type.Object.ref.internalName) // letrec environement
+        method.visitInsn(op.DUP)
+        method.visitVarInsn(op.ASTORE, 3) // TODO: manage local var index
+        if (depth == 0) {
+          method.visitInsn(op.ACONST_NULL)
+        } else {
+          method.visitVarInsn(op.ALOAD, 0)
+        }
+        method.visitMethodInsn(
+          op.INVOKESPECIAL,
+          klass,
+          "<init>",
+          s"($objectSig$funSig)V")
+        method.visitInsn(op.ACONST_NULL)
+        method.visitMethodInsn(op.INVOKEVIRTUAL, funClass, "app", s"($objectSig)$objectSig")
+        method.visitTypeInsn(op.CHECKCAST, body.tpe.boxed.ref.internalName)
+        autobox(method, body.tpe.boxed, body.tpe)
       case TT.If(cond, th, el, tpe) =>
         val lElse = new asm.Label()
         val lEnd = new asm.Label()
@@ -161,7 +198,7 @@ class Assembler(baseDir: Path) {
         eval(method, el, depth)
         method.visitLabel(lEnd)
       case TT.Fun(argType, body) =>
-        val klass = emitFun(argType, body, depth)
+        val klass = emitFun(body, depth, None)
         method.visitTypeInsn(op.NEW, klass)
         method.visitInsn(op.DUP)
         if (depth == 0) {

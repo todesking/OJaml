@@ -15,15 +15,19 @@ public abstract class Fun {
 
   public abstract Object app(Object x);
 
-  protected Object getLocal(int index) {
-    if(index > depth) {
-      throw new AssertionError("[BUG] getLocal(" + index + ") called when depth = " + depth);
-    } if(index < 0) {
-      throw new AssertionError("[BUG] getLocal(" + index + ") called");
-    } else if(index == depth) {
-      return this.local;
+  protected Object getLocal(int depth, int index) {
+    if(depth > this.depth) {
+      throw new AssertionError("[BUG] getLocal(" + depth + ", " + index + ") called when depth = " + this.depth);
+    } if(depth < 0) {
+      throw new AssertionError("[BUG] getLocal(" + depth + ", " + index + ") called");
+    } else if(depth == this.depth) {
+      if(index == 0) {
+        return this.local;
+      } else {
+        return ((Object[])this.local)[index - 1];
+      }
     } else {
-      return parent.getLocal(index);
+      return parent.getLocal(depth, index);
     }
   }
 }
