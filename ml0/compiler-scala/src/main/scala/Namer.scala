@@ -248,7 +248,7 @@ object Namer {
           Right((a + name.value, name.value))
       }.map {
         case (_, ns) =>
-          val refs = ns.zipWithIndex.map { case (_, i) => VarRef.Local(depth, i + 1) }
+          val refs = ns.zipWithIndex.map { case (_, i) => VarRef.Local(depth + 1, i + 1) }
           val c = copy(
             venv = venv ++ ns.zip(refs),
             stack = this :: stack)

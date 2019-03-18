@@ -41,8 +41,10 @@ object AST {
     case p: AnyAST =>
       val base = ("  " * indent) + p.productPrefix
       if (p.productArity == 0) base
-      else if (p.productArity == 1) base + pretty(p.productElement(0), indent + 1).replaceAll("^\\s+", " ")
-      else base + "\n" + p.productIterator.map(pretty(_, indent + 1)).mkString("\n")
+      else if (p.productIterator.exists { x => x.isInstanceOf[AnyAST] || x.isInstanceOf[Seq[_]] })
+        base + "\n" + p.productIterator.map(pretty(_, indent + 1)).mkString("\n")
+      else
+        base + p.productIterator.mkString("(", ", ", ")")
     case s: Seq[_] =>
       s.map(pretty(_, indent + 1)).mkString("\n")
     case x =>

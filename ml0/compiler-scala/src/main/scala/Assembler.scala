@@ -49,7 +49,6 @@ class Assembler(baseDir: Path) {
     val packageDir = baseDir.resolve(pkg.replaceAll("\\.", "/"))
     val out = packageDir.resolve(s"$name.class")
     Files.createDirectories(packageDir)
-    println(s"Emit: $out")
     Files.write(out, data)
   }
 
@@ -119,8 +118,7 @@ class Assembler(baseDir: Path) {
         null,
         Array())
       recValues.foreach { rvs =>
-        app.visitVarInsn(op.ALOAD, 0)
-        app.visitFieldInsn(op.GETFIELD, qcname, "local", objectSig)
+        app.visitVarInsn(op.ALOAD, 1)
         app.visitTypeInsn(op.CHECKCAST, s"[$objectSig")
         rvs.zipWithIndex.foreach {
           case (rv, i) =>
@@ -151,8 +149,15 @@ class Assembler(baseDir: Path) {
       case TT.ModuleVarRef(module, name, tpe) =>
         method.visitFieldInsn(op.GETSTATIC, msig(module), escape(name), descriptor(tpe))
       case TT.LocalRef(d, index, tpe) =>
-        if (depth == d && index == 0) {
+        if (depth == d) {
           method.visitVarInsn(op.ALOAD, 1)
+          if (index == 0) {
+            // stack top is the target value
+          } else {
+            method.visitTypeInsn(op.CHECKCAST, s"[$objectSig")
+            method.visitLdcInsn(index - 1)
+            method.visitInsn(op.AALOAD)
+          }
         } else {
           method.visitVarInsn(op.ALOAD, 0)
           method.visitLdcInsn(d)
@@ -169,13 +174,11 @@ class Assembler(baseDir: Path) {
         val klass = emitFun(body, depth, Some(values))
         method.visitTypeInsn(op.NEW, klass)
         method.visitInsn(op.DUP)
-        method.visitLdcInsn(values.size)
-        method.visitTypeInsn(op.ANEWARRAY, Type.Object.ref.internalName) // letrec environement
-        method.visitInsn(op.DUP)
-        method.visitVarInsn(op.ASTORE, 3) // TODO: manage local var index
         if (depth == 0) {
           method.visitInsn(op.ACONST_NULL)
+          method.visitInsn(op.ACONST_NULL)
         } else {
+          method.visitVarInsn(op.ALOAD, 1)
           method.visitVarInsn(op.ALOAD, 0)
         }
         method.visitMethodInsn(
@@ -183,7 +186,8 @@ class Assembler(baseDir: Path) {
           klass,
           "<init>",
           s"($objectSig$funSig)V")
-        method.visitInsn(op.ACONST_NULL)
+        method.visitLdcInsn(values.size)
+        method.visitTypeInsn(op.ANEWARRAY, Type.Object.ref.internalName) // letrec environement
         method.visitMethodInsn(op.INVOKEVIRTUAL, funClass, "app", s"($objectSig)$objectSig")
         method.visitTypeInsn(op.CHECKCAST, body.tpe.boxed.ref.internalName)
         autobox(method, body.tpe.boxed, body.tpe)

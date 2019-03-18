@@ -1,4 +1,5 @@
 (* using: Predef *)
+(* debug *)
 
 package test.ml0
 
@@ -37,7 +38,9 @@ module Let_rec {
       let rec
         h: int => int = fun x: int =>
           let tmp = f x in
-          tmp * 10
+          let rec check: int => bool = fun x: int => x == 0 in
+          if check x then 0
+          else tmp * 10
       in
         h 5 ;;
   (* z: int = 510 *)

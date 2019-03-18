@@ -64,6 +64,7 @@ class Main extends FunSpec {
     val contents = if (predef) predefContent +: testContents else testContents
 
     val outDir = Files.createTempDirectory("ojaml-test")
+    println(s"outDir = $outDir")
     val cl = this.getClass.getClassLoader
     val c = new scala_compiler.Compiler(outDir, cl, debugPrint)
 
@@ -143,8 +144,8 @@ object TestMain {
 
       val defaultClassName = "test.ml0." + path.getFileName.toString.split("\\.")(0)
 
-      val pending = lines.headOption.contains("(* pending *)")
-      val debugPrint = lines.headOption.contains("(* debug *)")
+      val pending = lines.contains("(* pending *)")
+      val debugPrint = lines.contains("(* debug *)")
       val predef = lines.contains("(* using: Predef *)")
 
       val reError = """^(\s*\(\*\s*\^).*""".r

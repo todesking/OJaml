@@ -26,6 +26,8 @@ public abstract class Fun {
       } else {
         return ((Object[])this.local)[index - 1];
       }
+    } else if(parent == null) {
+      throw new AssertionError("[BUG] getLocal(" + depth + ", " + index + ") called when depth = " + this.depth);
     } else {
       return parent.getLocal(depth, index);
     }
