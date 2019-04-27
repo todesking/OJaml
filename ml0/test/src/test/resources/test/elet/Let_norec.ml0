@@ -1,0 +1,18 @@
+(* using: Predef *)
+
+package test.ml0
+
+import com.todesking.ojaml.ml0.lib.Predef.+
+import com.todesking.ojaml.ml0.lib.Predef.-
+import com.todesking.ojaml.ml0.lib.Predef.*
+import com.todesking.ojaml.ml0.lib.Predef.==
+
+module Let_norec {
+  let x =
+    let a = 1 in
+    let b = a in
+    let a = a * 10 in
+    a + b ;;
+  (* x: int = 11 *)
+}
+
