@@ -10,16 +10,16 @@ sealed abstract class PackageRef {
 }
 object PackageRef {
   case object Root extends PackageRef {
-    override def parts = Seq()
+    override def parts: Seq[Nothing] = Seq()
   }
   case class Child(parent: PackageRef, name: String) extends PackageRef {
     require(!name.contains(".") && !name.contains("/"), name)
-    override def parts = parent.parts :+ name
+    override def parts: Seq[String] = parent.parts :+ name
   }
 
   // TODO: Handle ""
-  def fromInternalName(n: String) = { require(n.nonEmpty); fromParts(n.split("/")) }
-  def fromParts(parts: Seq[String]) =
+  def fromInternalName(n: String): PackageRef = { require(n.nonEmpty); fromParts(n.split("/")) }
+  def fromParts(parts: Seq[String]): PackageRef =
     parts.foldLeft[PackageRef](Root) { (p, n) => Child(p, n) }
 }
 

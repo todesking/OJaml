@@ -3,6 +3,7 @@ package com.todesking.ojaml.ml0.compiler.scala
 import java.nio.file.Path
 
 import org.objectweb.asm
+import org.objectweb.asm.MethodVisitor
 
 class ClassRepo(cl: ClassLoader) {
   private[this] var _cache = Map.empty[ClassRef, ClassSig]
@@ -10,7 +11,7 @@ class ClassRepo(cl: ClassLoader) {
   // Note: Some jar contains only file, not directory.
   // i.e. contains "java/lang/Integer.class" but no "java/"
   // So this hack required.
-  val knownPackages = Set(
+  val knownPackages: Set[String] = Set(
     "java",
     "java/lang",
     "java/util")
@@ -61,7 +62,7 @@ object ClassRepo {
     private[this] var methods = Seq.empty[MethodSig]
     private[this] var isInterface: Boolean = _
 
-    override def visit(version: Int, access: Int, name: String, signature: String, superName: String, interfaces: Array[String]) = {
+    override def visit(version: Int, access: Int, name: String, signature: String, superName: String, interfaces: Array[String]): Unit = {
       this.ref = ClassRef.fromInternalName(name)
       this.superRef = if (superName == null) null else ClassRef.fromInternalName(superName)
       this.interfaces = interfaces.toSeq.map(ClassRef.fromInternalName)
@@ -69,7 +70,7 @@ object ClassRepo {
       super.visit(version, access, name, signature, superName, interfaces)
     }
 
-    override def visitMethod(access: Int, mname: String, descriptor: String, signature: String, exceptions: Array[String]) = {
+    override def visitMethod(access: Int, mname: String, descriptor: String, signature: String, exceptions: Array[String]): MethodVisitor = {
       val isStatic = (access & asm.Opcodes.ACC_STATIC) != 0
       val t = asm.Type.getType(descriptor)
       val m = MethodSig(ref, isStatic, isInterface, mname, t.getArgumentTypes.map(translate(_, mname, signature)), Type.from(t.getReturnType))

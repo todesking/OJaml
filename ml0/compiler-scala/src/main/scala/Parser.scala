@@ -8,7 +8,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   private[this] val discard = { _: Any => () }
 
-  val keywords = Set(
+  val keywords: Set[String] = Set(
     "package",
     "import",
     "module",
@@ -24,7 +24,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   }
 
   private[this] var _skipWS = true
-  override def skipWhitespace = _skipWS
+  override def skipWhitespace: Boolean = _skipWS
 
   private[this] def commentWS: Parser[Unit] = """\s*""".r ~ comment.* ^^ discard
   private[this] def comment: Parser[Unit] = "(*" ~ (comment | (not("*)") ~ ".".r)).* ~ "*)" ~ """\s*""".r ^^ discard
@@ -49,8 +49,8 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     }
   }
 
-  val normalName = withpos("""[a-zA-Z][a-zA-Z0-9_]*""".r ^? { case s if !keywords(s) => Name(s) })
-  val opName = withpos("""==|<=|>=|[-+*/%<>&|]""".r ^? { case s if !keywords(s) => Name(s) })
+  val normalName: Parser[Name] = withpos("""[a-zA-Z][a-zA-Z0-9_]*""".r ^? { case s if !keywords(s) => Name(s) })
+  val opName: Parser[Name] = withpos("""==|<=|>=|[-+*/%<>&|]""".r ^? { case s if !keywords(s) => Name(s) })
   val name: Parser[Name] = normalName | opName
   val qname: Parser[QName] = withpos(rep1sep(name, ".") ^^ { xs => QName(xs) })
 
@@ -59,19 +59,19 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   })
   def typename1: Parser[TypeName] = withpos(name ^^ { n => TypeName.Atom(n.value) }) | ("(" ~> typename) <~ ")"
 
-  lazy val program = withpos(pkg ~ rep(`import`) ~ rep1(module) ^^ { case p ~ is ~ ss => T.Program(p, is, ss) })
-  lazy val pkg = kwd("package") ~> qname
-  lazy val `import` = kwd("import") ~> qname ^^ { qn => Import(qn) }
-  lazy val module = withpos(kwd("module") ~> (normalName <~ "{") ~ rep(term) <~ "}" ^^ {
+  lazy val program: Parser[RawAST.Program] = withpos(pkg ~ rep(`import`) ~ rep1(module) ^^ { case p ~ is ~ ss => T.Program(p, is, ss) })
+  lazy val pkg: Parser[QName] = kwd("package") ~> qname
+  lazy val `import`: Parser[Import] = kwd("import") ~> qname ^^ { qn => Import(qn) }
+  lazy val module: Parser[RawAST.Module] = withpos(kwd("module") ~> (normalName <~ "{") ~ rep(term) <~ "}" ^^ {
     case n ~ ts => T.Module(n, ts)
   })
 
   def term: Parser[T.Term] = tlet
-  def tlet = withpos(kwd("let") ~> (name <~ "=") ~ expr <~ ";;" ^^ { case n ~ e => T.TLet(n, e) })
+  def tlet: Parser[RawAST.TLet] = withpos(kwd("let") ~> (name <~ "=") ~ expr <~ ";;" ^^ { case n ~ e => T.TLet(n, e) })
 
   def expr: Parser[T.Expr] = expr1
 
-  def binop(pat: Parser[String]) =
+  def binop(pat: Parser[String]): Parser[Name] =
     withpos(pat ^^ { p => Name(p) })
 
   def bin_expr(expr: Parser[T.Expr], pat: Parser[Name]): Parser[T.Expr] = withpos(
@@ -92,28 +92,28 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
         bin_expr(e, op)
       }
 
-  def expr3 = eif | fun | eletr | elet | app
+  def expr3: Parser[RawAST.Expr] = eif | fun | eletr | elet | app
 
-  lazy val expr4 = withpos(expr5 ~ jcall.? ^^ {
+  lazy val expr4: Parser[RawAST.Expr] = withpos(expr5 ~ jcall.? ^^ {
     case e ~ None => e
     case e ~ Some("#" ~ n ~ args) => T.JCall(e, n, args, false)
     case e ~ Some("##" ~ n ~ args) => T.JCall(e, n, args, true)
     case _ => throw new AssertionError()
   })
 
-  lazy val jcall = ("##" | "#") ~ name ~ ("(" ~> repsep(expr, ",") <~ ")")
+  lazy val jcall: Parser[String ~ Name ~ List[RawAST.Expr]] = ("##" | "#") ~ name ~ ("(" ~> repsep(expr, ",") <~ ")")
 
-  def expr5 = withpos(expr6 ~ prop.? ^^ {
+  def expr5: Parser[RawAST.Expr] = withpos(expr6 ~ prop.? ^^ {
     case e ~ None => e
     case e ~ Some(ns) => ns.foldLeft(e) { (e, n) => Pos.fill(T.Prop(e, n), n.pos) }
   })
-  val prop = "." ~> rep1sep(name, ".")
+  val prop: Parser[List[Name]] = "." ~> rep1sep(name, ".")
 
-  def expr6 = paren | lit_bool | lit_int | lit_string | var_ref
+  def expr6: Parser[RawAST.Expr] = paren | lit_bool | lit_int | lit_string | var_ref
 
-  def paren = ("(" ~> expr) <~ ")"
+  def paren: Parser[RawAST.Expr] = ("(" ~> expr) <~ ")"
 
-  def app = withpos(rep1(expr4) ^^ {
+  def app: Parser[RawAST.Expr] = withpos(rep1(expr4) ^^ {
     case e :: es =>
       es.foldLeft(e) { (f, e) =>
         val app = T.App(f, e)
@@ -123,19 +123,19 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case _ => throw new AssertionError()
   })
 
-  val lit_int = withpos("""[0-9]+""".r ^^ { i => T.LitInt(i.toInt) })
-  val lit_bool = withpos(("true" | "false") ^^ { case "true" => T.LitBool(true) case "false" => T.LitBool(false) })
-  val lit_string = withpos(("\"" ~> """[^"]+""".r) <~ "\"" ^^ { s => T.LitString(s) })
+  val lit_int: Parser[RawAST.LitInt] = withpos("""[0-9]+""".r ^^ { i => T.LitInt(i.toInt) })
+  val lit_bool: Parser[RawAST.LitBool] = withpos(("true" | "false") ^^ { case "true" => T.LitBool(true) case "false" => T.LitBool(false) })
+  val lit_string: Parser[RawAST.LitString] = withpos(("\"" ~> """[^"]+""".r) <~ "\"" ^^ { s => T.LitString(s) })
 
-  val eif = withpos((kwd("if") ~> expr) ~ (kwd("then") ~> expr) ~ (kwd("else") ~> expr) ^^ { case cond ~ th ~ el => T.If(cond, th, el) })
-  def fun = withpos((kwd("fun") ~> normalName) ~ (":" ~> typename1) ~ ("=>" ~> expr) ^^ { case name ~ tpe ~ expr => T.Fun(name, tpe, expr) })
-  val var_ref = withpos(normalName ^^ { n => T.Ref(n) })
-  val eletr = withpos((kwd("let") ~> kwd("rec")) ~> rep1sep(normalName ~ (":" ~> typename) ~ ("=" ~> fun), ";") ~ (kwd("in") ~> expr) ^^ {
+  val eif: Parser[RawAST.If] = withpos((kwd("if") ~> expr) ~ (kwd("then") ~> expr) ~ (kwd("else") ~> expr) ^^ { case cond ~ th ~ el => T.If(cond, th, el) })
+  def fun: Parser[RawAST.Fun] = withpos((kwd("fun") ~> normalName) ~ (":" ~> typename1) ~ ("=>" ~> expr) ^^ { case name ~ tpe ~ expr => T.Fun(name, tpe, expr) })
+  val var_ref: Parser[RawAST.Ref] = withpos(normalName ^^ { n => T.Ref(n) })
+  val eletr: Parser[RawAST.ELetRec] = withpos((kwd("let") ~> kwd("rec")) ~> rep1sep(normalName ~ (":" ~> typename) ~ ("=" ~> fun), ";") ~ (kwd("in") ~> expr) ^^ {
     case bs ~ body =>
       val bindings = bs.map { case n ~ t ~ e => (n, t, e) }
       T.ELetRec(bindings, body)
   })
-  val elet = withpos((kwd("let") ~> name) ~ ("=" ~> expr) ~ (kwd("in") ~> expr) ^^ {
+  val elet: Parser[RawAST.ELet] = withpos((kwd("let") ~> name) ~ ("=" ~> expr) ~ (kwd("in") ~> expr) ^^ {
     case name ~ e1 ~ e2 =>
       T.ELet(name, e1, e2)
   })

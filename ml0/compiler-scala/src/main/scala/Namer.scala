@@ -144,7 +144,7 @@ object Namer {
     currentModule: ModuleRef,
     venv: Map[String, VarRef] = Map(),
     stack: List[Ctx] = Nil) {
-    val depth = stack.size
+    val depth: Int = stack.size
 
     def tlet(name: Name): Result[Ctx] = {
       require(stack.isEmpty)
@@ -201,7 +201,7 @@ object Namer {
       }
     }
 
-    def addModuleMember(name: String) = copy(penv = penv.addModuleMember(currentModule, name))
+    def addModuleMember(name: String): Ctx = copy(penv = penv.addModuleMember(currentModule, name))
     def findModuleMember(m: ModuleRef, name: Name): Result[VarRef.ModuleMember] =
       if (penv.moduleMemberExists(m, name.value))
         Right(VarRef.ModuleMember(m, name.value))

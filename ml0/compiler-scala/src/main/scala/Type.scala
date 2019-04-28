@@ -9,21 +9,21 @@ sealed abstract class Type {
 }
 object Type {
   sealed abstract class Primitive extends Type {
-    override def unboxed = None
-    override def toString(group: Boolean) = toString
+    override def unboxed: None.type = None
+    override def toString(group: Boolean): String = toString
   }
   case object Int extends Primitive {
-    override def boxed = BoxedInt
+    override def boxed: Klass = BoxedInt
   }
   case object Bool extends Primitive {
-    override def boxed = BoxedBool
+    override def boxed: Klass = BoxedBool
   }
 
   sealed abstract class Reference extends Type {
     def ref: ClassRef
-    override def boxed = this
-    override def unboxed = boxMap.get(ref.internalName)
-    override def toString(group: Boolean) = toString
+    override def boxed: Reference = this
+    override def unboxed: Option[Primitive] = boxMap.get(ref.internalName)
+    override def toString(group: Boolean): String = toString
   }
   object Reference {
     def unapply(r: Reference): Option[ClassRef] = Some(r.ref)
@@ -36,15 +36,15 @@ object Type {
   }
   val Object = Klass("java/lang/Object")
   case class Fun(l: Type, r: Type) extends Reference {
-    override def ref = Fun.ref
-    override def toString = toString(false)
-    override def toString(group: Boolean) = {
+    override def ref: ClassRef = Fun.ref
+    override def toString: String = toString(false)
+    override def toString(group: Boolean): String = {
       val naked = s"${l.toString(true)} -> $r"
       if (group) s"($naked)" else naked
     }
   }
   object Fun {
-    val ref = ClassRef.fromInternalName("com/todesking/ojaml/ml0/runtime/Fun")
+    val ref: ClassRef = ClassRef.fromInternalName("com/todesking/ojaml/ml0/runtime/Fun")
   }
 
   val BoxedInt = Klass("java/lang/Integer")

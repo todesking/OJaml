@@ -7,7 +7,7 @@ case class Pos(location: String, line: Int, col: Int) {
   override def toString = s"$location:$line:$col"
 }
 object Pos {
-  def fill[A <: HasPos](v: A, p: Pos) = { v.fillPos(p); v }
+  def fill[A <: HasPos](v: A, p: Pos): A = { v.fillPos(p); v }
 }
 trait HasPos {
   private[this] var _pos: Pos = null
@@ -23,9 +23,9 @@ case class Name(value: String) extends HasPos {
 }
 case class QName(parts: Seq[Name]) extends HasPos {
   require(parts.nonEmpty)
-  def value = parts.map(_.value).mkString(".")
-  def internalName = parts.map(_.value).mkString("/")
-  def asPackage = PackageRef.fromParts(parts.map(_.value))
+  def value: String = parts.map(_.value).mkString(".")
+  def internalName: String = parts.map(_.value).mkString("/")
+  def asPackage: PackageRef = PackageRef.fromParts(parts.map(_.value))
   override def toString = s"QName($value)"
 }
 sealed abstract class TypeName extends HasPos
@@ -123,7 +123,7 @@ object TypedAST {
   case class ModuleVarRef(module: ModuleRef, name: String, tpe: Type) extends Expr
   case class LocalRef(depth: Int, index: Int, tpe: Type) extends Expr
   case class LetRec(values: Seq[Fun], body: Expr) extends Expr {
-    override def tpe = body.tpe
+    override def tpe: Type = body.tpe
   }
   case class If(cond: Expr, th: Expr, el: Expr, tpe: Type) extends Expr
   case class App(fun: Expr, arg: Expr, tpe: Type) extends Expr
@@ -134,11 +134,11 @@ object TypedAST {
   case class JCallStatic(method: MethodSig, args: Seq[Expr]) extends Expr {
     require(method.isStatic)
     require(method.args.size == args.size)
-    override def tpe = method.ret.getOrElse(Type.Unit)
+    override def tpe: Type = method.ret.getOrElse(Type.Unit)
   }
   case class JCallInstance(method: MethodSig, receiver: Expr, args: Seq[Expr]) extends Expr {
     require(!method.isStatic)
     require(method.args.size == args.size)
-    override def tpe = method.ret.getOrElse(Type.Unit)
+    override def tpe: Type = method.ret.getOrElse(Type.Unit)
   }
 }

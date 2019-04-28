@@ -15,25 +15,25 @@ case class PackageEnv(cr: ClassRepo, moduleMembers: Map[ModuleRef, Set[String]] 
       None
   }
 
-  lazy val modulePackages = moduleMembers.keys.flatMap { m =>
+  lazy val modulePackages: Set[PackageRef] = moduleMembers.keys.flatMap { m =>
     m.pkg.parts.inits.map(PackageRef.fromParts)
   }.toSet
 
-  lazy val modules = moduleMembers.keys.map { m =>
+  lazy val modules: Map[PackageRef, Set[String]] = moduleMembers.keys.map { m =>
     m.pkg -> m.name
   }.groupBy(_._1).map { case (p, ns) => p -> ns.map(_._2).toSet }
 
-  def packageExists(pkg: PackageRef, name: String) =
+  def packageExists(pkg: PackageRef, name: String): Boolean =
     cr.packageExists(pkg, name) || modulePackages.contains(pkg.packageRef(name))
 
-  def memberExists(pkg: PackageRef, name: String) =
+  def memberExists(pkg: PackageRef, name: String): Boolean =
     findMember(pkg, name).nonEmpty
 
-  def addModule(m: ModuleRef) =
+  def addModule(m: ModuleRef): PackageEnv =
     if (moduleMembers.contains(m)) this
     else copy(moduleMembers = moduleMembers + (m -> Set.empty[String]))
 
-  def addModuleMember(m: ModuleRef, name: String) = {
+  def addModuleMember(m: ModuleRef, name: String): PackageEnv = {
     require(modules.get(m.pkg).exists(_.contains(m.name)), s"Module ${m.fullName} not found")
     moduleMembers.get(m).fold {
       copy(moduleMembers = moduleMembers + (m -> Set(name)))
@@ -42,10 +42,10 @@ case class PackageEnv(cr: ClassRepo, moduleMembers: Map[ModuleRef, Set[String]] 
     }
   }
 
-  def moduleMemberExists(m: ModuleRef, name: String) =
+  def moduleMemberExists(m: ModuleRef, name: String): Boolean =
     moduleMembers.get(m).exists(_.contains(name))
 
-  def pretty = "PackageEnv\n" + modules.toSeq.sortBy(_._1.fullName).map {
+  def pretty: String = "PackageEnv\n" + modules.toSeq.sortBy(_._1.fullName).map {
     case (k, vs) =>
       s"  package ${k.fullName}\n" + vs.toSeq.sorted.map { v => s"  - module $v" }.mkString("\n")
   }.mkString("\n")
