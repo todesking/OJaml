@@ -4,28 +4,6 @@ import java.nio.file.Path
 
 import org.objectweb.asm
 
-case class MethodSig(klass: ClassRef, isStatic: Boolean, isInterface: Boolean, name: String, args: Seq[Type], ret: Option[Type]) {
-  require(!(isStatic && isInterface))
-
-  def isInstance = !isStatic
-
-  lazy val descriptor =
-    asm.Type.getMethodType(Type.toAsm(ret), args.map(Type.toAsm).toArray: _*).getDescriptor
-}
-case class ClassSig(ref: ClassRef, parent: Option[ClassSig], interfaces: Seq[ClassSig], methods: Seq[MethodSig]) {
-  def findAnyMethod(name: String, args: Seq[Type]): Option[MethodSig] =
-    methods.find(m => m.name == name && assignableFrom(m.args, args))
-  def findStaticMethod(name: String, args: Seq[Type]): Option[MethodSig] =
-    findAnyMethod(name, args).find(_.isStatic)
-  def findInstanceMethod(name: String, args: Seq[Type]): Option[MethodSig] =
-    findAnyMethod(name, args).find(_.isInstance)
-
-  private[this] def assignableFrom(xs: Seq[Type], ys: Seq[Type]): Boolean =
-    xs.size == ys.size && xs.zip(ys).forall { case (x, y) => assignableFrom(x, y) }
-  private[this] def assignableFrom(x: Type, y: Type): Boolean =
-    x.boxed == y.boxed
-}
-
 class ClassRepo(cl: ClassLoader) {
   private[this] var _cache = Map.empty[ClassRef, ClassSig]
 
