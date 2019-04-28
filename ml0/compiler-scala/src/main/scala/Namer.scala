@@ -65,7 +65,7 @@ class Namer(packageEnv: PackageEnv) {
   private[this] def appExpr0(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = expr match {
     case RT.Ref(name) =>
       ctx.findValue(name.value).toRight(
-        Seq(Error(name.pos, s"Value ${name.value} is not found"))).map(NT.Ref(_))
+        Seq(Error(name.pos, s"Value ${name.value} is not found"))).map(NT.Ref)
     case RT.Prop(e, n) =>
       appExpr(ctx, e).flatMap {
         case NT.Ref(r) =>
@@ -98,18 +98,18 @@ class Namer(packageEnv: PackageEnv) {
         e2 <- appExpr(ctx, el)
       } yield NT.If(e0, e1, e2)
     case RT.Fun(name, tpeName, body) =>
-      (for {
+      for {
         tpe <- ctx.findType(tpeName)
         (ref, c) = ctx.bindLocal(name.value)
         tbody <- appExpr(c, body)
       } yield {
         NT.Fun(ref, tpe, tbody)
-      })
+      }
     case RT.ELetRec(bs, body) =>
       for {
         x <- ctx.bindLocals(bs.map(_._1))
         (refs, c) = x
-        ts <- validate(bs.map(_._2).map(c.findType(_)))
+        ts <- validate(bs.map(_._2).map(c.findType))
         vs <- validate(bs.map(_._3).map(appExpr(c, _))).map(_.map(_.asInstanceOf[NT.Fun]))
         b <- appExpr(c, body)
       } yield NT.ELetRec(refs.zip(ts).zip(vs).map { case ((r, t), v) => (r, t, v) }, b)
@@ -169,7 +169,7 @@ object Namer {
       case TypeName.Atom(n) => n match {
         case "int" => Right(Type.Int)
         case "bool" => Right(Type.Bool)
-        case unk => Left(Seq(Error(tname.pos, s"Type not found: ${unk}")))
+        case unk => Left(Seq(Error(tname.pos, s"Type not found: $unk")))
       }
       case TypeName.Fun(l, r) =>
         for {

@@ -56,7 +56,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
   def varRefToQ(ctx: Ctx, v: VarRef, pos: Pos): Result[QuasiValue] = v match {
     case VarRef.TopLevel(pm) => pm match {
       case PackageMember.Class(ref) =>
-        ctx.findClass(ref).map(Q.ClassValue(_)).toRight(
+        ctx.findClass(ref).map(Q.ClassValue).toRight(
           Seq(Error(pos, s"Class not found: ${ref.fullName}")))
       case PackageMember.Module(ref) =>
         ???
@@ -113,7 +113,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         case (ref, tpe, e) =>
           appExpr(c, e).flatMap {
             case te: TT.Fun =>
-              if (te.tpe != tpe) error(e.pos, s"Expression type ${te.tpe} is not compatible to ${tpe}")
+              if (te.tpe != tpe) error(e.pos, s"Expression type ${te.tpe} is not compatible to $tpe")
               else Right(te)
             case _ =>
               throw new AssertionError()
@@ -134,7 +134,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
             else
               error(x.pos, s"Argument type mismatch: $l required but ${tx.tpe} found")
           case t =>
-            error(f.pos, s"Applying non-function type ${t}")
+            error(f.pos, s"Applying non-function type $t")
         }
       } yield ret
     case NT.JCall(expr, name, args, isStatic) =>
@@ -197,7 +197,7 @@ object Typer {
 
     def bindModuleValue(name: Name, tpe: Type): Result[Ctx] = {
       val ref = VarRef.ModuleMember(currentModule, name.value)
-      if (typeTable.contains(ref)) Left(Seq(Error(name.pos, s"Member ${name} is already defined")))
+      if (typeTable.contains(ref)) Left(Seq(Error(name.pos, s"Member $name is already defined")))
       else Right(copy(typeTable = typeTable + (ref -> tpe)))
     }
 

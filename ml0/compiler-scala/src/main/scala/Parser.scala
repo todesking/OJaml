@@ -94,14 +94,14 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   def expr3 = eif | fun | eletr | elet | app
 
-  val expr4 = withpos(expr5 ~ jcall.? ^^ {
+  lazy val expr4 = withpos(expr5 ~ jcall.? ^^ {
     case e ~ None => e
     case e ~ Some("#" ~ n ~ args) => T.JCall(e, n, args, false)
     case e ~ Some("##" ~ n ~ args) => T.JCall(e, n, args, true)
     case _ => throw new AssertionError()
   })
 
-  val jcall = ("##" | "#") ~ name ~ ("(" ~> repsep(expr, ",") <~ ")")
+  lazy val jcall = ("##" | "#") ~ name ~ ("(" ~> repsep(expr, ",") <~ ")")
 
   def expr5 = withpos(expr6 ~ prop.? ^^ {
     case e ~ None => e

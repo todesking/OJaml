@@ -31,7 +31,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
     }
       .map(_.flatten)
       .map { trees =>
-        trees.foreach(assembler.emit(_))
+        trees.foreach(assembler.emit)
         Seq.empty[Error]
       }.merge
   }

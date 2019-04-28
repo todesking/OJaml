@@ -31,11 +31,11 @@ class ClassRepo(cl: ClassLoader) {
     else Some(load(ref))
   }
 
-  private[this] def load(ref: ClassRef): ClassSig = _cache.get(ref).getOrElse {
+  private[this] def load(ref: ClassRef): ClassSig = _cache.getOrElse(ref, {
     val c = load0(ref)
     this._cache = _cache + (ref -> c)
     c
-  }
+  })
 
   private[this] def load0(ref: ClassRef) = {
     val f = parse(ref.resourceName)

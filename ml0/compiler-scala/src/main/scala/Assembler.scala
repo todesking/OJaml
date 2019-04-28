@@ -23,7 +23,7 @@ class Assembler(baseDir: Path) {
     .map { case Array(a, b) => a(0) -> b }
     .toMap
 
-  def escape(name: String) = name.map { c =>
+  def escape(name: String): String = name.map { c =>
     sym2name.get(c).fold {
       c.toString
     } { n =>
@@ -31,21 +31,21 @@ class Assembler(baseDir: Path) {
     }
   }.mkString("")
 
-  val funClass = Type.Fun.ref.internalName
+  val funClass: String = Type.Fun.ref.internalName
   val funSig = s"L$funClass;"
 
   val objectClass = "java/lang/Object"
   val objectSig = s"L$objectClass;"
 
-  def descriptor(tpe: Type) = Type.toAsm(tpe).getDescriptor
-  def tname(tpe: Type) = tpe match {
+  def descriptor(tpe: Type): String = Type.toAsm(tpe).getDescriptor
+  def tname(tpe: Type): ClassRef = tpe match {
     case Type.Reference(name) => name
   }
 
   def msig(m: ModuleRef) =
     s"${m.pkg.internalName}/${m.name}"
 
-  def write(pkg: String, name: String, data: Array[Byte]) = {
+  def write(pkg: String, name: String, data: Array[Byte]): Path = {
     val packageDir = baseDir.resolve(pkg.replaceAll("\\.", "/"))
     val out = packageDir.resolve(s"$name.class")
     Files.createDirectories(packageDir)
@@ -84,7 +84,7 @@ class Assembler(baseDir: Path) {
     var funID = 0
     def emitFun(body: TT.Expr, depth: Int, recValues: Option[Seq[TT.Expr]]): String = {
       val cname = s"${struct.name.value}$$$funID"
-      val qcname = s"${pkg}.$cname".replaceAll("\\.", "/")
+      val qcname = s"$pkg.$cname".replaceAll("\\.", "/")
       funID += 1
 
       val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)
@@ -108,7 +108,7 @@ class Assembler(baseDir: Path) {
         op.INVOKESPECIAL,
         funClass,
         "<init>",
-        s"(${objectSig}${funSig})V")
+        s"($objectSig$funSig)V", false)
       init.visitInsn(op.RETURN)
       methodEnd(init)
       val app = cw.visitMethod(
@@ -166,7 +166,7 @@ class Assembler(baseDir: Path) {
             op.INVOKEVIRTUAL,
             funClass,
             "getLocal",
-            s"(II)$objectSig")
+            s"(II)$objectSig", false)
         }
         method.visitTypeInsn(op.CHECKCAST, tpe.boxed.ref.internalName)
         unbox(method, tpe.boxed)
@@ -185,10 +185,10 @@ class Assembler(baseDir: Path) {
           op.INVOKESPECIAL,
           klass,
           "<init>",
-          s"($objectSig$funSig)V")
+          s"($objectSig$funSig)V", false)
         method.visitLdcInsn(values.size)
         method.visitTypeInsn(op.ANEWARRAY, Type.Object.ref.internalName) // letrec environement
-        method.visitMethodInsn(op.INVOKEVIRTUAL, funClass, "app", s"($objectSig)$objectSig")
+        method.visitMethodInsn(op.INVOKEVIRTUAL, funClass, "app", s"($objectSig)$objectSig", false)
         method.visitTypeInsn(op.CHECKCAST, body.tpe.boxed.ref.internalName)
         autobox(method, body.tpe.boxed, body.tpe)
       case TT.If(cond, th, el, tpe) =>
@@ -216,7 +216,7 @@ class Assembler(baseDir: Path) {
           op.INVOKESPECIAL,
           klass,
           "<init>",
-          s"($objectSig$funSig)V")
+          s"($objectSig$funSig)V", false)
       case TT.App(f, x, tpe) =>
         eval(method, f, depth)
         eval(method, x, depth)
@@ -225,7 +225,7 @@ class Assembler(baseDir: Path) {
           op.INVOKEVIRTUAL,
           funClass,
           "app",
-          s"($objectSig)$objectSig")
+          s"($objectSig)$objectSig", false)
         method.visitTypeInsn(op.CHECKCAST, tpe.boxed.ref.internalName)
         autobox(method, tpe.boxed, tpe)
       case e @ TT.JCallStatic(target, args) =>
@@ -238,7 +238,7 @@ class Assembler(baseDir: Path) {
           op.INVOKESTATIC,
           target.klass.internalName,
           target.name,
-          target.descriptor)
+          target.descriptor, false)
         autobox(method, target.ret, e.tpe)
       case e @ TT.JCallInstance(target, receiver, args) =>
         eval(method, receiver, depth)
@@ -252,7 +252,7 @@ class Assembler(baseDir: Path) {
           if (target.isInterface) op.INVOKEINTERFACE else op.INVOKEVIRTUAL,
           target.klass.internalName,
           target.name,
-          target.descriptor)
+          target.descriptor, target.isInterface)
         autobox(method, target.ret, e.tpe)
     }
 
@@ -296,15 +296,15 @@ class Assembler(baseDir: Path) {
       throw new RuntimeException(s"$from and $to is not compatible")
     }
   }
-  private[this] def box(method: asm.MethodVisitor, tpe: Type) = {
+  private[this] def box(method: asm.MethodVisitor, tpe: Type): Unit = {
     if (tpe == tpe.boxed) {
       // do nothing
     } else {
       val desc = s"(${descriptor(tpe)})${descriptor(tpe.boxed)}"
-      method.visitMethodInsn(op.INVOKESTATIC, tpe.boxed.ref.internalName, "valueOf", desc)
+      method.visitMethodInsn(op.INVOKESTATIC, tpe.boxed.ref.internalName, "valueOf", desc, false)
     }
   }
-  private[this] def unbox(method: asm.MethodVisitor, tpe: Type) = {
+  private[this] def unbox(method: asm.MethodVisitor, tpe: Type): Unit = {
     tpe.unboxed.foreach { prim =>
       val name =
         prim match {
@@ -312,7 +312,7 @@ class Assembler(baseDir: Path) {
           case Type.Bool => "booleanValue"
         }
       val desc = s"()${descriptor(prim)}"
-      method.visitMethodInsn(op.INVOKEVIRTUAL, tpe.boxed.ref.internalName, name, desc)
+      method.visitMethodInsn(op.INVOKEVIRTUAL, tpe.boxed.ref.internalName, name, desc, false)
     }
   }
 }
