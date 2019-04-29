@@ -1,7 +1,7 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
 import Compiler.Error
-import Util.SeqSyntax
+import util.Syntax._
 
 class Namer(packageEnv: PackageEnv) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, NamedAST => NT }
@@ -10,10 +10,9 @@ class Namer(packageEnv: PackageEnv) {
   import Namer.error
   import Namer.errorMessage
   import Namer.ValueLike
-  import Util.SeqSyntax
 
   def appProgram(p: RT.Program): Result[(PackageEnv, Seq[NT.Module])] =
-    p.items.foldLeftE(packageEnv) { (penv, x) =>
+    p.items.mapWithContextEC(packageEnv) { (penv, x) =>
       appModule(p.pkg, p.imports, penv, x).map {
         case (pe, named) =>
           (pe, named)
@@ -28,7 +27,7 @@ class Namer(packageEnv: PackageEnv) {
     imports.foldLeft[Result[Ctx]](Right(init)) { (c, i) =>
       c.flatMap(_.addImport(i))
     }.flatMap { ctx =>
-      s.body.foldLeftE(ctx) {
+      s.body.mapWithContextEC(ctx) {
         case (c, t) =>
           appTerm(c, t)
       }.map {
@@ -221,18 +220,17 @@ object Namer {
     }
 
     def bindLocals(names: Seq[Name]): Result[(Seq[VarRef.Local], Ctx)] = {
-      names.foldLeftE(Set.empty[String]) { (a, name) =>
+      names.mapWithContextE(Set.empty[String]) { (a, name) =>
         if (a.contains(name.value))
           error(name.pos, s"Name conflict: ${name.value}")
         else
           Right((a + name.value, name.value))
-      }.map {
-        case (_, ns) =>
-          val refs = ns.zipWithIndex.map { case (_, i) => VarRef.Local(depth + 1, i + 1) }
-          val c = copy(
-            venv = venv ++ ns.zip(refs.map(ValueLike.Value)),
-            stack = this :: stack)
-          (refs, c)
+      }.map { ns =>
+        val refs = ns.zipWithIndex.map { case (_, i) => VarRef.Local(depth + 1, i + 1) }
+        val c = copy(
+          venv = venv ++ ns.zip(refs.map(ValueLike.Value)),
+          stack = this :: stack)
+        (refs, c)
       }
     }
 

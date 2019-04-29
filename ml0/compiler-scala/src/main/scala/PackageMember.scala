@@ -1,7 +1,7 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
 import Compiler.Error
-import Util.SeqSyntax
+import util.Syntax._
 
 sealed abstract class PackageMember
 object PackageMember {

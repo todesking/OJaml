@@ -1,7 +1,7 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
 import Compiler.Error
-import Util.SeqSyntax
+import util.Syntax._
 
 case class PackageEnv(cr: ClassRepo, moduleMembers: Map[ModuleRef, Set[String]] = Map()) {
   def findMember(pkg: PackageRef, name: String): Option[PackageMember] = {

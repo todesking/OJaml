@@ -5,7 +5,7 @@ import java.nio.file.Paths
 import java.nio.file.Files
 
 import Compiler.{ Result, Error }
-import Util.SeqSyntax
+import util.Syntax._
 
 class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TypedAST => TT }
@@ -56,7 +56,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
               }
               println(pe.pretty)
             }
-            namedTrees.foldLeftE(moduleVars) { (mvs, nt) =>
+            namedTrees.mapWithContextEC(moduleVars) { (mvs, nt) =>
               val typer = new Typer(classRepo, mvs)
               typer.appModule(nt).map { typed =>
                 val newMvs = mvs ++ Typer.moduleVarsOf(typed)
