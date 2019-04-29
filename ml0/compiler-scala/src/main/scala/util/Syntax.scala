@@ -25,6 +25,14 @@ object Syntax {
       self.mapWithContextE(()) { (_, x) => f(x).map { y => ((), y) } }
   }
 
+  implicit class SeqResultSyntax[A](val self: Seq[Result[A]]) extends AnyVal {
+    def validated: Result[Seq[A]] = {
+      val rights = self.collect { case Right(x) => x }
+      if (rights.size == self.size) Right(rights)
+      else Left(self.collect { case Left(x) => x }.flatten)
+    }
+  }
+
   implicit class OptionSyntax[A](val self: Option[A]) extends AnyVal {
     def toResult(pos: Pos, message: String): Result[A] =
       self.toRight(Result.errorValue(pos, message))

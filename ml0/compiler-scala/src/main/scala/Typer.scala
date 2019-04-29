@@ -12,23 +12,17 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
 
   def appModule(s: NT.Module): Result[TT.Module] = {
     val init = Typer.Ctx(s.moduleRef, classRepo).bindModuleValues(moduleVars)
-    val (_, typed) =
-      s.body.foldLeft((init, Seq.empty[Result[TT.Term]])) {
-        case ((c, a), t) =>
+    val typed =
+      s.body.mapWithContext(init) {
+        case (c, t) =>
           appTerm(c, t).fold({ l =>
-            (c, a :+ Left(l))
+            (c, Left(l))
           }, {
             case (cc, tt) =>
-              (cc, a :+ Right(tt))
+              (cc, Right(tt))
           })
       }
-    validate(typed).map(TT.Module(s.pkg, s.name, _))
-  }
-
-  private[this] def validate[A](xs: Seq[Result[A]]): Result[Seq[A]] = {
-    val rights = xs.collect { case Right(x) => x }
-    if (rights.size == xs.size) Right(rights)
-    else Left(xs.collect { case Left(x) => x }.flatten)
+    typed.validated.map(TT.Module(s.pkg, s.name, _))
   }
 
   def appTerm(ctx: Ctx, t: NT.Term): Result[(Ctx, TT.Term)] = t match {
@@ -87,7 +81,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
           c.bindLocal(r, t.get)
       }
 
-      validate(bindings.map {
+      bindings.map {
         case (ref, tpe, e) =>
           appExpr(c, e).flatMap {
             case te: TT.Fun =>
@@ -96,11 +90,12 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
             case _ =>
               throw new AssertionError()
           }
-      }).flatMap { bs =>
-        appExpr(c, body).map { tb =>
-          TT.LetRec(bs, tb)
+      }.validated
+        .flatMap { bs =>
+          appExpr(c, body).map { tb =>
+            TT.LetRec(bs, tb)
+          }
         }
-      }
     case NT.App(f, x) =>
       for {
         tf <- appExpr(ctx, f)
@@ -116,7 +111,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         }
       } yield ret
     case NT.JCallStatic(klassRef, name, args) =>
-      validate(args.map(appExpr(ctx, _))).flatMap { targs =>
+      args.map(appExpr(ctx, _)).validated.flatMap { targs =>
         val klass = ctx.findClass(klassRef).get // TODO
         klass.findStaticMethod(name.value, targs.map(_.tpe))
           .toResult(name.pos, s"Static method ${Type.prettyMethod(name.value, targs.map(_.tpe))} is not found in class ${klass.ref.fullName}")
@@ -124,7 +119,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       }
     case NT.JCallInstance(expr, name, args) =>
       for {
-        targs <- validate(args.map(appExpr(ctx, _)))
+        targs <- args.map(appExpr(ctx, _)).validated
         receiver <- appExpr(ctx, expr)
         klass <- ctx.findClass(receiver.tpe.boxed.ref)
           .toResult(expr.pos, s"Class ${receiver.tpe.boxed.ref.fullName} not found. Check classpath.")
