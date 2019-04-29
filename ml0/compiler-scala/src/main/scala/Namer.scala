@@ -8,6 +8,8 @@ class Namer(packageEnv: PackageEnv) {
   import Namer.Result
   import Namer.Ctx
   import Namer.error
+  import Namer.errorMessage
+  import Namer.ValueLike
   import Util.SeqSyntax
 
   def appProgram(p: RT.Program): Result[(PackageEnv, Seq[NT.Module])] =
@@ -21,7 +23,7 @@ class Namer(packageEnv: PackageEnv) {
   def appModule(pkg: QName, imports: Seq[Import], penv: PackageEnv, s: RT.Module): Result[(PackageEnv, NT.Module)] = {
     val currentModule = ModuleRef(PackageRef.fromInternalName(pkg.internalName), s.name.value)
     if (penv.memberExists(currentModule.pkg, currentModule.name))
-      return Left(Seq(Error(s.name.pos, s"${currentModule.fullName} already defined")))
+      return error(s.name.pos, s"${currentModule.fullName} already defined")
     val init = Ctx(penv.addModule(currentModule), currentModule)
     imports.foldLeft[Result[Ctx]](Right(init)) { (c, i) =>
       c.flatMap(_.addImport(i))
@@ -64,29 +66,17 @@ class Namer(packageEnv: PackageEnv) {
 
   private[this] def appExpr0(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = expr match {
     case RT.Ref(name) =>
-      ctx.findValue(name.value).toRight(
-        Seq(Error(name.pos, s"Value ${name.value} is not found"))).map(NT.Ref)
+      valueLike(ctx, expr).flatMap {
+        case ValueLike.Value(ref) => Right(ref)
+        case ValueLike.TopLevel(_) => error(name.pos, s"${name.value} is not a value")
+      }
+        .map(NT.Ref)
     case RT.Prop(e, n) =>
-      appExpr(ctx, e).flatMap {
-        case NT.Ref(r) =>
-          r match {
-            case VarRef.TopLevel(pm) => pm match {
-              case PackageMember.Class(c) =>
-                error(n.pos, s"Property not supported for class")
-              case PackageMember.Package(p) =>
-                ctx.findPackageMember(p, n.value).map(NT.Ref(_)).toRight(
-                  Seq(Error(n.pos, s"Value ${n.value} is not found in package ${p.fullName}")))
-              case PackageMember.Module(m) =>
-                // TODO: check member existence
-                ctx.findModuleMember(m, n).map(NT.Ref.apply)
-            }
-            case VarRef.ModuleMember(m, name) =>
-              error(n.pos, s"Property not supported")
-            case VarRef.Local(_, _) =>
-              error(n.pos, s"Property not supported")
-          }
-        case e =>
-          error(n.pos, s"Property not supported")
+      valueLike(ctx, expr).flatMap {
+        case ValueLike.TopLevel(ref) =>
+          error(n.pos, s"${n.value} is not a value")
+        case ValueLike.Value(ref) =>
+          Right(NT.Ref(ref))
       }
     case RT.LitInt(v) => Right(NT.LitInt(v))
     case RT.LitBool(v) => Right(NT.LitBool(v))
@@ -128,21 +118,66 @@ class Namer(packageEnv: PackageEnv) {
       } yield NT.App(e0, e1)
     case RT.JCall(expr, name, args, isStatic) =>
       validate(args.map(appExpr(ctx, _))).flatMap { targs =>
-        appExpr(ctx, expr).map { receiver =>
-          NT.JCall(receiver, name, targs, isStatic)
+        if (isStatic) {
+          valueLike(ctx, expr).flatMap {
+            case ValueLike.TopLevel(ref) => ref match {
+              case PackageMember.Class(ref) =>
+                Right(NT.JCallStatic(ref, name, targs))
+              case PackageMember.Module(ref) =>
+                error(name.pos, "Module is not a class")
+              case PackageMember.Package(ref) =>
+                error(name.pos, "Package is not a class")
+            }
+            case ValueLike.Value(ref) =>
+              error(name.pos, "Value is not a class")
+          }
+        } else {
+          appExpr(ctx, expr).map { receiver =>
+            NT.JCallInstance(receiver, name, targs)
+          }
         }
       }
+  }
+
+  private[this] def valueLike(ctx: Ctx, expr: RT.Expr): Result[ValueLike] = expr match {
+    case RT.Ref(name) =>
+      ctx.findValue(name.value)
+        .toRight(errorMessage(name.pos, s"Value ${name.value} is not found"))
+    case RT.Prop(e, n) =>
+      valueLike(ctx, e).flatMap {
+        case ValueLike.TopLevel(ref) => ref match {
+          case PackageMember.Class(c) =>
+            error(n.pos, s"Property not supported for class")
+          case PackageMember.Package(p) =>
+            ctx.findPackageMember(p, n.value)
+              .map(ValueLike.TopLevel)
+              .toRight(errorMessage(n.pos, s"Member ${n.value} is not found in package ${p.fullName}"))
+          case PackageMember.Module(m) =>
+            ctx.findModuleMember(m, n).map(ValueLike.Value)
+        }
+        case ValueLike.Value(ref) =>
+          error(n.pos, s"Property of value is not supported")
+      }
+    case expr =>
+      throw new AssertionError(expr.toString)
   }
 }
 
 object Namer {
   type Result[A] = Either[Seq[Compiler.Error], A]
-  def error[A](pos: Pos, msg: String): Result[A] = Left(Seq(Error(pos, msg)))
+  def error[A](pos: Pos, msg: String): Result[A] = Left(errorMessage(pos, msg))
+  def errorMessage[A](pos: Pos, msg: String): Seq[Error] = Seq(Error(pos, msg))
+
+  sealed abstract class ValueLike
+  object ValueLike {
+    case class TopLevel(ref: PackageMember) extends ValueLike
+    case class Value(ref: VarRef) extends ValueLike
+  }
 
   case class Ctx(
     penv: PackageEnv,
     currentModule: ModuleRef,
-    venv: Map[String, VarRef] = Map(),
+    venv: Map[String, ValueLike] = Map(),
     stack: List[Ctx] = Nil) {
     val depth: Int = stack.size
 
@@ -152,18 +187,18 @@ object Namer {
       if (venv.contains(name.value))
         Left(Seq(Error(name.pos, s"""Name "${name.value}" is already defined in ${currentModule.name}""")))
       else
-        Right(copy(venv = venv + (varRef.name -> varRef)))
+        Right(copy(venv = venv + (varRef.name -> ValueLike.Value(varRef))))
     }
 
-    def findValue(name: String): Option[VarRef] =
+    def findValue(name: String): Option[ValueLike] =
       venv.get(name) orElse {
         penv.findMember(currentModule.pkg, name)
           .orElse(penv.findMember(PackageRef.Root, name))
-          .map(VarRef.TopLevel.apply)
+          .map(ValueLike.TopLevel.apply)
       }
 
-    def findPackageMember(pkg: PackageRef, name: String): Option[VarRef.TopLevel] =
-      penv.findMember(pkg, name).map(VarRef.TopLevel.apply)
+    def findPackageMember(pkg: PackageRef, name: String): Option[PackageMember] =
+      penv.findMember(pkg, name)
 
     def findType(tname: TypeName): Result[Type] = tname match {
       case TypeName.Atom(n) => n match {
@@ -181,21 +216,21 @@ object Namer {
     def bindLocal(name: String): (VarRef.Local, Ctx) = {
       val ref = VarRef.Local(depth + 1, 0)
       (ref, copy(
-        venv = venv + (name -> ref),
+        venv = venv + (name -> ValueLike.Value(ref)),
         stack = this :: stack))
     }
 
     def bindLocals(names: Seq[Name]): Result[(Seq[VarRef.Local], Ctx)] = {
       names.foldLeftE(Set.empty[String]) { (a, name) =>
         if (a.contains(name.value))
-          Left(Seq(Error(name.pos, s"Name conflict: ${name.value}")))
+          error(name.pos, s"Name conflict: ${name.value}")
         else
           Right((a + name.value, name.value))
       }.map {
         case (_, ns) =>
           val refs = ns.zipWithIndex.map { case (_, i) => VarRef.Local(depth + 1, i + 1) }
           val c = copy(
-            venv = venv ++ ns.zip(refs),
+            venv = venv ++ ns.zip(refs.map(ValueLike.Value)),
             stack = this :: stack)
           (refs, c)
       }
@@ -206,32 +241,35 @@ object Namer {
       if (penv.moduleMemberExists(m, name.value))
         Right(VarRef.ModuleMember(m, name.value))
       else
-        Left(Seq(Error(name.pos, s"Member ${name.value} is not found in module ${m.fullName}")))
+        error(name.pos, s"Member ${name.value} is not found in module ${m.fullName}")
 
+    // TODO: Support type names
+    // TODO: Support relative
     def addImport(i: Import): Result[Ctx] = {
       val nameParts = i.qname.parts
       val aliasName = i.qname.parts.last.value
-      findPackageMember(PackageRef.Root, nameParts.head.value).toRight(Seq(Error(i.qname.pos, s"Value not found: ${nameParts.head.value}"))).flatMap { head =>
-        nameParts.tail.foldLeft[Result[VarRef]](Right(head)) { (v, n) =>
-          v.flatMap {
-            case VarRef.TopLevel(pm) => pm match {
-              case PackageMember.Package(ref) =>
-                findPackageMember(ref, n.value).toRight(
-                  Seq(Error(n.pos, s"Package member not found: ${n.value}")))
-              case PackageMember.Module(m) =>
-                findModuleMember(m, n)
-              case PackageMember.Class(ref) =>
-                Left(Seq(Error(n.pos, s"${ref.fullName} is class and field reference not supported")))
+      findPackageMember(PackageRef.Root, nameParts.head.value)
+        .toRight(errorMessage(i.qname.pos, s"Member not found: ${nameParts.head.value}"))
+        .flatMap { head =>
+          nameParts.tail.foldLeft[Result[ValueLike]](Right(ValueLike.TopLevel(head))) { (v, n) =>
+            v.flatMap {
+              case ValueLike.TopLevel(pm) => pm match {
+                case PackageMember.Package(ref) =>
+                  findPackageMember(ref, n.value)
+                    .toRight(errorMessage(n.pos, s"Package member not found: ${n.value}"))
+                    .map(ValueLike.TopLevel)
+                case PackageMember.Module(m) =>
+                  findModuleMember(m, n).map(ValueLike.Value)
+                case PackageMember.Class(ref) =>
+                  error(n.pos, s"${ref.fullName} is class and field reference not supported")
+              }
+              case ValueLike.Value(ref) =>
+                error(n.pos, "Property of value is not importable")
             }
-            case VarRef.ModuleMember(ref, name) =>
-              Left(Seq(Error(n.pos, s"$name is value")))
-            case VarRef.Local(_, _) =>
-              throw new AssertionError(s"WTF: $v, $n")
+          }.map { v =>
+            copy(venv = venv + (aliasName -> v))
           }
-        }.map { v =>
-          copy(venv = venv + (aliasName -> v))
         }
-      }
     }
   }
 }

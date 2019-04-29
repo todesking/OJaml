@@ -100,7 +100,8 @@ object NamedAST {
   case class Fun(param: VarRef.Local, tpe: Type, body: Expr) extends Expr
   case class ELet(ref: VarRef.Local, value: Expr, body: Expr) extends Expr
   case class ELetRec(bindings: Seq[(VarRef.Local, Type, Fun)], body: Expr) extends Expr
-  case class JCall(receiver: Expr, methodName: Name, args: Seq[Expr], isStatic: Boolean) extends Expr
+  case class JCallInstance(receiver: Expr, methodName: Name, args: Seq[Expr]) extends Expr
+  case class JCallStatic(target: ClassRef, methodName: Name, args: Seq[Expr]) extends Expr
 }
 
 sealed abstract class TypedAST extends AnyAST

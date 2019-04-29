@@ -53,24 +53,13 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
 
   def okQ(expr: TT.Expr) = Right(Q.Value(expr))
 
-  def varRefToQ(ctx: Ctx, v: VarRef, pos: Pos): Result[QuasiValue] = v match {
-    case VarRef.TopLevel(pm) => pm match {
-      case PackageMember.Class(ref) =>
-        ctx.findClass(ref).map(Q.ClassValue).toRight(
-          Seq(Error(pos, s"Class not found: ${ref.fullName}")))
-      case PackageMember.Module(ref) =>
-        ???
-      case PackageMember.Package(ref) =>
-        Right(Q.PackageValue(ref))
-    }
-    case ref @ VarRef.ModuleMember(m, name) =>
-      okQ(TT.ModuleVarRef(m, name, ctx.typeOf(ref)))
-    case ref @ VarRef.Local(depth, index) => okQ(TT.LocalRef(depth, index, ctx.typeOf(ref)))
-  }
-
   def appExprQ(ctx: Ctx, expr: NT.Expr): Result[QuasiValue] = expr match {
-    case NT.Ref(ref) =>
-      varRefToQ(ctx, ref, expr.pos)
+    case NT.Ref(ref) => ref match {
+      case ref @ VarRef.ModuleMember(m, name) =>
+        okQ(TT.ModuleVarRef(m, name, ctx.typeOf(ref)))
+      case ref @ VarRef.Local(depth, index) =>
+        okQ(TT.LocalRef(depth, index, ctx.typeOf(ref)))
+    }
     case NT.LitInt(v) => okQ(TT.LitInt(v))
     case NT.LitBool(v) => okQ(TT.LitBool(v))
     case NT.LitString(v) => okQ(TT.LitString(v))
@@ -137,29 +126,25 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
             error(f.pos, s"Applying non-function type $t")
         }
       } yield ret
-    case NT.JCall(expr, name, args, isStatic) =>
+    case NT.JCallStatic(klassRef, name, args) =>
       validate(args.map(appExpr(ctx, _))).flatMap { targs =>
-        if (isStatic) {
-          appExprQ(ctx, expr).flatMap {
-            case QuasiValue.ClassValue(klass) =>
-              klass.findStaticMethod(name.value, targs.map(_.tpe)).fold[Result[QuasiValue]] {
-                error(name.pos, s"Static method ${Type.prettyMethod(name.value, targs.map(_.tpe))} is not found in class ${klass.ref.fullName}")
-              } { method =>
-                okQ(TT.JCallStatic(method, targs))
-              }
-            case _ =>
-              error(expr.pos, s"Class required")
-          }
-        } else {
-          appExpr(ctx, expr).flatMap { receiver =>
-            ctx.findClass(receiver.tpe.boxed.ref).fold[Result[QuasiValue]] {
-              error(expr.pos, s"Class ${receiver.tpe.boxed.ref.fullName} not found. Check classpath.")
-            } { klass =>
-              klass.findInstanceMethod(name.value, targs.map(_.tpe)).fold[Result[QuasiValue]] {
-                error(name.pos, s"Instance method ${Type.prettyMethod(name.value, targs.map(_.tpe))} is not found in class ${receiver.tpe.boxed.ref.fullName}")
-              } { method =>
-                okQ(TT.JCallInstance(method, receiver, targs))
-              }
+        val klass = ctx.findClass(klassRef).get // TODO
+        klass.findStaticMethod(name.value, targs.map(_.tpe)).fold[Result[QuasiValue]] {
+          error(name.pos, s"Static method ${Type.prettyMethod(name.value, targs.map(_.tpe))} is not found in class ${klass.ref.fullName}")
+        } { method =>
+          okQ(TT.JCallStatic(method, targs))
+        }
+      }
+    case NT.JCallInstance(expr, name, args) =>
+      validate(args.map(appExpr(ctx, _))).flatMap { targs =>
+        appExpr(ctx, expr).flatMap { receiver =>
+          ctx.findClass(receiver.tpe.boxed.ref).fold[Result[QuasiValue]] {
+            error(expr.pos, s"Class ${receiver.tpe.boxed.ref.fullName} not found. Check classpath.")
+          } { klass =>
+            klass.findInstanceMethod(name.value, targs.map(_.tpe)).fold[Result[QuasiValue]] {
+              error(name.pos, s"Instance method ${Type.prettyMethod(name.value, targs.map(_.tpe))} is not found in class ${receiver.tpe.boxed.ref.fullName}")
+            } { method =>
+              okQ(TT.JCallInstance(method, receiver, targs))
             }
           }
         }
@@ -188,9 +173,9 @@ object Typer {
   case class Ctx(
     currentModule: ModuleRef,
     repo: ClassRepo,
-    typeTable: Map[VarRef.Typable, Type] = Map()) {
+    typeTable: Map[VarRef, Type] = Map()) {
 
-    def typeOf(ref: VarRef.Typable): Type =
+    def typeOf(ref: VarRef): Type =
       typeTable(ref) // If lookup failed, that means a bug.
 
     def findClass(ref: ClassRef): Option[ClassSig] = repo.find(ref)
