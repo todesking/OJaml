@@ -5,10 +5,10 @@ import Result.error
 
 import com.todesking.ojaml.ml0.compiler.scala.{ NamedAST => NT, TypedAST => TT }
 
+import util.Syntax._
+
 class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
   import Typer.Ctx
-  import Typer.QuasiValue
-  import Typer.{ QuasiValue => Q }
 
   def appModule(s: NT.Module): Result[TT.Module] = {
     val init = Typer.Ctx(s.moduleRef, classRepo).bindModuleValues(moduleVars)
@@ -43,27 +43,16 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       appExpr(ctx, e).map { te => (ctx, te) }
   }
 
-  def appExpr(ctx: Ctx, expr: NT.Expr): Result[TT.Expr] = appExprQ(ctx, expr).flatMap {
-    case Q.ClassValue(sig) =>
-      error(expr.pos, s"Class ${sig.ref.fullName} is not a value")
-    case Q.PackageValue(ref) =>
-      error(expr.pos, s"Package ${ref.fullName} is not a value")
-    case Q.Value(value) =>
-      Right(value)
-  }
-
-  def okQ(expr: TT.Expr) = Right(Q.Value(expr))
-
-  def appExprQ(ctx: Ctx, expr: NT.Expr): Result[QuasiValue] = expr match {
+  def appExpr(ctx: Ctx, expr: NT.Expr): Result[TT.Expr] = expr match {
     case NT.Ref(ref) => ref match {
       case ref @ VarRef.ModuleMember(m, name) =>
-        okQ(TT.ModuleVarRef(m, name, ctx.typeOf(ref)))
+        Right(TT.ModuleVarRef(m, name, ctx.typeOf(ref)))
       case ref @ VarRef.Local(depth, index) =>
-        okQ(TT.LocalRef(depth, index, ctx.typeOf(ref)))
+        Right(TT.LocalRef(depth, index, ctx.typeOf(ref)))
     }
-    case NT.LitInt(v) => okQ(TT.LitInt(v))
-    case NT.LitBool(v) => okQ(TT.LitBool(v))
-    case NT.LitString(v) => okQ(TT.LitString(v))
+    case NT.LitInt(v) => Right(TT.LitInt(v))
+    case NT.LitBool(v) => Right(TT.LitBool(v))
+    case NT.LitString(v) => Right(TT.LitString(v))
     case NT.If(cond, th, el) =>
       for {
         e0 <- appExpr(ctx, cond)
@@ -74,13 +63,12 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         } else if (e1.tpe != e2.tpe) {
           error(expr.pos, s"Then clause has thpe ${e1.tpe} but else clause has type ${e2.tpe}")
         } else {
-          okQ(TT.If(e0, e1, e2, e1.tpe))
+          Right(TT.If(e0, e1, e2, e1.tpe))
         }
       } yield ret
     case NT.Fun(param, tpe, body) =>
       appExpr(ctx.bindLocal(param, tpe), body)
         .map(TT.Fun(tpe, _))
-        .map(Q.Value.apply)
     case NT.ELet(ref, value, body) =>
       appExpr(ctx, value).flatMap { v =>
         val fun = NT.Fun(ref, v.tpe, body)
@@ -88,7 +76,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         appExpr(ctx, fun).map {
           case f @ TT.Fun(argType, b) =>
             assert(argType == v.tpe)
-            Q.Value(TT.App(f, v, f.tpe.r))
+            TT.App(f, v, f.tpe.r)
           case unk =>
             throw new AssertionError(s"$unk")
         }
@@ -110,7 +98,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
           }
       }).flatMap { bs =>
         appExpr(c, body).map { tb =>
-          Q.Value(TT.LetRec(bs, tb))
+          TT.LetRec(bs, tb)
         }
       }
     case NT.App(f, x) =>
@@ -120,7 +108,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         ret <- tf.tpe match {
           case Type.Fun(l, r) =>
             if (l == tx.tpe)
-              okQ(TT.App(tf, tx, r))
+              Right(TT.App(tf, tx, r))
             else
               error(x.pos, s"Argument type mismatch: $l required but ${tx.tpe} found")
           case t =>
@@ -130,26 +118,19 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
     case NT.JCallStatic(klassRef, name, args) =>
       validate(args.map(appExpr(ctx, _))).flatMap { targs =>
         val klass = ctx.findClass(klassRef).get // TODO
-        klass.findStaticMethod(name.value, targs.map(_.tpe)).fold[Result[QuasiValue]] {
-          error(name.pos, s"Static method ${Type.prettyMethod(name.value, targs.map(_.tpe))} is not found in class ${klass.ref.fullName}")
-        } { method =>
-          okQ(TT.JCallStatic(method, targs))
-        }
+        klass.findStaticMethod(name.value, targs.map(_.tpe))
+          .toResult(name.pos, s"Static method ${Type.prettyMethod(name.value, targs.map(_.tpe))} is not found in class ${klass.ref.fullName}")
+          .map(TT.JCallStatic(_, targs))
       }
     case NT.JCallInstance(expr, name, args) =>
-      validate(args.map(appExpr(ctx, _))).flatMap { targs =>
-        appExpr(ctx, expr).flatMap { receiver =>
-          ctx.findClass(receiver.tpe.boxed.ref).fold[Result[QuasiValue]] {
-            error(expr.pos, s"Class ${receiver.tpe.boxed.ref.fullName} not found. Check classpath.")
-          } { klass =>
-            klass.findInstanceMethod(name.value, targs.map(_.tpe)).fold[Result[QuasiValue]] {
-              error(name.pos, s"Instance method ${Type.prettyMethod(name.value, targs.map(_.tpe))} is not found in class ${receiver.tpe.boxed.ref.fullName}")
-            } { method =>
-              okQ(TT.JCallInstance(method, receiver, targs))
-            }
-          }
-        }
-      }
+      for {
+        targs <- validate(args.map(appExpr(ctx, _)))
+        receiver <- appExpr(ctx, expr)
+        klass <- ctx.findClass(receiver.tpe.boxed.ref)
+          .toResult(expr.pos, s"Class ${receiver.tpe.boxed.ref.fullName} not found. Check classpath.")
+        method <- klass.findInstanceMethod(name.value, targs.map(_.tpe))
+          .toResult(name.pos, s"Instance method ${Type.prettyMethod(name.value, targs.map(_.tpe))} is not found in class ${receiver.tpe.boxed.ref.fullName}")
+      } yield TT.JCallInstance(method, receiver, targs)
   }
 }
 object Typer {
@@ -157,13 +138,6 @@ object Typer {
     case TypedAST.TLet(name, tpe, _) =>
       VarRef.ModuleMember(s.moduleRef, name.value) -> tpe
   }.toMap
-
-  sealed abstract class QuasiValue
-  object QuasiValue {
-    case class ClassValue(sig: ClassSig) extends QuasiValue
-    case class PackageValue(ref: PackageRef) extends QuasiValue
-    case class Value(expr: TypedAST.Expr) extends QuasiValue
-  }
 
   case class Ctx(
     currentModule: ModuleRef,
