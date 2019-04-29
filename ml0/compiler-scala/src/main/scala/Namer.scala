@@ -1,13 +1,13 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
-import Compiler.Error
+import Result.Error
+import Result.error
+
 import util.Syntax._
 
 class Namer(packageEnv: PackageEnv) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, NamedAST => NT }
   import Namer.Ctx
-  import Namer.error
-  import Namer.errorMessage
   import Namer.ValueLike
 
   def appProgram(p: RT.Program): Result[(PackageEnv, Seq[NT.Module])] =
@@ -140,7 +140,7 @@ class Namer(packageEnv: PackageEnv) {
   private[this] def valueLike(ctx: Ctx, expr: RT.Expr): Result[ValueLike] = expr match {
     case RT.Ref(name) =>
       ctx.findValue(name.value)
-        .toRight(errorMessage(name.pos, s"Value ${name.value} is not found"))
+        .toResult(name.pos, s"Value ${name.value} is not found")
     case RT.Prop(e, n) =>
       valueLike(ctx, e).flatMap {
         case ValueLike.TopLevel(ref) => ref match {
@@ -149,7 +149,7 @@ class Namer(packageEnv: PackageEnv) {
           case PackageMember.Package(p) =>
             ctx.findPackageMember(p, n.value)
               .map(ValueLike.TopLevel)
-              .toRight(errorMessage(n.pos, s"Member ${n.value} is not found in package ${p.fullName}"))
+              .toResult(n.pos, s"Member ${n.value} is not found in package ${p.fullName}")
           case PackageMember.Module(m) =>
             ctx.findModuleMember(m, n).map(ValueLike.Value)
         }
@@ -162,9 +162,6 @@ class Namer(packageEnv: PackageEnv) {
 }
 
 object Namer {
-  def error[A](pos: Pos, msg: String): Result[A] = Left(errorMessage(pos, msg))
-  def errorMessage[A](pos: Pos, msg: String): Seq[Error] = Seq(Error(pos, msg))
-
   sealed abstract class ValueLike
   object ValueLike {
     case class TopLevel(ref: PackageMember) extends ValueLike
@@ -182,7 +179,7 @@ object Namer {
       require(stack.isEmpty)
       val varRef = VarRef.ModuleMember(currentModule, name.value)
       if (venv.contains(name.value))
-        Left(Seq(Error(name.pos, s"""Name "${name.value}" is already defined in ${currentModule.name}""")))
+        error(name.pos, s"""Name "${name.value}" is already defined in ${currentModule.name}""")
       else
         Right(copy(venv = venv + (varRef.name -> ValueLike.Value(varRef))))
     }
@@ -201,7 +198,7 @@ object Namer {
       case TypeName.Atom(n) => n match {
         case "int" => Right(Type.Int)
         case "bool" => Right(Type.Bool)
-        case unk => Left(Seq(Error(tname.pos, s"Type not found: $unk")))
+        case unk => error(tname.pos, s"Type not found: $unk")
       }
       case TypeName.Fun(l, r) =>
         for {
@@ -245,14 +242,14 @@ object Namer {
       val nameParts = i.qname.parts
       val aliasName = i.qname.parts.last.value
       findPackageMember(PackageRef.Root, nameParts.head.value)
-        .toRight(errorMessage(i.qname.pos, s"Member not found: ${nameParts.head.value}"))
+        .toResult(i.qname.pos, s"Member not found: ${nameParts.head.value}")
         .flatMap { head =>
           nameParts.tail.foldLeft[Result[ValueLike]](Right(ValueLike.TopLevel(head))) { (v, n) =>
             v.flatMap {
               case ValueLike.TopLevel(pm) => pm match {
                 case PackageMember.Package(ref) =>
                   findPackageMember(ref, n.value)
-                    .toRight(errorMessage(n.pos, s"Package member not found: ${n.value}"))
+                    .toResult(n.pos, s"Package member not found: ${n.value}")
                     .map(ValueLike.TopLevel)
                 case PackageMember.Module(m) =>
                   findModuleMember(m, n).map(ValueLike.Value)

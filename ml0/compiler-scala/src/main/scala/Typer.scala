@@ -1,12 +1,14 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
+import Result.Error
+import Result.error
+
+import com.todesking.ojaml.ml0.compiler.scala.{ NamedAST => NT, TypedAST => TT }
+
 class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
-  import com.todesking.ojaml.ml0.compiler.scala.{ NamedAST => NT, TypedAST => TT }
-  import Compiler.Error
   import Typer.Ctx
   import Typer.QuasiValue
   import Typer.{ QuasiValue => Q }
-  import Typer.error
 
   def appModule(s: NT.Module): Result[TT.Module] = {
     val init = Typer.Ctx(s.moduleRef, classRepo).bindModuleValues(moduleVars)
@@ -151,10 +153,6 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
   }
 }
 object Typer {
-  import Compiler.Error
-
-  def error(pos: Pos, msg: String) = Left(Seq(Error(pos, msg)))
-
   def moduleVarsOf(s: TypedAST.Module): Map[VarRef.ModuleMember, Type] = s.body.collect {
     case TypedAST.TLet(name, tpe, _) =>
       VarRef.ModuleMember(s.moduleRef, name.value) -> tpe
@@ -179,7 +177,7 @@ object Typer {
 
     def bindModuleValue(name: Name, tpe: Type): Result[Ctx] = {
       val ref = VarRef.ModuleMember(currentModule, name.value)
-      if (typeTable.contains(ref)) Left(Seq(Error(name.pos, s"Member $name is already defined")))
+      if (typeTable.contains(ref)) error(name.pos, s"Member $name is already defined")
       else Right(copy(typeTable = typeTable + (ref -> tpe)))
     }
 

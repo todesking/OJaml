@@ -1,6 +1,5 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
-import Compiler.Error
 import util.Syntax._
 
 case class PackageEnv(cr: ClassRepo, moduleMembers: Map[ModuleRef, Set[String]] = Map()) {

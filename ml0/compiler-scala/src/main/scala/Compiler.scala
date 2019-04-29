@@ -4,7 +4,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.Files
 
-import Compiler.Error
+import Result.Error
 import util.Syntax._
 
 class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
@@ -85,7 +85,5 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
 }
 
 object Compiler {
-  case class Error(pos: Pos, message: String)
-  type Result[A] = Either[Seq[Error], A]
 }
 

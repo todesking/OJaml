@@ -1,6 +1,5 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
-import Compiler.Error
 import util.Syntax._
 
 sealed abstract class PackageMember
