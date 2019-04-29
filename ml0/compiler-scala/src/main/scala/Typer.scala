@@ -2,7 +2,6 @@ package com.todesking.ojaml.ml0.compiler.scala
 
 class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
   import com.todesking.ojaml.ml0.compiler.scala.{ NamedAST => NT, TypedAST => TT }
-  import Typer.Result
   import Compiler.Error
   import Typer.Ctx
   import Typer.QuasiValue
@@ -167,8 +166,6 @@ object Typer {
     case class PackageValue(ref: PackageRef) extends QuasiValue
     case class Value(expr: TypedAST.Expr) extends QuasiValue
   }
-
-  type Result[A] = Either[Seq[Compiler.Error], A]
 
   case class Ctx(
     currentModule: ModuleRef,

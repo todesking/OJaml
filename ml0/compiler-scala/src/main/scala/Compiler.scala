@@ -4,7 +4,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.Files
 
-import Compiler.{ Result, Error }
+import Compiler.Error
 import util.Syntax._
 
 class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
@@ -42,6 +42,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
     val parser = new Parser(file.path.toString)
     parser.parse(file.content) match {
       case parser.NoSuccess(msg, next) =>
+        // TODO: move error handling in to Parser
         val line = next.pos.line
         val col = next.pos.column
         Left(Seq(Error(Pos(file.path.toString, line, col), s"Parse error: $msg\n${next.pos.longString}")))

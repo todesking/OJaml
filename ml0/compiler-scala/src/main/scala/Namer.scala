@@ -5,7 +5,6 @@ import util.Syntax._
 
 class Namer(packageEnv: PackageEnv) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, NamedAST => NT }
-  import Namer.Result
   import Namer.Ctx
   import Namer.error
   import Namer.errorMessage
@@ -163,7 +162,6 @@ class Namer(packageEnv: PackageEnv) {
 }
 
 object Namer {
-  type Result[A] = Either[Seq[Compiler.Error], A]
   def error[A](pos: Pos, msg: String): Result[A] = Left(errorMessage(pos, msg))
   def errorMessage[A](pos: Pos, msg: String): Seq[Error] = Seq(Error(pos, msg))
 
