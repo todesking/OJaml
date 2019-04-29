@@ -28,5 +28,7 @@ object Syntax {
   implicit class OptionSyntax[A](val self: Option[A]) extends AnyVal {
     def toResult(pos: Pos, message: String): Result[A] =
       self.toRight(Result.errorValue(pos, message))
+    def mapResult[B](f: A => Result[B]): Result[Option[B]] =
+      self.fold[Result[Option[B]]](Right(None))(f(_).map(Some.apply))
   }
 }

@@ -67,11 +67,11 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         }
       } yield ret
     case NT.Fun(param, tpe, body) =>
-      appExpr(ctx.bindLocal(param, tpe), body)
-        .map(TT.Fun(tpe, _))
+      appExpr(ctx.bindLocal(param, tpe.get), body)
+        .map(TT.Fun(tpe.get, _))
     case NT.ELet(ref, value, body) =>
       appExpr(ctx, value).flatMap { v =>
-        val fun = NT.Fun(ref, v.tpe, body)
+        val fun = NT.Fun(ref, Some(v.tpe), body)
         fun.fillPos(expr.pos)
         appExpr(ctx, fun).map {
           case f @ TT.Fun(argType, b) =>
@@ -84,14 +84,14 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
     case NT.ELetRec(bindings, body) =>
       val c = bindings.foldLeft(ctx) {
         case (c, (r, t, e)) =>
-          c.bindLocal(r, t)
+          c.bindLocal(r, t.get)
       }
 
       validate(bindings.map {
         case (ref, tpe, e) =>
           appExpr(c, e).flatMap {
             case te: TT.Fun =>
-              if (te.tpe != tpe) error(e.pos, s"Expression type ${te.tpe} is not compatible to $tpe")
+              if (te.tpe != tpe.get) error(e.pos, s"Expression type ${te.tpe} is not compatible to $tpe")
               else Right(te)
             case _ =>
               throw new AssertionError()

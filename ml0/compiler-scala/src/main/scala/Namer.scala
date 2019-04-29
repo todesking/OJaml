@@ -82,7 +82,7 @@ class Namer(packageEnv: PackageEnv) {
       } yield NT.If(e0, e1, e2)
     case RT.Fun(name, tpeName, body) =>
       for {
-        tpe <- ctx.findType(tpeName)
+        tpe <- tpeName.mapResult(ctx.findType)
         (ref, c) = ctx.bindLocal(name.value)
         tbody <- appExpr(c, body)
       } yield {
@@ -92,7 +92,7 @@ class Namer(packageEnv: PackageEnv) {
       for {
         x <- ctx.bindLocals(bs.map(_._1))
         (refs, c) = x
-        ts <- validate(bs.map(_._2).map(c.findType))
+        ts <- validate(bs.map(_._2).map(_.mapResult(c.findType)))
         vs <- validate(bs.map(_._3).map(appExpr(c, _))).map(_.map(_.asInstanceOf[NT.Fun]))
         b <- appExpr(c, body)
       } yield NT.ELetRec(refs.zip(ts).zip(vs).map { case ((r, t), v) => (r, t, v) }, b)

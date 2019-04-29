@@ -71,10 +71,10 @@ object RawAST {
   case class Ref(name: Name) extends Expr
   case class JCall(expr: Expr, name: Name, args: Seq[Expr], isStatic: Boolean) extends Expr
   case class If(cond: Expr, th: Expr, el: Expr) extends Expr
-  case class Fun(name: Name, tpeName: TypeName, body: Expr) extends Expr
+  case class Fun(name: Name, tpeName: Option[TypeName], body: Expr) extends Expr
   case class App(fun: Expr, arg: Expr) extends Expr
   case class ELet(name: Name, value: Expr, body: Expr) extends Expr
-  case class ELetRec(bindings: Seq[(Name, TypeName, Fun)], body: Expr) extends Expr
+  case class ELetRec(bindings: Seq[(Name, Option[TypeName], Fun)], body: Expr) extends Expr
   case class Prop(expr: Expr, name: Name) extends Expr
 }
 
@@ -97,9 +97,9 @@ object NamedAST {
   case class Ref(ref: VarRef) extends Expr
   case class If(cond: Expr, th: Expr, el: Expr) extends Expr
   case class App(fun: Expr, arg: Expr) extends Expr
-  case class Fun(param: VarRef.Local, tpe: Type, body: Expr) extends Expr
+  case class Fun(param: VarRef.Local, tpe: Option[Type], body: Expr) extends Expr
   case class ELet(ref: VarRef.Local, value: Expr, body: Expr) extends Expr
-  case class ELetRec(bindings: Seq[(VarRef.Local, Type, Fun)], body: Expr) extends Expr
+  case class ELetRec(bindings: Seq[(VarRef.Local, Option[Type], Fun)], body: Expr) extends Expr
   case class JCallInstance(receiver: Expr, methodName: Name, args: Seq[Expr]) extends Expr
   case class JCallStatic(target: ClassRef, methodName: Name, args: Seq[Expr]) extends Expr
 }

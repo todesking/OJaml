@@ -54,6 +54,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   val name: Parser[Name] = normalName | opName
   val qname: Parser[QName] = withpos(rep1sep(name, ".") ^^ { xs => QName(xs) })
 
+  // TODO: Support parenthesis
   def typename: Parser[TypeName] = withpos(rep1sep(typename1, kwd("=>")) ^^ { ts =>
     ts.tail.foldLeft(ts.head) { (l, r) => TypeName.Fun(l, r) }
   })
@@ -128,9 +129,10 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   val lit_string: Parser[RawAST.LitString] = withpos(("\"" ~> """[^"]+""".r) <~ "\"" ^^ { s => T.LitString(s) })
 
   val eif: Parser[RawAST.If] = withpos((kwd("if") ~> expr) ~ (kwd("then") ~> expr) ~ (kwd("else") ~> expr) ^^ { case cond ~ th ~ el => T.If(cond, th, el) })
-  def fun: Parser[RawAST.Fun] = withpos((kwd("fun") ~> normalName) ~ (":" ~> typename1) ~ ("=>" ~> expr) ^^ { case name ~ tpe ~ expr => T.Fun(name, tpe, expr) })
+  // TODO: Support fun x y z ... =>
+  def fun: Parser[RawAST.Fun] = withpos((kwd("fun") ~> normalName) ~ (":" ~> typename1).? ~ ("=>" ~> expr) ^^ { case name ~ tpe ~ expr => T.Fun(name, tpe, expr) })
   val var_ref: Parser[RawAST.Ref] = withpos(normalName ^^ { n => T.Ref(n) })
-  val eletr: Parser[RawAST.ELetRec] = withpos((kwd("let") ~> kwd("rec")) ~> rep1sep(normalName ~ (":" ~> typename) ~ ("=" ~> fun), ";") ~ (kwd("in") ~> expr) ^^ {
+  val eletr: Parser[RawAST.ELetRec] = withpos((kwd("let") ~> kwd("rec")) ~> rep1sep(normalName ~ (":" ~> typename).? ~ ("=" ~> fun), ";") ~ (kwd("in") ~> expr) ^^ {
     case bs ~ body =>
       val bindings = bs.map { case n ~ t ~ e => (n, t, e) }
       T.ELetRec(bindings, body)
