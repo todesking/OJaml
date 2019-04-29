@@ -64,18 +64,13 @@ class Namer(packageEnv: PackageEnv) {
 
   private[this] def appExpr0(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = expr match {
     case RT.Ref(name) =>
-      valueLike(ctx, expr).flatMap {
-        case ValueLike.Value(ref) => Right(ref)
-        case ValueLike.TopLevel(_) => error(name.pos, s"${name.value} is not a value")
-      }
+      valueLike(ctx, expr)
+        .flatMap(_.toValue(name.pos, s"${name.value} is not a value"))
         .map(NT.Ref)
     case RT.Prop(e, n) =>
-      valueLike(ctx, expr).flatMap {
-        case ValueLike.TopLevel(ref) =>
-          error(n.pos, s"${n.value} is not a value")
-        case ValueLike.Value(ref) =>
-          Right(NT.Ref(ref))
-      }
+      valueLike(ctx, expr)
+        .flatMap(_.toValue(n.pos, s"${n.value} is not a value"))
+        .map(NT.Ref)
     case RT.LitInt(v) => Right(NT.LitInt(v))
     case RT.LitBool(v) => Right(NT.LitBool(v))
     case RT.LitString(v) => Right(NT.LitString(v))
@@ -162,10 +157,16 @@ class Namer(packageEnv: PackageEnv) {
 }
 
 object Namer {
-  sealed abstract class ValueLike
+  sealed abstract class ValueLike {
+    def toValue(pos: Pos, msg: String): Result[VarRef]
+  }
   object ValueLike {
-    case class TopLevel(ref: PackageMember) extends ValueLike
-    case class Value(ref: VarRef) extends ValueLike
+    case class TopLevel(ref: PackageMember) extends ValueLike {
+      override def toValue(pos: Pos, msg: String) = error(pos, msg)
+    }
+    case class Value(ref: VarRef) extends ValueLike {
+      override def toValue(pos: Pos, msg: String) = Right(ref)
+    }
   }
 
   case class Ctx(
