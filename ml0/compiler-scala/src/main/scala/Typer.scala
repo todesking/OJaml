@@ -35,19 +35,67 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
   def appTerm(ctx: Ctx, t: NT.Term): Result[(Ctx, TT.Term)] = t match {
     case NT.TLet(name, expr) =>
       for {
-        e <- appExpr(ctx, expr).map(_._2)
+        e <- appExpr(ctx, expr).map { case (s, tree) => subst(s, tree) }
         c <- ctx.bindModuleValue(name, e.tpe)
       } yield {
+        assertNoFVs(e)
         (c, TT.TLet(name, e.tpe, e))
       }
     case e: NT.Expr =>
-      appExpr(ctx, e).map { case (_, te) => (ctx, te) }
+      val te = appExpr(ctx, e).map { case (s, tree) => (ctx, subst(s, tree)) }
+      te.map(_._2).foreach(assertNoFVs)
+      te
   }
 
   private[this] def ok(s: Subst, e: TT.Expr): Result[(Subst, TT.Expr)] =
     Right((s, e))
   private[this] def ok0(e: TT.Expr): Result[(Subst, TT.Expr)] =
     ok(Subst.empty, e)
+
+  private[this] def subst(s: Subst, tree: TT.Expr): TT.Expr = tree match {
+    case _: TT.Lit => tree
+    case TT.ModuleVarRef(m, n, t) => TT.ModuleVarRef(m, n, s.app(t))
+    case TT.LocalRef(d, i, t) => TT.LocalRef(d, i, s.app(t))
+    case TT.LetRec(vs, b) => TT.LetRec(
+      vs.map(subst(s, _)).map { case f: TT.Fun => f case _ => throw new AssertionError() },
+      subst(s, b))
+    case TT.If(c, th, el, t) =>
+      TT.If(subst(s, c), subst(s, th), subst(s, el), s.app(t))
+    case TT.App(f, x, t) =>
+      TT.App(subst(s, f), subst(s, x), s.app(t))
+    case TT.Fun(t, b) =>
+      TT.Fun(s.app(t), subst(s, b))
+    case TT.JCallStatic(m, a) =>
+      TT.JCallStatic(m, a.map(subst(s, _)))
+    case TT.JCallInstance(m, r, a) =>
+      TT.JCallInstance(m, subst(s, r), a.map(subst(s, _)))
+  }
+
+  private[this] def assertNoFVs(t: Type) = assert(t.freeTypeVariables.isEmpty, s"$t")
+  private[this] def assertNoFVs(tree: TT.Expr): Unit = tree match {
+    case _: TT.Lit =>
+    case TT.ModuleVarRef(m, n, t) => assertNoFVs(t)
+    case TT.LocalRef(d, i, t) => assertNoFVs(t)
+    case TT.LetRec(vs, b) =>
+      vs.foreach(assertNoFVs); assertNoFVs(b)
+    case TT.If(c, th, el, t) =>
+      assertNoFVs(t)
+      assertNoFVs(c)
+      assertNoFVs(th)
+      assertNoFVs(el)
+    case TT.App(f, x, t) =>
+      assertNoFVs(t)
+      assertNoFVs(f)
+      assertNoFVs(x)
+    case TT.Fun(t, b) =>
+      assertNoFVs(t)
+      assertNoFVs(b)
+    case TT.JCallStatic(m, a) =>
+      a.foreach(assertNoFVs)
+    case TT.JCallInstance(m, r, a) =>
+      a.foreach(assertNoFVs)
+      assertNoFVs(r)
+  }
 
   def appExpr(ctx: Ctx, expr: NT.Expr): Result[(Subst, TT.Expr)] = expr match {
     case NT.Ref(ref) => ref match {
@@ -71,8 +119,11 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       } yield (s, TT.If(e0, e1, e2, s.app(e1.tpe)))
     case NT.Fun(param, tpe, body) =>
       val t = tpe getOrElse freshVar()
-      appExpr(ctx.bindLocal(param, t), body)
-        .map { case (s, b) => (s, TT.Fun(s.app(t), b)) }
+      for {
+        x <- appExpr(ctx.bindLocal(param, t), body)
+        (s1, b) = x
+        s = s1
+      } yield (s, TT.Fun(s.app(t), b))
     case NT.ELet(ref, value, body) =>
       for {
         x0 <- appExpr(ctx, value)
@@ -95,8 +146,8 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         bs.map {
           case (ref, tpe, fun) =>
             appExpr(c, fun).map {
-              case (subst, fun: TT.Fun) => (subst, fun)
-              case (subst, fun) => throw new AssertionError(s"$fun")
+              case (subst, tfun: TT.Fun) => (subst + (tpe -> tfun.tpe), tfun)
+              case (subst, tfun) => throw new AssertionError(s"$tfun")
             }
         }.validated
 
