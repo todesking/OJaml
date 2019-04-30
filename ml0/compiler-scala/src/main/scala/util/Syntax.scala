@@ -14,12 +14,15 @@ object Syntax {
     def mapWithContextE[B, C, E](init: B)(f: (B, A) => Either[E, (B, C)]): Either[E, Seq[C]] =
       self.mapWithContextEC(init)(f).map(_._2)
 
-    def mapWithContext[B, C](init: B)(f: (B, A) => (B, C)): Seq[C] =
+    def mapWithContextC[B, C](init: B)(f: (B, A) => (B, C)): (B, Seq[C]) =
       self.foldLeft((init, Seq.empty[C])) {
         case ((c, a), x) =>
           val (cc, y) = f(c, x)
           (cc, a :+ y)
-      }._2
+      }
+
+    def mapWithContext[B, C](init: B)(f: (B, A) => (B, C)): Seq[C] =
+      mapWithContextC(init)(f)._2
 
     def mapE[B, E](f: A => Either[E, B]): Either[E, Seq[B]] =
       self.mapWithContextE(()) { (_, x) => f(x).map { y => ((), y) } }

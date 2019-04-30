@@ -6,11 +6,14 @@ sealed abstract class Type {
   def boxed: Type.Reference
   def unboxed: Option[Type.Primitive]
   def toString(group: Boolean): String
+  def freeTypeVariables: Set[Type] = Set() // TODO
+  def substitute(a: Type.Var, t: Type): Type
 }
 object Type {
   sealed abstract class Primitive extends Type {
     override def unboxed: None.type = None
     override def toString(group: Boolean): String = toString
+    override def substitute(a: Type.Var, t: Type) = this
   }
   case object Int extends Primitive {
     override def boxed: Klass = BoxedInt
@@ -29,7 +32,15 @@ object Type {
     def unapply(r: Reference): Option[ClassRef] = Some(r.ref)
   }
 
-  case class Klass(ref: ClassRef) extends Reference
+  case class Var(id: Int) extends Reference {
+    override def ref = Object.ref
+    override def toString(group: Boolean) = s"?$id"
+    override def substitute(a: Type.Var, t: Type) = if (a == this) t else this
+  }
+
+  case class Klass(ref: ClassRef) extends Reference {
+    override def substitute(a: Type.Var, t: Type) = this
+  }
   object Klass {
     def apply(internalName: String): Klass =
       Klass(ClassRef.fromInternalName(internalName))
@@ -42,6 +53,8 @@ object Type {
       val naked = s"${l.toString(true)} -> $r"
       if (group) s"($naked)" else naked
     }
+    override def substitute(a: Type.Var, t: Type) =
+      Fun(l.substitute(a, t), r.substitute(a, t))
   }
   object Fun {
     val ref: ClassRef = ClassRef.fromInternalName("com/todesking/ojaml/ml0/runtime/Fun")

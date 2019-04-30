@@ -104,7 +104,7 @@ object NamedAST {
   case class JCallStatic(target: ClassRef, methodName: Name, args: Seq[Expr]) extends Expr
 }
 
-sealed abstract class TypedAST extends AnyAST
+sealed abstract class TypedAST extends AnyAST with HasPos
 object TypedAST {
   case class Module(pkg: QName, name: Name, body: Seq[Term]) extends TypedAST {
     def moduleRef = ModuleRef(pkg.asPackage, name.value)

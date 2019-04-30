@@ -1,0 +1,14 @@
+package test.ml0
+
+module Mono {
+  let lit_int = 1 ;;
+  (* lit_int: int = 1 *)
+
+  let f = fun x => x ;;
+  (* f: int => int *)
+
+  let x = f 1 ;;
+  (* x: int = 1 *)
+}
+
+
