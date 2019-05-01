@@ -210,8 +210,8 @@ class Assembler(baseDir: Path) {
         method.visitLabel(lElse)
         eval(method, el, depth)
         method.visitLabel(lEnd)
-      case fun @ TT.Fun(argType, body) =>
-        val klass = emitFun(fun.tpe.toString(false), body, depth, None)
+      case TT.Fun(body, tpe) =>
+        val klass = emitFun(tpe.toString(false), body, depth, None)
         method.visitTypeInsn(op.NEW, klass)
         method.visitInsn(op.DUP)
         if (depth == 0) {

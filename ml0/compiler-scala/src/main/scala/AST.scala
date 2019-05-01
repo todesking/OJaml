@@ -128,9 +128,7 @@ object TypedAST {
   }
   case class If(cond: Expr, th: Expr, el: Expr, tpe: Type) extends Expr
   case class App(fun: Expr, arg: Expr, tpe: Type) extends Expr
-  case class Fun(argType: Type, body: Expr) extends Expr {
-    override val tpe = Type.Fun(argType, body.tpe)
-  }
+  case class Fun(body: Expr, tpe: Type) extends Expr
 
   case class JCallStatic(method: MethodSig, args: Seq[Expr]) extends Expr {
     require(method.isStatic)

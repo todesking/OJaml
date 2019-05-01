@@ -63,46 +63,57 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       TT.If(subst(s, c), subst(s, th), subst(s, el), s.app(t))
     case TT.App(f, x, t) =>
       TT.App(subst(s, f), subst(s, x), s.app(t))
-    case TT.Fun(t, b) =>
-      TT.Fun(s.app(t), subst(s, b))
+    case TT.Fun(b, t) =>
+      TT.Fun(subst(s, b), s.app(t))
     case TT.JCallStatic(m, a) =>
       TT.JCallStatic(m, a.map(subst(s, _)))
     case TT.JCallInstance(m, r, a) =>
       TT.JCallInstance(m, subst(s, r), a.map(subst(s, _)))
   }
 
-  private[this] def assertNoFVs(t: Type) = assert(t.freeTypeVariables.isEmpty, s"$t")
-  private[this] def assertNoFVs(tree: TT.Expr): Unit = tree match {
-    case _: TT.Lit =>
-    case TT.ModuleVarRef(m, n, t) => assertNoFVs(t)
-    case TT.LocalRef(d, i, t) => assertNoFVs(t)
-    case TT.LetRec(vs, b) =>
-      vs.foreach(assertNoFVs); assertNoFVs(b)
-    case TT.If(c, th, el, t) =>
-      assertNoFVs(t)
-      assertNoFVs(c)
-      assertNoFVs(th)
-      assertNoFVs(el)
-    case TT.App(f, x, t) =>
-      assertNoFVs(t)
-      assertNoFVs(f)
-      assertNoFVs(x)
-    case TT.Fun(t, b) =>
-      assertNoFVs(t)
-      assertNoFVs(b)
-    case TT.JCallStatic(m, a) =>
-      a.foreach(assertNoFVs)
-    case TT.JCallInstance(m, r, a) =>
-      a.foreach(assertNoFVs)
-      assertNoFVs(r)
+  private[this] def assertNoFVs1(tree: TT.Expr) =
+    assert(
+      tree.tpe.freeTypeVariables.isEmpty,
+      s"$tree: ${tree.tpe} has free type variables: ${tree.tpe.freeTypeVariables.mkString(", ")}")
+
+  private[this] def assertNoFVs(tree: TT.Expr): Unit = {
+    return // its difficult to find fvs in AST. maybe need TABS AST?
+    assertNoFVs1(tree)
+    tree match {
+      case _: TT.Lit =>
+      case TT.ModuleVarRef(m, n, t) =>
+      case TT.LocalRef(d, i, t) =>
+      case TT.LetRec(vs, b) =>
+        vs.foreach(assertNoFVs); assertNoFVs(b)
+      case TT.If(c, th, el, t) =>
+        assertNoFVs(c)
+        assertNoFVs(th)
+        assertNoFVs(el)
+      case TT.App(f, x, t) =>
+        assertNoFVs(f)
+        assertNoFVs(x)
+      case TT.Fun(b, t) =>
+        assertNoFVs(b)
+      case TT.JCallStatic(m, a) =>
+        a.foreach(assertNoFVs)
+      case TT.JCallInstance(m, r, a) =>
+        a.foreach(assertNoFVs)
+        assertNoFVs(r)
+    }
   }
 
+  private[this] def tappFresh(t: Type): Type = t match {
+    case Type.Abs(params, body) =>
+      val s = new Subst(params.map { p => p -> freshVar() }.toList)
+      s.app(body)
+    case t => t
+  }
   def appExpr(ctx: Ctx, expr: NT.Expr): Result[(Subst, TT.Expr)] = expr match {
     case NT.Ref(ref) => ref match {
       case ref @ VarRef.ModuleMember(m, name) =>
-        ok0(TT.ModuleVarRef(m, name, ctx.typeOf(ref)))
+        ok0(TT.ModuleVarRef(m, name, tappFresh(ctx.typeOf(ref))))
       case ref @ VarRef.Local(depth, index) =>
-        ok0(TT.LocalRef(depth, index, ctx.typeOf(ref)))
+        ok0(TT.LocalRef(depth, index, tappFresh(ctx.typeOf(ref))))
     }
     case NT.LitInt(v) => ok0(TT.LitInt(v))
     case NT.LitBool(v) => ok0(TT.LitBool(v))
@@ -125,15 +136,25 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         x <- appExpr(ctx.bindLocal(param, t), body)
         (s1, b) = x
         s = s1
-      } yield (s, TT.Fun(s.app(t), b))
+      } yield (s, TT.Fun(b, Type.Fun(s.app(t), b.tpe)))
     case NT.ELet(ref, value, body) =>
+      val varIdStart = nextVarId
       for {
         x0 <- appExpr(ctx, value)
-        (s0, e0) = x0
+        (s0, e00) = x0
+        e0 = e00 match {
+          case TT.Fun(body, funType) =>
+            val params = funType.freeTypeVariables
+              .filter(_.id >= varIdStart)
+              .toSeq
+              .sortBy(_.id)
+            TT.Fun(body, Type.Abs(params, funType))
+          case x => x
+        }
         x1 <- appExpr(ctx.bindLocal(ref, e0.tpe), body)
         (s1, e1) = x1
         s <- (s0 ++ s1).unify(body.pos)
-      } yield (s, TT.App(TT.Fun(e0.tpe, e1), e0, e1.tpe))
+      } yield (s, TT.App(TT.Fun(e1, Type.Fun(e0.tpe, e1.tpe)), e0, e1.tpe))
     case NT.ELetRec(bindings, body) =>
       val bs = bindings.map {
         case (ref, tpe, fun) =>
