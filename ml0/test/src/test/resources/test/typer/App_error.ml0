@@ -1,0 +1,13 @@
+(* using: Predef *)
+package test.ml0
+
+import com.todesking.ojaml.ml0.lib.Predef.+
+
+module App_error {
+  let x =
+    let f = fun x => x in
+    let y = f 100 in
+    f "a" ;;
+(*  ^ *)
+}
+
