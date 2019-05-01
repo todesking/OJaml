@@ -6,7 +6,7 @@ sealed abstract class Type {
   def boxed: Type.Reference
   def unboxed: Option[Type.Primitive]
   def toString(group: Boolean): String
-  def freeTypeVariables: Set[Type] = Set() // TODO
+  def freeTypeVariables: Set[Type]
   def substitute(a: Type.Var, t: Type): Type
 }
 object Type {
@@ -14,6 +14,7 @@ object Type {
     override def unboxed: None.type = None
     override def toString(group: Boolean): String = toString
     override def substitute(a: Type.Var, t: Type) = this
+    override def freeTypeVariables = Set()
   }
   case object Int extends Primitive {
     override def boxed: Klass = BoxedInt
@@ -36,10 +37,12 @@ object Type {
     override def ref = Object.ref
     override def toString(group: Boolean) = s"?$id"
     override def substitute(a: Type.Var, t: Type) = if (a == this) t else this
+    override def freeTypeVariables = Set(this)
   }
 
   case class Klass(ref: ClassRef) extends Reference {
     override def substitute(a: Type.Var, t: Type) = this
+    override def freeTypeVariables = Set()
   }
   object Klass {
     def apply(internalName: String): Klass =
@@ -50,11 +53,12 @@ object Type {
     override def ref: ClassRef = Fun.ref
     override def toString: String = toString(false)
     override def toString(group: Boolean): String = {
-      val naked = s"${l.toString(true)} -> $r"
+      val naked = s"${l.toString(true)} -> ${r.toString(false)}"
       if (group) s"($naked)" else naked
     }
     override def substitute(a: Type.Var, t: Type) =
       Fun(l.substitute(a, t), r.substitute(a, t))
+    override def freeTypeVariables = l.freeTypeVariables ++ r.freeTypeVariables
   }
   object Fun {
     val ref: ClassRef = ClassRef.fromInternalName("com/todesking/ojaml/ml0/runtime/Fun")

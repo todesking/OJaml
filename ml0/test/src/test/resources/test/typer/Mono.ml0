@@ -5,10 +5,11 @@ module Mono {
   (* lit_int: int = 1 *)
 
   let f = fun x => x ;;
-  (* f: int => int *)
+  (* f: com.todesking.ojaml.ml0.runtime.Fun = int => int *)
 
   let x = f 1 ;;
   (* x: int = 1 *)
+
+  let y = f "a" ;;
+  (* y: java.lang.String = a *)
 }
-
-

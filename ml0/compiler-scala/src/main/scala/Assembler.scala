@@ -82,7 +82,7 @@ class Assembler(baseDir: Path) {
     }
 
     var funID = 0
-    def emitFun(body: TT.Expr, depth: Int, recValues: Option[Seq[TT.Expr]]): String = {
+    def emitFun(repr: String, body: TT.Expr, depth: Int, recValues: Option[Seq[TT.Expr]]): String = {
       val cname = s"${struct.name.value}$$$funID"
       val qcname = s"$pkg.$cname".replaceAll("\\.", "/")
       funID += 1
@@ -134,6 +134,15 @@ class Assembler(baseDir: Path) {
       box(app, body.tpe)
       app.visitInsn(op.ARETURN)
       methodEnd(app)
+      val toS = cw.visitMethod(
+        op.ACC_PUBLIC,
+        "toString",
+        "()Ljava/lang/String;",
+        null,
+        Array())
+      toS.visitLdcInsn(repr)
+      toS.visitInsn(op.ARETURN)
+      methodEnd(toS)
       cw.visitEnd()
       write(pkg, cname, cw.toByteArray)
       qcname
@@ -171,7 +180,7 @@ class Assembler(baseDir: Path) {
         method.visitTypeInsn(op.CHECKCAST, tpe.boxed.ref.internalName)
         unbox(method, tpe.boxed)
       case TT.LetRec(values, body) =>
-        val klass = emitFun(body, depth, Some(values))
+        val klass = emitFun("(let rec body)", body, depth, Some(values))
         method.visitTypeInsn(op.NEW, klass)
         method.visitInsn(op.DUP)
         if (depth == 0) {
@@ -201,8 +210,8 @@ class Assembler(baseDir: Path) {
         method.visitLabel(lElse)
         eval(method, el, depth)
         method.visitLabel(lEnd)
-      case TT.Fun(argType, body) =>
-        val klass = emitFun(body, depth, None)
+      case fun @ TT.Fun(argType, body) =>
+        val klass = emitFun(fun.tpe.toString(false), body, depth, None)
         method.visitTypeInsn(op.NEW, klass)
         method.visitInsn(op.DUP)
         if (depth == 0) {
