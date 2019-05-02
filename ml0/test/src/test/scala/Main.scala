@@ -107,7 +107,7 @@ class Main extends FunSpec {
             val klass = cl.loadClass(klassName)
             val field = klass.getField(fieldName)
             val actual = field.get(null)
-            assert(typeName == field.getType.getName, s"at $fieldName")
+            if (typeName != "*") assert(typeName == field.getType.getName, s"at $fieldName")
             assert(value == s"$actual", s"at $fieldName")
         }
       } catch {
@@ -156,7 +156,7 @@ object TestMain {
           (line, col)
       }.toSet
 
-      val reAssertion = """^\s*\(\* ([\w.]+): ([\w.]+) = (.+) \*\)\s*$""".r
+      val reAssertion = """^\s*\(\* ([\w.]+): ([\w.*]+) = (.+) \*\)\s*$""".r
       val assertions = lines.collect {
         case `reAssertion`(name, tpe, value) =>
           if (name.contains(".")) {
