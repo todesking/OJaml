@@ -7,6 +7,7 @@ import java.nio.file.Files
 import Result.Error
 import util.Syntax._
 
+// Facade of compile phases
 class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TypedAST => TT }
 
@@ -38,7 +39,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
 
   type ModuleEnv = Map[VarRef.ModuleMember, Type]
 
-  def typing(penv: PackageEnv, moduleVars: ModuleEnv, file: FileContent): Result[(PackageEnv, ModuleEnv, Seq[TypedAST.Module])] = {
+  def parsePhase(file: FileContent): Result[RawAST.Program] = {
     val parser = new Parser(file.path.toString)
     parser.parse(file.content) match {
       case parser.NoSuccess(msg, next) =>
@@ -47,40 +48,55 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
         val col = next.pos.column
         Left(Seq(Error(Pos(file.path.toString, line, col), s"Parse error: $msg\n${next.pos.longString}")))
       case parser.Success(ast, _) =>
-        val namer = new Namer(penv)
-        namer.appProgram(ast).flatMap {
-          case (pe, namedTrees) =>
-            if (debugPrint) {
-              println("Phase: Namer")
-              namedTrees.foreach { nt =>
-                println(AST.pretty(nt))
-              }
-              println(pe.pretty)
-            }
-            namedTrees.mapWithContextEC(moduleVars) { (mvs, nt) =>
-              val typer = new Typer(classRepo, mvs)
-              typer.appModule(nt).map { typed =>
-                val newMvs = mvs ++ Typer.moduleVarsOf(typed)
-                if (debugPrint) {
-                  println("Phase: Typer")
-                  println(AST.pretty(typed))
-                  println("Module members")
-                  newMvs.toSeq
-                    .map { case (k, v) => s"${k.module.fullName}.${k.name}" -> v }
-                    .sortBy(_._1)
-                    .foreach {
-                      case (k, v) =>
-                        println(s"- $k: $v")
-                    }
-                }
-                (newMvs, typed)
-              }
-            }.map { case (mvs, typed) => (pe, mvs, typed) }
-        }.map {
-          case (pe, mvs, typed) =>
-            (pe, mvs, typed)
-        }
+        Right(ast)
     }
+  }
+
+  def namePhase(penv: PackageEnv, tree: RawAST.Program): Result[(PackageEnv, Seq[NamedAST.Module])] = {
+    val namer = new Namer(penv)
+    namer.appProgram(tree).map {
+      case (pe, namedTrees) =>
+        if (debugPrint) {
+          println("Phase: Namer")
+          namedTrees.foreach { nt =>
+            println(AST.pretty(nt))
+          }
+          println(pe.pretty)
+        }
+        (pe, namedTrees)
+    }
+  }
+
+  def typePhase(moduleVars: ModuleEnv, tree: NamedAST.Module): Result[(ModuleEnv, TypedAST.Module)] = {
+    val typer = new Typer(classRepo, moduleVars)
+    typer.appModule(tree).map { typed =>
+      val newMvs = moduleVars ++ Typer.moduleVarsOf(typed)
+      if (debugPrint) {
+        println("Phase: Typer")
+        println(AST.pretty(typed))
+        println("Module members")
+        newMvs.toSeq
+          .map { case (k, v) => s"${k.module.fullName}.${k.name}" -> v }
+          .sortBy(_._1)
+          .foreach {
+            case (k, v) =>
+              println(s"- $k: $v")
+          }
+      }
+      (newMvs, typed)
+    }
+  }
+
+  def typing(penv: PackageEnv, moduleVars: ModuleEnv, file: FileContent): Result[(PackageEnv, ModuleEnv, Seq[TypedAST.Module])] = {
+    for {
+      rawTree <- parsePhase(file)
+      x1 <- namePhase(penv, rawTree)
+      (pe, namedTrees) = x1
+      x2 <- namedTrees.mapWithContextEC(moduleVars) { (mvs, nt) =>
+        typePhase(mvs, nt)
+      }
+      (mvs, typed) = x2
+    } yield (pe, mvs, typed)
   }
 }
 
