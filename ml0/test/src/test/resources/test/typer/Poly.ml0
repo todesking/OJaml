@@ -1,3 +1,4 @@
+(* debug *)
 (* using: Predef *)
 package test.ml0
 
@@ -5,7 +6,10 @@ import com.todesking.ojaml.ml0.lib.Predef.+
 
 module Poly {
   let id = fun x => x ;;
-  (* id: * = [a] a -> a *)
+  (* id: * = [?1] ?1 -> ?1 *)
+
+  let id2 = fun x => x ;;
+  (* id: * = [?1] ?1 -> ?1 *)
 
   let x_int = id 1 ;;
   (* x_int: int = 1 *)
@@ -19,6 +23,7 @@ module Poly {
     let y = id "foo" in
     y ;;
   (* y: java.lang.String = foo *)
+
 }
 
 

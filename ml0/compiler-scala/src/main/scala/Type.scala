@@ -43,7 +43,7 @@ object Type {
   }
 
   case class Abs(params: Seq[Var], body: Type) extends Reference {
-    override def ref = Object.ref
+    override def ref = body.boxed.ref
     override def toString(group: Boolean) = {
       val naked = s"[${params.map(_.toString(false)).mkString(", ")}] ${body.toString(false)}"
       if (group) s"($naked)" else naked

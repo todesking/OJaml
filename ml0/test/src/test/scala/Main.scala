@@ -23,7 +23,7 @@ class Main extends FunSpec {
     if (Files.isDirectory(p)) {
       if (p.getFileName.toString.endsWith(".ml0")) {
         it(base.relativize(p).toString) {
-          test(listFiles(p))
+          test(base.relativize(p).toString, listFiles(p))
         }
       } else {
         describe(base.relativize(p).toString) {
@@ -32,7 +32,7 @@ class Main extends FunSpec {
       }
     } else if (p.getFileName.toString.endsWith(".ml0")) {
       it(base.relativize(p).toString) {
-        test(Seq(p))
+        test(base.relativize(p).toString, Seq(p))
       }
     } else {
       it(base.relativize(p).toString) {
@@ -41,7 +41,7 @@ class Main extends FunSpec {
     }
   }
 
-  private[this] def test(paths: Seq[Path]): Unit = {
+  private[this] def test(testName: String, paths: Seq[Path]): Unit = {
     import TestMain.Target
     import TestMain.Assertion
     import com.todesking.ojaml.ml0.compiler.{ scala => scala_compiler }
@@ -64,7 +64,6 @@ class Main extends FunSpec {
     val contents = if (predef) predefContent +: testContents else testContents
 
     val outDir = Files.createTempDirectory("ojaml-test")
-    println(s"outDir = $outDir")
     val cl = this.getClass.getClassLoader
     val c = new scala_compiler.Compiler(outDir, cl, debugPrint)
 
@@ -93,27 +92,33 @@ class Main extends FunSpec {
       }
     } else {
       try {
-        result.foreach { e =>
-          println(s"${e.pos} [Unexpected] ${e.message}")
-        }
-        assert(Seq() == result)
-        val cl = new java.net.URLClassLoader(Array(outDir.toUri.toURL), this.getClass.getClassLoader)
+        try {
+          result.foreach { e =>
+            println(s"${e.pos} [Unexpected] ${e.message}")
+          }
+          assert(Seq() == result)
+          val cl = new java.net.URLClassLoader(Array(outDir.toUri.toURL), this.getClass.getClassLoader)
 
-        // make sure all classes are valid
-        targets.flatMap(_.classNames).foreach { cn => cl.loadClass(cn) }
+          // make sure all classes are valid
+          targets.flatMap(_.classNames).foreach { cn => cl.loadClass(cn) }
 
-        assertions.foreach {
-          case Assertion(klassName, fieldName, typeName, value) =>
-            val klass = cl.loadClass(klassName)
-            val field = klass.getField(fieldName)
-            val actual = field.get(null)
-            if (typeName != "*") assert(typeName == field.getType.getName, s"at $fieldName")
-            assert(value == s"$actual", s"at $fieldName")
+          assertions.foreach {
+            case Assertion(klassName, fieldName, typeName, value) =>
+              val klass = cl.loadClass(klassName)
+              val field = klass.getField(fieldName)
+              val actual = field.get(null)
+              if (typeName != "*") assert(typeName == field.getType.getName, s"at $fieldName")
+              assert(value == s"$actual", s"at $fieldName")
+          }
+        } catch {
+          case e: LinkageError => throw new RuntimeException(e)
+        } finally {
+          // rm outDir
         }
       } catch {
-        case e: LinkageError => throw new RuntimeException(e)
-      } finally {
-        // rm outDir
+        case e: Throwable =>
+          println(s"Test failed at runtime($testName): outDir = $outDir")
+          throw e
       }
     }
   }

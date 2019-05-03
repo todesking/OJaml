@@ -129,6 +129,7 @@ object TypedAST {
   case class If(cond: Expr, th: Expr, el: Expr, tpe: Type) extends Expr
   case class App(fun: Expr, arg: Expr, tpe: Type) extends Expr
   case class Fun(body: Expr, tpe: Type) extends Expr
+  case class TAbs(params: Seq[Type.Var], body: Expr, tpe: Type.Abs) extends Expr
 
   case class JCallStatic(method: MethodSig, args: Seq[Expr]) extends Expr {
     require(method.isStatic)

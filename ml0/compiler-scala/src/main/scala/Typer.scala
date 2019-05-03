@@ -35,15 +35,23 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
   def appTerm(ctx: Ctx, t: NT.Term): Result[(Ctx, TT.Term)] = t match {
     case NT.TLet(name, expr) =>
       for {
-        e <- appExpr(ctx, expr).map { case (s, tree) => subst(s, tree) }
+        e <- appExpr(ctx, expr).map {
+          case (s, tree) =>
+            subst(s, tree) match {
+              case fun @ TT.Fun(b, t) if t.freeTypeVariables.nonEmpty =>
+                val tvs = t.freeTypeVariables.toSeq.sortBy(_.id)
+                TT.TAbs(tvs, fun, Type.Abs(tvs, t))
+              case x => x
+            }
+        }
         c <- ctx.bindModuleValue(name, e.tpe)
       } yield {
-        assertNoFVs(e)
+        assertNoFVs(e, Set())
         (c, TT.TLet(name, e.tpe, e))
       }
     case e: NT.Expr =>
       val te = appExpr(ctx, e).map { case (s, tree) => (ctx, subst(s, tree)) }
-      te.map(_._2).foreach(assertNoFVs)
+      te.map(_._2).foreach(assertNoFVs(_, Set()))
       te
   }
 
@@ -65,40 +73,43 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       TT.App(subst(s, f), subst(s, x), s.app(t))
     case TT.Fun(b, t) =>
       TT.Fun(subst(s, b), s.app(t))
+    case TT.TAbs(ps, e, t) =>
+      TT.TAbs(ps, subst(s -- ps, e), s.app(t).asInstanceOf[Type.Abs])
     case TT.JCallStatic(m, a) =>
       TT.JCallStatic(m, a.map(subst(s, _)))
     case TT.JCallInstance(m, r, a) =>
       TT.JCallInstance(m, subst(s, r), a.map(subst(s, _)))
   }
 
-  private[this] def assertNoFVs1(tree: TT.Expr) =
+  private[this] def assertNoFVs1(tree: TT.Expr, nonFrees: Set[Type.Var]) =
     assert(
-      tree.tpe.freeTypeVariables.isEmpty,
+      (tree.tpe.freeTypeVariables -- nonFrees).isEmpty,
       s"$tree: ${tree.tpe} has free type variables: ${tree.tpe.freeTypeVariables.mkString(", ")}")
 
-  private[this] def assertNoFVs(tree: TT.Expr): Unit = {
-    return // its difficult to find fvs in AST. maybe need TABS AST?
-    assertNoFVs1(tree)
+  private[this] def assertNoFVs(tree: TT.Expr, nonFrees: Set[Type.Var]): Unit = {
+    assertNoFVs1(tree, nonFrees)
     tree match {
       case _: TT.Lit =>
       case TT.ModuleVarRef(m, n, t) =>
       case TT.LocalRef(d, i, t) =>
       case TT.LetRec(vs, b) =>
-        vs.foreach(assertNoFVs); assertNoFVs(b)
+        vs.foreach(assertNoFVs(_, nonFrees)); assertNoFVs(b, nonFrees)
       case TT.If(c, th, el, t) =>
-        assertNoFVs(c)
-        assertNoFVs(th)
-        assertNoFVs(el)
+        assertNoFVs(c, nonFrees)
+        assertNoFVs(th, nonFrees)
+        assertNoFVs(el, nonFrees)
       case TT.App(f, x, t) =>
-        assertNoFVs(f)
-        assertNoFVs(x)
+        assertNoFVs(f, nonFrees)
+        assertNoFVs(x, nonFrees)
       case TT.Fun(b, t) =>
-        assertNoFVs(b)
+        assertNoFVs(b, nonFrees)
+      case TT.TAbs(ps, e, t) =>
+        assertNoFVs(e, nonFrees ++ ps)
       case TT.JCallStatic(m, a) =>
-        a.foreach(assertNoFVs)
+        a.foreach(assertNoFVs(_, nonFrees))
       case TT.JCallInstance(m, r, a) =>
-        a.foreach(assertNoFVs)
-        assertNoFVs(r)
+        a.foreach(assertNoFVs(_, nonFrees))
+        assertNoFVs(r, nonFrees)
     }
   }
 
@@ -148,7 +159,8 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
               .filter(_.id >= varIdStart)
               .toSeq
               .sortBy(_.id)
-            TT.Fun(body, Type.Abs(params, funType))
+            val tpe = Type.Abs(params, funType)
+            TT.TAbs(params, TT.Fun(body, funType), tpe)
           case x => x
         }
         x1 <- appExpr(ctx.bindLocal(ref, e0.tpe), body)
@@ -219,6 +231,7 @@ object Typer {
       VarRef.ModuleMember(s.moduleRef, name.value) -> tpe
   }.toMap
 
+  // TODO: add unified flag
   class Subst(val items: List[(Type, Type)]) {
     def app(t: Type): Type = app0(t, items)
 
@@ -238,6 +251,12 @@ object Typer {
 
     def ++(rhs: Subst): Subst =
       new Subst(items ++ rhs.items)
+
+    // don't call this method unless unified
+    def --(items: Seq[Type.Var]) = {
+      val x = items.toSet
+      new Subst(this.items.filterNot { case (l: Type.Var, r) => x.contains(l) })
+    }
 
     def dot(a: Type.Var, t: Type): Subst =
       new Subst((a -> app(t)) :: items)
