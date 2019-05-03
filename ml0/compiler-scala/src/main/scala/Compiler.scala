@@ -14,28 +14,21 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   val classRepo = new ClassRepo(cl)
   val assembler = new Assembler(baseDir)
 
-  def compile(files: Seq[Path]): Seq[Error] =
+  def compileFiles(files: Seq[Path]): Seq[Error] =
     compileContents(files.map(FileContent.read))
-
-  def extractMV(t: TypedAST.Module): Map[VarRef.ModuleMember, Type] = t.body.flatMap {
-    case TypedAST.TLet(name, tpe, _) =>
-      Seq(VarRef.ModuleMember(t.moduleRef, name.value) -> tpe)
-    case other =>
-      Seq()
-  }.toMap
 
   def compileContents(files: Seq[FileContent]): Seq[Error] = {
     val penv = PackageEnv(classRepo)
-    files.mapWithContextE((penv, Map.empty[VarRef.ModuleMember, Type])) {
-      case ((pe, me), f) =>
-        typing(pe, me, f).map { case (p, m, t) => ((p, m), t) }
-    }
-      .map(_.flatten)
-      .map { trees =>
-        trees.foreach(assembler.emit)
-        Seq.empty[Error]
+    typeContents(files)
+      .map {
+        case (_, trees) =>
+          trees.foreach(assembler.emit)
+          Seq.empty[Error]
       }.merge
   }
+
+  def assemble(tree: TypedAST.Module) =
+    assembler.emit(tree)
 
   type ModuleEnv = Map[VarRef.ModuleMember, Type]
 
@@ -87,7 +80,16 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
     }
   }
 
-  def typing(penv: PackageEnv, moduleVars: ModuleEnv, file: FileContent): Result[(PackageEnv, ModuleEnv, Seq[TypedAST.Module])] = {
+  def typeContents(files: Seq[FileContent]): Result[(Map[VarRef.ModuleMember, Type], Seq[TypedAST.Module])] = {
+    val penv = PackageEnv(classRepo)
+    files.mapWithContextEC((penv, Map.empty[VarRef.ModuleMember, Type])) {
+      case ((pe, me), f) =>
+        typeContent(pe, me, f).map { case (p, m, t) => ((p, m), t) }
+    }
+      .map { case ((p, c), treess) => (c, treess.flatten) }
+  }
+
+  def typeContent(penv: PackageEnv, moduleVars: ModuleEnv, file: FileContent): Result[(PackageEnv, ModuleEnv, Seq[TypedAST.Module])] = {
     for {
       rawTree <- parsePhase(file)
       x1 <- namePhase(penv, rawTree)
