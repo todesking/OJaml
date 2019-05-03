@@ -5,3 +5,10 @@ case class ModuleRef(pkg: PackageRef, name: String) {
   def fullName = s"${pkg.fullName}.$name"
   def internalName = s"${pkg.internalName}/$name"
 }
+
+object ModuleRef {
+  def fromFullName(fullName: String) = {
+    val parts = fullName.split('.')
+    ModuleRef(PackageRef.fromParts(parts.init), parts.last)
+  }
+}

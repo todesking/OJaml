@@ -9,6 +9,7 @@ sealed abstract class Type {
   override def toString = toString(false)
   def freeTypeVariables: Set[Type.Var]
   def substitute(a: Type.Var, t: Type): Type
+  def javaName: String
 }
 object Type {
   sealed abstract class Primitive extends Type {
@@ -19,10 +20,12 @@ object Type {
   case object Int extends Primitive {
     override def boxed: Klass = BoxedInt
     override def toString(group: Boolean) = "int"
+    override def javaName = "int"
   }
   case object Bool extends Primitive {
     override def boxed: Klass = BoxedBool
     override def toString(group: Boolean) = "bool"
+    override def javaName = "boolean"
   }
 
   sealed abstract class Reference extends Type {
@@ -30,6 +33,7 @@ object Type {
     override def boxed: Reference = this
     override def unboxed: Option[Primitive] = boxMap.get(ref.internalName)
     override def toString(group: Boolean): String = ref.fullName
+    override def javaName = ref.fullName
   }
   object Reference {
     def unapply(r: Reference): Option[ClassRef] = Some(r.ref)

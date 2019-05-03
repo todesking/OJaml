@@ -18,7 +18,7 @@ module Let_rec {
         else is_even (n - 1)
     in
       is_even 99 ;;
-  (* x: boolean = false *)
+  (* x: bool = false *)
 
   let y =
     let rec fact = fun n =>

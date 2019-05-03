@@ -4,6 +4,11 @@ import org.scalatest.FunSpec
 import java.nio.file.Path
 import java.nio.file.Files
 
+import com.todesking.ojaml.ml0.compiler.scala.ModuleRef
+import com.todesking.ojaml.ml0.compiler.scala.Result
+import com.todesking.ojaml.ml0.compiler.scala.Type
+import com.todesking.ojaml.ml0.compiler.scala.VarRef
+
 import scala.collection.JavaConverters._
 
 class Main extends FunSpec {
@@ -65,13 +70,11 @@ class Main extends FunSpec {
 
     val outDir = Files.createTempDirectory("ojaml-test")
     val cl = this.getClass.getClassLoader
-    val c = new scala_compiler.Compiler(outDir, cl, debugPrint)
+    val compiler = new scala_compiler.Compiler(outDir, cl, debugPrint)
 
     assert(expectedErrors.isEmpty || assertions.isEmpty)
 
-    val result = c.compileContents(contents)
-
-    if (expectedErrors.nonEmpty) {
+    def validateErrors(result: Seq[Result.Error]): Unit = {
       val errors = result.map { e =>
         (e.pos.location, e.pos.line, e.pos.col) -> e
       }.toMap
@@ -90,25 +93,29 @@ class Main extends FunSpec {
       if (unexpected.nonEmpty || notHappend.nonEmpty) {
         fail("Unexpected/Missing errors: See error log")
       }
-    } else {
+    }
+
+    def validateRuntime(env: Map[VarRef.ModuleMember, Type]): Unit = {
       try {
         try {
-          result.foreach { e =>
-            println(s"${e.pos} [Unexpected] ${e.message}")
-          }
-          assert(Seq() == result)
           val cl = new java.net.URLClassLoader(Array(outDir.toUri.toURL), this.getClass.getClassLoader)
 
           // make sure all classes are valid
           targets.flatMap(_.classNames).foreach { cn => cl.loadClass(cn) }
 
           assertions.foreach {
-            case Assertion(klassName, fieldName, typeName, value) =>
+            case Assertion(ref, klassName, fieldName, typeName, value) =>
               val klass = cl.loadClass(klassName)
               val field = klass.getField(fieldName)
               val actual = field.get(null)
-              if (typeName != "*") assert(typeName == field.getType.getName, s"at $fieldName")
-              assert(value == s"$actual", s"at $fieldName")
+              if (typeName != "*") {
+                val tpe = env(VarRef.ModuleMember(ref, fieldName))
+                assert(typeName == tpe.toString)
+                assert(tpe.javaName == field.getType.getName, s"at $fieldName")
+              }
+              if (value != "*") {
+                assert(value == s"$actual", s"at $fieldName")
+              }
           }
         } catch {
           case e: LinkageError => throw new RuntimeException(e)
@@ -121,11 +128,21 @@ class Main extends FunSpec {
           throw e
       }
     }
+
+    compiler.typeContents(contents).fold({ errors =>
+      validateErrors(errors)
+    }, {
+      case (env, trees) =>
+        validateErrors(Seq())
+        trees.foreach(compiler.assemble)
+        validateRuntime(env)
+    })
   }
 }
 
 object TestMain {
   case class Assertion(
+    ref: ModuleRef,
     klass: String,
     field: String,
     tpe: String,
@@ -161,15 +178,16 @@ object TestMain {
           (line, col)
       }.toSet
 
-      val reAssertion = """^\s*\(\* ([\w.]+): ([\w.*]+) = (.+) \*\)\s*$""".r
+      val reAssertion = """^\s*\(\* ([\w.]+): ([^=]+?)= (.+) \*\)\s*$""".r
       val assertions = lines.collect {
-        case `reAssertion`(name, tpe, value) =>
+        case `reAssertion`(name, rawTpe, value) =>
+          val tpe = rawTpe.init
           if (name.contains(".")) {
             val className = "test.ml0." + name.split("\\.").init.mkString(".")
             val n = name.split("\\.").last
-            Assertion(className, n, tpe, value)
+            Assertion(ModuleRef.fromFullName(className), className, n, tpe, value)
           } else {
-            Assertion(defaultClassName, name, tpe, value)
+            Assertion(ModuleRef.fromFullName(defaultClassName), defaultClassName, name, tpe, value)
           }
       }
       Target(

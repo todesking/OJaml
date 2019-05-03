@@ -35,9 +35,9 @@ module Int {
   (* x8: int = 9 *)
 
   let x9 = 1 == 1 ;;
-  (* x9: boolean = true *)
+  (* x9: bool = true *)
 
   let x10 = 1 == 2 ;;
-  (* x10: boolean = false *)
+  (* x10: bool = false *)
 }
 
