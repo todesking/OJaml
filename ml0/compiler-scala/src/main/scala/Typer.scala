@@ -47,10 +47,11 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         c <- ctx.bindModuleValue(name, e.tpe)
       } yield {
         assertNoFVs(e, Set())
-        (c, TT.TLet(name, e.tpe, e))
+        val e2 = reindex(Subst.empty, 1, e)
+        (c, TT.TLet(name, e2.tpe, e2))
       }
     case e: NT.Expr =>
-      val te = appExpr(ctx, e).map { case (s, tree) => (ctx, subst(s, tree)) }
+      val te = appExpr(ctx, e).map { case (s, tree) => (ctx, reindex(Subst.empty, 1, subst(s, tree))) }
       te.map(_._2).foreach(assertNoFVs(_, Set()))
       te
   }
@@ -79,6 +80,28 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       TT.JCallStatic(m, a.map(subst(s, _)))
     case TT.JCallInstance(m, r, a) =>
       TT.JCallInstance(m, subst(s, r), a.map(subst(s, _)))
+  }
+
+  private[this] def reindex(s: Subst, nextIndex: Int, tree: TT.Expr): TT.Expr = tree match {
+    case _: TT.Lit => tree
+    case TT.ModuleVarRef(m, n, t) => TT.ModuleVarRef(m, n, s.app(t))
+    case TT.LocalRef(d, i, t) => TT.LocalRef(d, i, s.app(t))
+    case TT.LetRec(vs, b) => TT.LetRec(
+      vs.map(reindex(s, nextIndex, _)).map { case f: TT.Fun => f case _ => throw new AssertionError() },
+      reindex(s, nextIndex, b))
+    case TT.If(c, th, el, t) =>
+      TT.If(reindex(s, nextIndex, c), reindex(s, nextIndex, th), reindex(s, nextIndex, el), s.app(t))
+    case TT.App(f, x, t) =>
+      TT.App(reindex(s, nextIndex, f), reindex(s, nextIndex, x), s.app(t))
+    case TT.Fun(b, t) =>
+      TT.Fun(reindex(s, nextIndex, b), s.app(t))
+    case TT.TAbs(ps, e, t) =>
+      val s2 = s -- ps ++ Subst(ps.sortBy(_.id).zipWithIndex.map { case (v, i) => (v, Type.Var(nextIndex + i)) }: _*)
+      TT.TAbs(ps, reindex(s2, nextIndex + ps.size, e), t match { case Type.Abs(xs, b) => Type.Abs(xs.map(s2.app(_).asInstanceOf[Type.Var]), s2.app(b)) })
+    case TT.JCallStatic(m, a) =>
+      TT.JCallStatic(m, a.map(reindex(s, nextIndex, _)))
+    case TT.JCallInstance(m, r, a) =>
+      TT.JCallInstance(m, reindex(s, nextIndex, r), a.map(reindex(s, nextIndex, _)))
   }
 
   private[this] def assertNoFVs1(tree: TT.Expr, nonFrees: Set[Type.Var]) =
