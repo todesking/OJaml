@@ -41,6 +41,10 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
         val col = next.pos.column
         Left(Seq(Error(Pos(file.path.toString, line, col), s"Parse error: $msg\n${next.pos.longString}")))
       case parser.Success(ast, _) =>
+        if (debugPrint) {
+          println("Phase: Parer")
+          println(AST.pretty(ast))
+        }
         Right(ast)
     }
   }

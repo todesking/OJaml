@@ -9,4 +9,6 @@ case class MethodSig(klass: ClassRef, isStatic: Boolean, isInterface: Boolean, n
 
   lazy val descriptor: String =
     asm.Type.getMethodType(Type.toAsm(ret), args.map(Type.toAsm).toArray: _*).getDescriptor
+
+  override def toString = s"${klass.fullName}.$name: $descriptor"
 }
