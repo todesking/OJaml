@@ -6,6 +6,9 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   def parse(s: String): ParseResult[T.Program] =
     parseAll(program, s)
 
+  def parseTerm(s: String): ParseResult[T.Term] =
+    parseAll(term, s)
+
   private[this] val discard = { _: Any => () }
 
   val keywords: Set[String] = Set(
@@ -67,7 +70,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case n ~ ts => T.Module(n, ts)
   })
 
-  def term: Parser[T.Term] = tlet
+  def term: Parser[T.Term] = tlet | expr
   def tlet: Parser[RawAST.TLet] = withpos(kwd("let") ~> (name <~ "=") ~ expr <~ ";;" ^^ { case n ~ e => T.TLet(n, e) })
 
   def expr: Parser[T.Expr] = expr1

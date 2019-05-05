@@ -18,7 +18,6 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
     compileContents(files.map(FileContent.read))
 
   def compileContents(files: Seq[FileContent]): Seq[Error] = {
-    val penv = PackageEnv(classRepo)
     typeContents(files)
       .map {
         case (_, trees) =>

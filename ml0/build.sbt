@@ -10,3 +10,8 @@ val test = (project in file("test"))
   .dependsOn(compilerScala)
   .dependsOn(libNative)
   .dependsOn(lib)
+
+val repl = (project in file("repl"))
+  .dependsOn(compilerScala)
+  .dependsOn(libNative)
+  .dependsOn(lib)

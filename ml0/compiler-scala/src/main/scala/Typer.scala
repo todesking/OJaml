@@ -278,6 +278,7 @@ object Typer {
     // don't call this method unless unified
     def --(items: Seq[Type.Var]) = {
       val x = items.toSet
+      // TODO: deal with warning
       new Subst(this.items.filterNot { case (l: Type.Var, r) => x.contains(l) })
     }
 
