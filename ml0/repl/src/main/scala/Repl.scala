@@ -164,6 +164,7 @@ object Repl {
     val prompt = "ojaml> "
     val line = scala.io.StdIn.readLine(prompt)
     line match {
+      case null => // EOF
       case "" =>
         loop(repl)
       case cmd if cmd.head == ':' => cmd.tail match {
