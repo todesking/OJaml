@@ -37,10 +37,14 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       for {
         e <- appExpr(ctx, expr).map {
           case (s, tree) =>
+            def tabs(e: TT.Expr) = {
+              val tvs = e.tpe.freeTypeVariables.toSeq.sortBy(_.id)
+              if (tvs.isEmpty) e
+              else TT.TAbs(tvs, e, Type.Abs(tvs, e.tpe))
+            }
             subst(s, tree) match {
-              case fun @ TT.Fun(b, t) if t.freeTypeVariables.nonEmpty =>
-                val tvs = t.freeTypeVariables.toSeq.sortBy(_.id)
-                TT.TAbs(tvs, fun, Type.Abs(tvs, t))
+              case expr @ (TT.Fun(_, _) | TT.ModuleVarRef(_, _, _)) =>
+                tabs(expr)
               case x => x
             }
         }
@@ -248,6 +252,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       } yield (s1, TT.JCallInstance(method, e1, targs.map(_._2)))
   }
 }
+
 object Typer {
   def moduleVarsOf(s: TypedAST.Module): Map[VarRef.ModuleMember, Type] = s.body.collect {
     case TypedAST.TLet(name, tpe, _) =>

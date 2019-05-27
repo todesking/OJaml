@@ -10,6 +10,9 @@ module Poly {
   let id2 = fun x => x ;;
   (* id2: [?1] ?1 -> ?1 = * *)
 
+  let id3 = id2 ;;
+  (* id3: [?1] ?1 -> ?1 = * *)
+
   let x_int = id 1 ;;
   (* x_int: int = 1 *)
 
