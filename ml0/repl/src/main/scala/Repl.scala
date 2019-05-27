@@ -18,8 +18,13 @@ class Repl {
   private[this] var packageEnv = ojaml.PackageEnv(compiler.classRepo)
   private[this] var moduleEnv = Map.empty[ojaml.VarRef.ModuleMember, ojaml.Type]
 
+  private[this] val predefImports =
+    Seq("+", "-", "*", "/", "%", "==", "<=", ">=", ">", "<", "&", "|")
+      .map { name => mkQName(s"com.todesking.ojaml.ml0.lib.Predef.$name") }
+      .map(ojaml.Import.apply)
+
   private[this] var imports: Seq[ojaml.Import] = Seq()
-  private[this] def nextIndex = imports.size
+  private[this] var nextIndex = 0
 
   private[this] def mkName(s: String) = {
     val name = ojaml.Name(s)
@@ -35,6 +40,39 @@ class Repl {
     a
   }
 
+  def evalPredef(): Unit = {
+    val src = {
+      val is = getClass.getClassLoader.getResourceAsStream("lib/Predef.ml0")
+      val s = new java.util.Scanner(is)
+      var lines = Seq.empty[String]
+      while (s.hasNextLine()) {
+        lines :+= s.nextLine()
+      }
+      lines.mkString("\n")
+    }
+    val predefContent = ojaml.FileContent(java.nio.file.Paths.get("(Predef)"), src)
+    val result =
+      for {
+        rawAst <- compiler.parsePhase(predefContent)
+        x1 <- compiler.namePhase(packageEnv, rawAst)
+        (newPEnv, namedAsts) = x1
+        x2 <- namedAsts.mapWithContextEC(moduleEnv) { (menv, tree) =>
+          compiler.typePhase(menv, tree)
+        }
+        (newMEnv, typedAst) = x2
+      } yield (newPEnv, newMEnv, typedAst)
+    result.fold({ errors =>
+      errors.foreach { e =>
+        println(e)
+      }
+    }, {
+      case (newPEnv, newMEnv, trees) =>
+        trees.foreach(compiler.assemble)
+        this.packageEnv = newPEnv
+        this.moduleEnv = newMEnv
+        this.imports ++= predefImports
+    })
+  }
   def eval(code: String): Result = {
     val parser = new ojaml.Parser(replFileName)
     parser.parseTerm(code) match {
@@ -71,6 +109,7 @@ class Repl {
             this.packageEnv = newPEnv
             this.moduleEnv = newMEnv
             this.imports :+= ojaml.Import(mkQName(s"${tree.moduleRef.fullName}.$bindingName"))
+            nextIndex += 1
             val tpe =
               tree match {
                 case ojaml.TypedAST.Module(_, _, Seq(ojaml.TypedAST.TLet(_, t, _))) =>
@@ -108,6 +147,7 @@ object Repl {
     println("OJaml REPL")
     println(s"tmp dir = ${repl.tmpDir}")
 
+    repl.evalPredef()
     loop(repl)
   }
 
