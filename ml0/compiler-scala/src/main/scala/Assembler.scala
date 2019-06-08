@@ -217,6 +217,7 @@ class Assembler(baseDir: Path) {
           klass,
           "<init>",
           s"($objectSig$funSig)V", false)
+        method.visitTypeInsn(op.CHECKCAST, funClass)
       case TT.App(f, x, tpe) =>
         eval(method, f, depth)
         eval(method, x, depth)
