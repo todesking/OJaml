@@ -20,4 +20,11 @@ module Fun {
 
   let x4 = f_false 123 456 ;;
   (* x4: int = 456 *)
+
+  let f_sugar = fun x y =>
+    let snd = fun x y => y in
+    snd x y ;;
+  (* f_sugar: [?1, ?2] ?1 -> ?2 -> ?2 = * *)
+  let x5 = f_sugar 10 20 ;;
+  (* x5: int = 20 *)
 }

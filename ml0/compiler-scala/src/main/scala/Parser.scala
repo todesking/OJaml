@@ -132,8 +132,16 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   val lit_string: Parser[RawAST.LitString] = withpos(("\"" ~> """[^"]+""".r) <~ "\"" ^^ { s => T.LitString(s) })
 
   val eif: Parser[RawAST.If] = withpos((kwd("if") ~> expr) ~ (kwd("then") ~> expr) ~ (kwd("else") ~> expr) ^^ { case cond ~ th ~ el => T.If(cond, th, el) })
-  // TODO: Support fun x y z ... =>
-  def fun: Parser[RawAST.Fun] = withpos((kwd("fun") ~> normalName) ~ (":" ~> typename1).? ~ ("=>" ~> expr) ^^ { case name ~ tpe ~ expr => T.Fun(name, tpe, expr) })
+  def fun: Parser[RawAST.Fun] = withpos((kwd("fun") ~> fun_params) ~ ("=>" ~> expr) ^^ {
+    case ((name ~ tpe) :: params) ~ expr =>
+      T.Fun(name, tpe,
+        params.foldRight(expr) {
+          case (name ~ tpe, e) =>
+            T.Fun(name, tpe, expr)
+        })
+    case Nil ~ _ => throw new AssertionError()
+  })
+  def fun_params = rep1(normalName ~ (":" ~> typename1).?)
   val var_ref: Parser[RawAST.Ref] = withpos(normalName ^^ { n => T.Ref(n) })
   val eletr: Parser[RawAST.ELetRec] = withpos((kwd("let") ~> kwd("rec")) ~> rep1sep(normalName ~ (":" ~> typename).? ~ ("=" ~> fun), ";") ~ (kwd("in") ~> expr) ^^ {
     case bs ~ body =>
