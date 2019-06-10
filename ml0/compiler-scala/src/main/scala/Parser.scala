@@ -52,8 +52,8 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     }
   }
 
-  val normalName: Parser[Name] = withpos("""[a-zA-Z][a-zA-Z0-9_]*""".r ^? { case s if !keywords(s) => Name(s) })
-  val opName: Parser[Name] = withpos("""==|<=|>=|[-+*/%<>&|]""".r ^? { case s if !keywords(s) => Name(s) })
+  val normalName: Parser[Name] = withpos("""[a-zA-Z][a-zA-Z0-9_]*""".r ^? ({ case s if !keywords(s) => Name(s) }, { s => s"Invalid name: $s" }))
+  val opName: Parser[Name] = withpos("""==|<=|>=|[-+*/%<>&|]""".r ^? ({ case s if !keywords(s) => Name(s) }, { s => s"Invalid op name: $s" }))
   val name: Parser[Name] = normalName | opName
   val qname: Parser[QName] = withpos(rep1sep(name, ".") ^^ { xs => QName(xs) })
 
@@ -151,15 +151,18 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   def fun_params1 = rep1(normalName ~ (":" ~> typename1).?)
   def fun_params = rep(normalName ~ (":" ~> typename1).?)
   val var_ref: Parser[RawAST.Ref] = withpos(normalName ^^ { n => T.Ref(n) })
-  val eletr: Parser[RawAST.ELetRec] = withpos((kwd("let") ~> kwd("rec")) ~> rep1sep(normalName ~ (":" ~> typename).? ~ fun_params ~ ("=" ~> expr), ";") ~ (kwd("in") ~> expr) ^^ {
+  val eletr: Parser[RawAST.ELetRec] = withpos((kwd("let") ~> kwd("rec")) ~> rep1sep(letrec_binding, ";") ~ (kwd("in") ~> expr) ^^ {
     case bs ~ body =>
-      // TODO: proper error handling
-      val bindings = bs.map {
-        case n ~ t ~ ps ~ e =>
-          (n, t, mkLetBody(ps, e).asInstanceOf[T.Fun])
-      }
-      T.ELetRec(bindings, body)
+      T.ELetRec(bs, body)
   })
+  def letrec_binding = (normalName ~ (":" ~> typename).? ~ fun_params ~ ("=" ~> expr)).flatMap {
+    case n ~ t ~ ps ~ e =>
+      val expr = mkLetBody(ps, e)
+      expr match {
+        case f @ T.Fun(_, _, _) => success((n, t, f))
+        case _ => err("bound values of let rec must be fun") // TODO: This error don't stop backtracking. why?
+      }
+  }
   val elet: Parser[RawAST.ELet] = withpos((kwd("let") ~> name) ~ fun_params ~ ("=" ~> expr) ~ (kwd("in") ~> expr) ^^ {
     case name ~ params ~ e1 ~ e2 =>
       T.ELet(name, mkLetBody(params, e1), e2)
