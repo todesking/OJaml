@@ -80,7 +80,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   private[this] def mkLetBody(params: Seq[Name ~ Option[TypeName]], body: T.Expr): T.Expr = params match {
     case (name ~ tpe) :: xs =>
-      T.Fun(name, tpe, mkLetBody(xs, body))
+      Pos.fill(T.Fun(name, tpe, mkLetBody(xs, body)), name.pos)
     case Nil =>
       body
   }
