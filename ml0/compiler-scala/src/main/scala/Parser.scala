@@ -71,7 +71,19 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   })
 
   def term: Parser[T.Term] = tlet | expr
-  def tlet: Parser[RawAST.TLet] = withpos(kwd("let") ~> (name <~ "=") ~ expr <~ ";;" ^^ { case n ~ e => T.TLet(n, e) })
+  def tlet: Parser[RawAST.TLet] = withpos((kwd("let") ~> name) ~ (fun_params.? <~ "=") ~ expr <~ ";;" ^^ {
+    case n ~ None ~ e =>
+      T.TLet(n, e)
+    case name ~ Some(params) ~ expr =>
+      T.TLet(name, mkLetBody(params, expr))
+  })
+
+  private[this] def mkLetBody(params: Seq[Name ~ Option[TypeName]], body: T.Expr): T.Expr = params match {
+    case (name ~ tpe) :: xs =>
+      T.Fun(name, tpe, mkLetBody(xs, body))
+    case Nil =>
+      body
+  }
 
   def expr: Parser[T.Expr] = expr1
 
@@ -132,25 +144,25 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   val lit_string: Parser[RawAST.LitString] = withpos(("\"" ~> """[^"]+""".r) <~ "\"" ^^ { s => T.LitString(s) })
 
   val eif: Parser[RawAST.If] = withpos((kwd("if") ~> expr) ~ (kwd("then") ~> expr) ~ (kwd("else") ~> expr) ^^ { case cond ~ th ~ el => T.If(cond, th, el) })
-  def fun: Parser[RawAST.Fun] = withpos((kwd("fun") ~> fun_params) ~ ("=>" ~> expr) ^^ {
-    case ((name ~ tpe) :: params) ~ expr =>
-      T.Fun(name, tpe,
-        params.foldRight(expr) {
-          case (name ~ tpe, e) =>
-            T.Fun(name, tpe, expr)
-        })
-    case Nil ~ _ => throw new AssertionError()
+  def fun: Parser[RawAST.Fun] = withpos((kwd("fun") ~> fun_params1) ~ ("=>" ~> expr) ^^ {
+    case params ~ expr =>
+      mkLetBody(params, expr).asInstanceOf[RawAST.Fun]
   })
-  def fun_params = rep1(normalName ~ (":" ~> typename1).?)
+  def fun_params1 = rep1(normalName ~ (":" ~> typename1).?)
+  def fun_params = rep(normalName ~ (":" ~> typename1).?)
   val var_ref: Parser[RawAST.Ref] = withpos(normalName ^^ { n => T.Ref(n) })
-  val eletr: Parser[RawAST.ELetRec] = withpos((kwd("let") ~> kwd("rec")) ~> rep1sep(normalName ~ (":" ~> typename).? ~ ("=" ~> fun), ";") ~ (kwd("in") ~> expr) ^^ {
+  val eletr: Parser[RawAST.ELetRec] = withpos((kwd("let") ~> kwd("rec")) ~> rep1sep(normalName ~ (":" ~> typename).? ~ fun_params ~ ("=" ~> expr), ";") ~ (kwd("in") ~> expr) ^^ {
     case bs ~ body =>
-      val bindings = bs.map { case n ~ t ~ e => (n, t, e) }
+      // TODO: proper error handling
+      val bindings = bs.map {
+        case n ~ t ~ ps ~ e =>
+          (n, t, mkLetBody(ps, e).asInstanceOf[T.Fun])
+      }
       T.ELetRec(bindings, body)
   })
-  val elet: Parser[RawAST.ELet] = withpos((kwd("let") ~> name) ~ ("=" ~> expr) ~ (kwd("in") ~> expr) ^^ {
-    case name ~ e1 ~ e2 =>
-      T.ELet(name, e1, e2)
+  val elet: Parser[RawAST.ELet] = withpos((kwd("let") ~> name) ~ fun_params ~ ("=" ~> expr) ~ (kwd("in") ~> expr) ^^ {
+    case name ~ params ~ e1 ~ e2 =>
+      T.ELet(name, mkLetBody(params, e1), e2)
   })
 }
 
