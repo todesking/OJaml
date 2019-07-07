@@ -45,7 +45,9 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
             subst(s, tree) match {
               case expr @ (TT.Fun(_, _) | TT.ModuleVarRef(_, _, _)) =>
                 tabs(expr)
-              case x => x
+              case x =>
+                // TODO: Is this really safe??
+                tabs(x)
             }
         }
         c <- ctx.bindModuleValue(name, e.tpe)

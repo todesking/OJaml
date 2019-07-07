@@ -1,0 +1,16 @@
+(* debug *)
+package test.ml0
+
+module Id_id {
+  let id x = x ;;
+  (* id: [?1] ?1 -> ?1 = * *)
+
+  let id2 = id id ;;
+  (* id2: [?1] ?1 -> ?1 = * *)
+
+  let id3 = (fun x => x) (fun x => x) ;;
+  (* id3: [?1] ?1 -> ?1 = * *)
+
+  let x = (id2 id3) 1 ;;
+  (* x: int = 1 *)
+}
