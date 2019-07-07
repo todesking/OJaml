@@ -5,6 +5,7 @@ sealed abstract class PackageRef {
   def fullName: String = parts.mkString(".")
   def internalName: String = parts.mkString("/")
   def classRef(name: String) = ClassRef(this, name)
+  def moduleRef(name: String) = ModuleRef(this, name)
   def packageRef(name: String) = PackageRef.Child(this, name)
   override def toString = s"PackageRef($fullName)"
 }

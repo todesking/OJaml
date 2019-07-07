@@ -102,7 +102,7 @@ object RawAST {
   case class Data(name: Name, ctors: Seq[(Name, Seq[TypeName])]) extends Term {
     override def pretty(group: Boolean) = P.group(
       s"data ${name.value} =",
-      P.group(ctors.map { case (n, ns) => (n +: ns).mkString(" ") }))
+      P.group(P.mks(Doc.Text(","))(ctors.map { case (n, ns) => Doc.Text((n.value +: ns.map(_.toString)).mkString(" ")) })))
   }
 
   sealed abstract class Expr extends Term
@@ -191,7 +191,7 @@ object NamedAST {
   case class Data(name: Name, ctors: Seq[(Name, Seq[Type])]) extends Term {
     override def pretty(group: Boolean) = P.group(
       s"data ${name.value} =",
-      P.group(ctors.map { case (n, ts) => (n +: ts).mkString(" ") }))
+      P.group(P.mks(Doc.Text(","))(ctors.map { case (n, ns) => Doc.Text((n.value +: ns.map(_.toString)).mkString(" ")) })))
   }
 
   sealed abstract class Expr extends Term

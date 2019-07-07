@@ -48,13 +48,14 @@ class Namer(packageEnv: PackageEnv) {
         (c.addModuleMember(name.value), NT.TLet(name, e))
       }
     case RT.Data(name, ctors) =>
-      val ctx2 = ctx.addDataType(name)
       for {
+        ctx <- ctx.addDataType(name)
         resolved <- ctors.map {
           case (name, params) =>
             params.map { tname => ctx.findType(tname) }.validated.map { ts => (name, ts) }
         }.validated
-      } yield (ctx, NT.Data(name, resolved))
+        ctx2 = ctors.foldLeft(ctx) { case (c, (n, ns)) => c.addModuleMember(n.value) }
+      } yield (ctx2, NT.Data(name, resolved))
     case e: RT.Expr =>
       appExpr(ctx, e).map { te => (ctx, te) }
   }
@@ -196,9 +197,13 @@ object Namer {
 
     def findValue(name: String): Option[ValueLike] =
       venv.get(name) orElse {
-        penv.findMember(currentModule.pkg, name)
-          .orElse(penv.findMember(PackageRef.Root, name))
-          .map(ValueLike.TopLevel.apply)
+        if (penv.moduleMemberExists(currentModule, name)) {
+          Some(ValueLike.Value(VarRef.ModuleMember(currentModule, name)))
+        } else {
+          penv.findMember(currentModule.pkg, name)
+            .orElse(penv.findMember(PackageRef.Root, name))
+            .map(ValueLike.TopLevel.apply)
+        }
       }
 
     def findPackageMember(pkg: PackageRef, name: String): Option[PackageMember] =
@@ -206,6 +211,8 @@ object Namer {
 
     def findType(tname: TypeName): Result[Type] = tname match {
       case TypeName.Atom(n) => n match {
+        case n if localTypes.contains(n) => // TODO: Support qualified type name
+          Right(localTypes(n))
         case "int" => Right(Type.Int)
         case "bool" => Right(Type.Bool)
         case unk => error(tname.pos, s"Type not found: $unk")

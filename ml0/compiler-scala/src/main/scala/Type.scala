@@ -50,6 +50,7 @@ object Type {
     override def ref = ClassRef(module.pkg, s"$name$$data_$name")
     override def substitute(a: Type.Var, t: Type) = this
     override def freeTypeVariables = Set()
+    override def toString = name
   }
 
   case class Abs(params: Seq[Var], body: Type) extends Reference {

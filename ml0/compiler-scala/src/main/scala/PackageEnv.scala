@@ -57,6 +57,12 @@ case class PackageEnv(
 
   def pretty: String = "PackageEnv\n" + modules.toSeq.sortBy(_._1.fullName).map {
     case (k, vs) =>
-      s"  package ${k.fullName}\n" + vs.toSeq.sorted.map { v => s"  - module $v" }.mkString("\n")
+      s"  package ${k.fullName}\n" + vs.toSeq.sorted.flatMap { v =>
+        val m = k.moduleRef(v)
+        (
+          Seq(s"  - module $v") ++
+          moduleTypeMembers.getOrElse(m, Set()).toSeq.sorted.map { name => s"    t: $name" } ++
+          moduleMembers.getOrElse(m, Set()).toSeq.sorted.map { name => s"    v: $name" })
+      }.mkString("\n")
   }.mkString("\n")
 }
