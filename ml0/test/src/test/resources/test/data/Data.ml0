@@ -1,0 +1,8 @@
+package test.ml0
+(* debug *)
+
+module Data {
+  data IList = ICons int IList, INil ;;
+  let x = ICons 2 (ICons 1 INil) ;;
+  (* x: IList = ICons 2 (ICons 1 INil) *)
+}

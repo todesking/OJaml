@@ -2,7 +2,10 @@ package com.todesking.ojaml.ml0.compiler.scala
 
 import util.Syntax._
 
-case class PackageEnv(cr: ClassRepo, moduleMembers: Map[ModuleRef, Set[String]] = Map()) {
+case class PackageEnv(
+  cr: ClassRepo,
+  moduleMembers: Map[ModuleRef, Set[String]] = Map(),
+  moduleTypeMembers: Map[ModuleRef, Set[String]] = Map()) {
   def findMember(pkg: PackageRef, name: String): Option[PackageMember] = {
     if (modules.get(pkg).exists(_.contains(name)))
       Some(PackageMember.Module(ModuleRef(pkg, name)))
@@ -38,6 +41,14 @@ case class PackageEnv(cr: ClassRepo, moduleMembers: Map[ModuleRef, Set[String]] 
       copy(moduleMembers = moduleMembers + (m -> Set(name)))
     } { ms =>
       copy(moduleMembers = moduleMembers + (m -> (ms + name)))
+    }
+  }
+  def addModuleTypeMember(m: ModuleRef, name: String): PackageEnv = {
+    require(modules.get(m.pkg).exists(_.contains(m.name)), s"Module ${m.fullName} not found")
+    moduleTypeMembers.get(m).fold {
+      copy(moduleTypeMembers = moduleTypeMembers + (m -> Set(name)))
+    } { ms =>
+      copy(moduleTypeMembers = moduleTypeMembers + (m -> (ms + name)))
     }
   }
 

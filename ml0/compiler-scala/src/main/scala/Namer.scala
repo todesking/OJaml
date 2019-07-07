@@ -47,6 +47,14 @@ class Namer(packageEnv: PackageEnv) {
       } yield {
         (c.addModuleMember(name.value), NT.TLet(name, e))
       }
+    case RT.Data(name, ctors) =>
+      val ctx2 = ctx.addDataType(name)
+      for {
+        resolved <- ctors.map {
+          case (name, params) =>
+            params.map { tname => ctx.findType(tname) }.validated.map { ts => (name, ts) }
+        }.validated
+      } yield (ctx, NT.Data(name, resolved))
     case e: RT.Expr =>
       appExpr(ctx, e).map { te => (ctx, te) }
   }
@@ -173,7 +181,8 @@ object Namer {
     penv: PackageEnv,
     currentModule: ModuleRef,
     venv: Map[String, ValueLike] = Map(),
-    stack: List[Ctx] = Nil) {
+    stack: List[Ctx] = Nil,
+    localTypes: Map[String, Type] = Map()) {
     val depth: Int = stack.size
 
     def tlet(name: Name): Result[Ctx] = {
@@ -264,6 +273,12 @@ object Namer {
             copy(venv = venv + (aliasName -> v))
           }
         }
+    }
+    def addDataType(name: Name): Result[Ctx] = {
+      if (localTypes.contains(name.value)) error(name.pos, s"Type ${name.value} is already defined")
+      else Right(copy(
+        localTypes = localTypes + (name.value -> Type.Data(currentModule, name.value)),
+        penv = penv.addModuleTypeMember(currentModule, name.value)))
     }
   }
 }

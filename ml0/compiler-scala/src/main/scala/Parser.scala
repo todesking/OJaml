@@ -20,7 +20,8 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     "in",
     "fun",
     "if", "then", "else",
-    "=>")
+    "=>",
+    "data")
   private[this] def kwd(a: String): Parser[Unit] = {
     require(keywords contains a)
     regex(s"${java.util.regex.Pattern.quote(a)}\\s+".r) ^^ { _ => () }
@@ -70,7 +71,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case n ~ ts => T.Module(n, ts)
   })
 
-  def term: Parser[T.Term] = tlet | expr
+  def term: Parser[T.Term] = tlet | data | expr
   def tlet: Parser[RawAST.TLet] = withpos((kwd("let") ~> name) ~ (fun_params.? <~ "=") ~ expr <~ ";;" ^^ {
     case n ~ None ~ e =>
       T.TLet(n, e)
@@ -84,6 +85,13 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case Nil =>
       body
   }
+
+  def data = withpos((kwd("data") ~> name) ~ ("=" ~> rep1sep(datadef, ",")) <~ ";;" ^^ {
+    case name ~ ddefs =>
+      T.Data(name, ddefs.map { case n ~ ns => (n, ns) })
+  })
+
+  def datadef = name ~ rep(typename)
 
   def expr: Parser[T.Expr] = expr1
 
