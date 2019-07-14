@@ -49,13 +49,14 @@ class Namer(packageEnv: PackageEnv) {
       }
     case RT.Data(name, ctors) =>
       for {
-        ctx <- ctx.addDataType(name)
+        x1 <- ctx.addDataType(name)
+        (tpe, ctx) = x1
         resolved <- ctors.map {
           case (name, params) =>
             params.map { tname => ctx.findType(tname) }.validated.map { ts => (name, ts) }
         }.validated
         ctx2 = ctors.foldLeft(ctx) { case (c, (n, ns)) => c.addModuleMember(n.value) }
-      } yield (ctx2, NT.Data(name, resolved))
+      } yield (ctx2, NT.Data(name, tpe, resolved))
     case e: RT.Expr =>
       appExpr(ctx, e).map { te => (ctx, te) }
   }
@@ -281,11 +282,16 @@ object Namer {
           }
         }
     }
-    def addDataType(name: Name): Result[Ctx] = {
-      if (localTypes.contains(name.value)) error(name.pos, s"Type ${name.value} is already defined")
-      else Right(copy(
-        localTypes = localTypes + (name.value -> Type.Data(currentModule, name.value)),
-        penv = penv.addModuleTypeMember(currentModule, name.value)))
+    def addDataType(name: Name): Result[(Type, Ctx)] = {
+      if (localTypes.contains(name.value)) {
+        error(name.pos, s"Type ${name.value} is already defined")
+      } else {
+        val tpe = Type.Data(currentModule, name.value)
+        val c = copy(
+          localTypes = localTypes + (name.value -> tpe),
+          penv = penv.addModuleTypeMember(currentModule, name.value))
+        Right((tpe, c))
+      }
     }
   }
 }

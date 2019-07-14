@@ -56,6 +56,18 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         val e2 = reindex(Subst.empty, 1, e)
         (c, TT.TLet(name, e2.tpe, e2))
       }
+    case NT.Data(name, tpe, ctors) =>
+      for {
+        bound <- ctors.foldLeftE(ctx) {
+          case (c, (name, params)) =>
+            val ctorType =
+              params.foldRight(tpe) { (from, to) =>
+                Type.Fun(from, to)
+              }
+            println(s"Data ctor: ${name.value}: ${ctorType}")
+            c.bindModuleValue(name, ctorType)
+        }
+      } yield (bound, TT.Data(name, tpe, ctors))
     case e: NT.Expr =>
       val te = appExpr(ctx, e).map { case (s, tree) => (ctx, reindex(Subst.empty, 1, subst(s, tree))) }
       te.map(_._2).foreach(assertNoFVs(_, Set()))

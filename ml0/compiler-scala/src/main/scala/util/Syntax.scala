@@ -5,10 +5,14 @@ import com.todesking.ojaml.ml0.compiler.scala.Result
 
 object Syntax {
   implicit class SeqSyntax[A](val self: Seq[A]) extends AnyVal {
-    def mapWithContextEC[B, C, E](init: B)(f: (B, A) => Either[E, (B, C)]): Either[E, (B, Seq[C])] =
-      self.foldLeft[Either[E, (B, Seq[C])]](Right((init, Seq.empty[C]))) {
-        case (Right((c, a)), x) => f(c, x).map { case (cc, y) => (cc, a :+ y) }
+    def foldLeftE[B, E](init: B)(f: (B, A) => Either[E, B]): Either[E, B] =
+      self.foldLeft[Either[E, B]](Right(init)) {
+        case (Right(a), x) => f(a, x)
         case (Left(e), x) => Left(e)
+      }
+    def mapWithContextEC[B, C, E](init: B)(f: (B, A) => Either[E, (B, C)]): Either[E, (B, Seq[C])] =
+      self.foldLeftE((init, Seq.empty[C])) {
+        case ((c, a), x) => f(c, x).map { case (cc, y) => (cc, a :+ y) }
       }
 
     def mapWithContextE[B, C, E](init: B)(f: (B, A) => Either[E, (B, C)]): Either[E, Seq[C]] =

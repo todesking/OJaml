@@ -188,7 +188,7 @@ object NamedAST {
     override def pretty(group: Boolean) = P.group(s"let ${name.value} =", P.groupi(expr.pretty(false)))
   }
 
-  case class Data(name: Name, ctors: Seq[(Name, Seq[Type])]) extends Term {
+  case class Data(name: Name, tpe: Type, ctors: Seq[(Name, Seq[Type])]) extends Term {
     override def pretty(group: Boolean) = P.group(
       s"data ${name.value} =",
       P.group(P.mks(Doc.Text(","))(ctors.map { case (n, ns) => Doc.Text((n.value +: ns.map(_.toString)).mkString(" ")) })))
@@ -281,6 +281,11 @@ object TypedAST {
   sealed abstract class Term extends TypedAST
   case class TLet(name: Name, tpe: Type, expr: Expr) extends Term {
     override def pretty(group: Boolean) = P.group(s"let ${name.value}: $tpe =", P.groupi(expr.pretty(false)))
+  }
+  case class Data(name: Name, tpe: Type, ctors: Seq[(Name, Seq[Type])]) extends Term {
+    override def pretty(group: Boolean) = P.group(
+      s"data ${name.value} =",
+      P.group(P.mks(Doc.Text(","))(ctors.map { case (n, ns) => Doc.Text((n.value +: ns.map(_.toString)).mkString(" ")) })))
   }
 
   sealed abstract class Expr extends Term {

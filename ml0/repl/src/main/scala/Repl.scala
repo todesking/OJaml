@@ -82,6 +82,7 @@ class Repl {
         import ojaml.{ RawAST => RT }
         val (isExpr, bindingName, letTree) = rawTree match {
           case RT.TLet(name, expr) => (false, name.value, rawTree)
+          // TODO: Data
           case expr: RT.Expr =>
             val name = s"res$nextIndex"
             (true, name, RT.TLet(mkName(name), expr))
