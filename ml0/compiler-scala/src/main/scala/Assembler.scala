@@ -8,8 +8,28 @@ import org.objectweb.asm
 
 import asm.{ Opcodes => op }
 
+object Asm {
+  import asm.{ MethodVisitor => MV }
+
+  def autoload(m: MV, i: Int, t: Type): Unit = t match {
+    case Type.Int =>
+      m.visitVarInsn(op.ILOAD, i)
+    // TODO: Other primitives and array
+    case Type.Reference(_) =>
+      m.visitVarInsn(op.ALOAD, i)
+  }
+  def autostore(m: MV, i: Int, t: Type): Unit = t match {
+    case Type.Int =>
+      m.visitVarInsn(op.ISTORE, i)
+    // TODO: Other primitives and array
+    case Type.Reference(_) =>
+      m.visitVarInsn(op.ASTORE, i)
+  }
+}
+
 class Assembler(baseDir: Path) {
   import com.todesking.ojaml.ml0.compiler.scala.{ TypedAST => TT }
+  import com.todesking.ojaml.ml0.compiler.scala.{ Asm => A }
 
   val sym2name: Map[Char, String] = """
   |+ plus
@@ -68,18 +88,6 @@ class Assembler(baseDir: Path) {
       null,
       objectClass,
       Array())
-
-    struct.body.foreach {
-      case TT.TLet(name, tpe, expr) =>
-        cw.visitField(
-          op.ACC_PUBLIC | op.ACC_STATIC,
-          escape(name.value),
-          descriptor(tpe),
-          null,
-          null)
-      case _: TT.Expr =>
-      // ignore
-    }
 
     var funID = 0
     def emitFun(body: TT.Expr, depth: Int, recValues: Option[Seq[TT.Expr]]): String = {
@@ -257,6 +265,153 @@ class Assembler(baseDir: Path) {
           target.name,
           target.descriptor, target.isInterface)
         autobox(method, target.ret, e.tpe)
+      case TT.JNew(ref, args) =>
+        method.visitTypeInsn(op.NEW, ref.internalName)
+        method.visitInsn(op.DUP)
+        args.foreach { a =>
+          eval(method, a, depth)
+        }
+        method.visitMethodInsn(
+          op.INVOKESPECIAL,
+          ref.internalName,
+          "<init>",
+          asm.Type.getMethodType(asm.Type.VOID_TYPE, args.map(_.tpe).map(Type.toAsm).toArray: _*).getDescriptor,
+          false)
+      case TT.Upcast(body, tpe) =>
+        eval(method, body, depth)
+        method.visitTypeInsn(op.CHECKCAST, tpe.ref.internalName)
+    }
+
+    def defineField(cw: asm.ClassWriter, name: String, tpe: Type): Unit = {
+      cw.visitField(
+        op.ACC_PUBLIC | op.ACC_STATIC,
+        escape(name),
+        descriptor(tpe),
+        null,
+        null)
+    }
+
+    def methodDescriptor(ret: Type, params: Seq[Type]): String =
+      asm.Type.getMethodType(Type.toAsm(ret), params.map(Type.toAsm).toArray: _*).getDescriptor
+
+    def emitDataType(cw: asm.ClassWriter, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]): Unit = {
+      val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)
+      cw.visit(
+        op.V1_8,
+        op.ACC_PUBLIC | op.ACC_ABSTRACT,
+        tpe.ref.internalName,
+        null,
+        objectClass,
+        Array())
+      val init = cw.visitMethod(
+        op.ACC_PUBLIC,
+        "<init>",
+        "()V",
+        null,
+        Array())
+      init.visitVarInsn(op.ALOAD, 0)
+      init.visitMethodInsn(
+        op.INVOKESPECIAL,
+        objectClass,
+        "<init>",
+        "()V",
+        false)
+      init.visitInsn(op.RETURN)
+      methodEnd(init)
+      cw.visitEnd()
+      write(tpe.ref.pkg.internalName, tpe.ref.name, cw.toByteArray)
+
+      ctors.foreach {
+        case (name, params) =>
+          val subClass = ClassRef(tpe.ref.pkg, s"${tpe.ref.name}$$${escape(name.value)}")
+          val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)
+          cw.visit(
+            op.V1_8,
+            op.ACC_PUBLIC,
+            subClass.internalName,
+            null,
+            tpe.ref.internalName,
+            Array())
+          params.zipWithIndex.foreach {
+            case (t, i) =>
+              defineField(cw, s"v$i", t)
+          }
+
+          val init = cw.visitMethod(
+            op.ACC_PUBLIC,
+            "<init>",
+            asm.Type.getMethodType(asm.Type.VOID_TYPE, params.map(Type.toAsm): _*).getDescriptor,
+            null,
+            Array())
+          init.visitVarInsn(op.ALOAD, 0)
+          init.visitMethodInsn(
+            op.INVOKESPECIAL,
+            tpe.ref.internalName,
+            "<init>",
+            "()V",
+            false)
+          params.zipWithIndex.foreach {
+            case (t, i) =>
+              init.visitVarInsn(op.ALOAD, 0)
+              A.autoload(init, i + 1, t)
+              init.visitFieldInsn(op.PUTFIELD, subClass.internalName, s"v$i", descriptor(t))
+          }
+          init.visitInsn(op.RETURN)
+          methodEnd(init)
+
+          val tosImpl = cw.visitMethod(
+            op.ACC_PUBLIC,
+            "toString",
+            "(Z)Ljava/lang/String;",
+            null,
+            Array())
+          tosImpl.visitLdcInsn("")
+          params.zipWithIndex.foreach {
+            case (t, i) =>
+              tosImpl.visitFieldInsn(op.GETFIELD, subClass.internalName, s"v$i", descriptor(t))
+              tosImpl.visitMethodInsn(
+                op.INVOKEVIRTUAL,
+                "java/lang/String",
+                "concat",
+                "(Ljava/lang/String;)Ljava/lang/String;",
+                false)
+          }
+          tosImpl.visitInsn(op.ARETURN)
+          methodEnd(tosImpl)
+
+          val tos = cw.visitMethod(
+            op.ACC_PUBLIC,
+            "toString",
+            "()Ljava/lang/String;",
+            null,
+            Array())
+          tos.visitVarInsn(op.ALOAD, 0)
+          tos.visitLdcInsn(false)
+          tos.visitMethodInsn(
+            op.INVOKEVIRTUAL,
+            subClass.internalName,
+            "toString",
+            "(Z)Ljava/lang/String;",
+            false)
+          tos.visitInsn(op.ARETURN)
+          methodEnd(tos)
+
+          cw.visitEnd()
+          write(subClass.pkg.internalName, subClass.name, cw.toByteArray)
+      }
+    }
+
+    struct.body.foreach {
+      case TT.TLet(name, tpe, expr) =>
+        defineField(cw, name.value, tpe)
+      case TT.Data(name, tpe, ctors) =>
+        emitDataType(cw, tpe, ctors)
+        ctors.foreach {
+          case (name, params) =>
+          // defineField(cw, name.value, params.foldRight(tpe: Type) { (from, to) => Type.Fun(from, to) })
+        }
+      case _: TT.Expr =>
+      // ignore
     }
 
     val clinit = cw.visitMethod(
@@ -270,6 +425,7 @@ class Assembler(baseDir: Path) {
         eval(clinit, expr, 0)
         autobox(clinit, expr.tpe, tpe)
         clinit.visitFieldInsn(op.PUTSTATIC, className, escape(name.value), descriptor(tpe))
+      case TT.Data(name, tpe, ctors) =>
       case e: TT.Expr =>
       // ignore for now
     }

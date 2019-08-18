@@ -282,7 +282,7 @@ object Namer {
           }
         }
     }
-    def addDataType(name: Name): Result[(Type, Ctx)] = {
+    def addDataType(name: Name): Result[(Type.Data, Ctx)] = {
       if (localTypes.contains(name.value)) {
         error(name.pos, s"Type ${name.value} is already defined")
       } else {

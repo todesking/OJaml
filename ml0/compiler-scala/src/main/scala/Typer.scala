@@ -29,10 +29,11 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
 
       }
       .validated
+      .map(_.flatten)
       .map(TT.Module(s.pkg, s.name, _))
   }
 
-  def appTerm(ctx: Ctx, t: NT.Term): Result[(Ctx, TT.Term)] = t match {
+  def appTerm(ctx: Ctx, t: NT.Term): Result[(Ctx, Seq[TT.Term])] = t match {
     case NT.TLet(name, expr) =>
       for {
         e <- appExpr(ctx, expr).map {
@@ -54,23 +55,37 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       } yield {
         assertNoFVs(e, Set())
         val e2 = reindex(Subst.empty, 1, e)
-        (c, TT.TLet(name, e2.tpe, e2))
+        (c, Seq(TT.TLet(name, e2.tpe, e2)))
       }
     case NT.Data(name, tpe, ctors) =>
       for {
         bound <- ctors.foldLeftE(ctx) {
           case (c, (name, params)) =>
             val ctorType =
-              params.foldRight(tpe) { (from, to) =>
+              params.foldRight(tpe: Type) { (from, to) =>
                 Type.Fun(from, to)
               }
-            println(s"Data ctor: ${name.value}: ${ctorType}")
             c.bindModuleValue(name, ctorType)
         }
-      } yield (bound, TT.Data(name, tpe, ctors))
+      } yield {
+        val ctorDefs = ctors.map {
+          case (name, params) =>
+            val ctorType = params.foldRight(tpe: Type)(Type.Fun.apply)
+            // TODO: Duplicate in Assembler
+            val dataClass = ClassRef(tpe.ref.pkg, s"${tpe.ref.name}$$${name.value}")
+            val ctorArgs = params.zipWithIndex.map {
+              case (t, i) =>
+                TT.LocalRef(i + 1, 0, t)
+            }
+            val newExpr = TT.Upcast(TT.JNew(dataClass, ctorArgs), tpe)
+            val body = params.foldRight(newExpr: TT.Expr) { (t, e) => TT.Fun(e, Type.Fun(t, e.tpe)) }
+            TT.TLet(name, ctorType, body)
+        }
+        (bound, TT.Data(name, tpe, ctors) +: ctorDefs)
+      }
     case e: NT.Expr =>
-      val te = appExpr(ctx, e).map { case (s, tree) => (ctx, reindex(Subst.empty, 1, subst(s, tree))) }
-      te.map(_._2).foreach(assertNoFVs(_, Set()))
+      val te = appExpr(ctx, e).map { case (s, tree) => (ctx, Seq(reindex(Subst.empty, 1, subst(s, tree)))) }
+      te.map(_._2).foreach(_.foreach(assertNoFVs(_, Set())))
       te
   }
 
