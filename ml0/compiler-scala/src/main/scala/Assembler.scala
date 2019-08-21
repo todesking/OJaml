@@ -282,9 +282,17 @@ class Assembler(baseDir: Path) {
         method.visitTypeInsn(op.CHECKCAST, tpe.ref.internalName)
     }
 
-    def defineField(cw: asm.ClassWriter, name: String, tpe: Type): Unit = {
+    def defineStaticField(cw: asm.ClassWriter, name: String, tpe: Type): Unit = {
       cw.visitField(
         op.ACC_PUBLIC | op.ACC_STATIC,
+        escape(name),
+        descriptor(tpe),
+        null,
+        null)
+    }
+    def defineField(cw: asm.ClassWriter, name: String, tpe: Type): Unit = {
+      cw.visitField(
+        op.ACC_PUBLIC,
         escape(name),
         descriptor(tpe),
         null,
@@ -295,26 +303,28 @@ class Assembler(baseDir: Path) {
       asm.Type.getMethodType(Type.toAsm(ret), params.map(Type.toAsm).toArray: _*).getDescriptor
 
     def emitDataType(cw: asm.ClassWriter, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]): Unit = {
+      val dataBaseClass = ClassRef.fromInternalName("com/todesking/ojaml/ml0/runtime/Data")
       val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)
       cw.visit(
         op.V1_8,
         op.ACC_PUBLIC | op.ACC_ABSTRACT,
         tpe.ref.internalName,
         null,
-        objectClass,
+        dataBaseClass.internalName,
         Array())
       val init = cw.visitMethod(
         op.ACC_PUBLIC,
         "<init>",
-        "()V",
+        "(I)V",
         null,
         Array())
       init.visitVarInsn(op.ALOAD, 0)
+      init.visitVarInsn(op.ILOAD, 1)
       init.visitMethodInsn(
         op.INVOKESPECIAL,
-        objectClass,
+        dataBaseClass.internalName,
         "<init>",
-        "()V",
+        "(I)V",
         false)
       init.visitInsn(op.RETURN)
       methodEnd(init)
@@ -344,11 +354,12 @@ class Assembler(baseDir: Path) {
             null,
             Array())
           init.visitVarInsn(op.ALOAD, 0)
+          init.visitLdcInsn(params.size)
           init.visitMethodInsn(
             op.INVOKESPECIAL,
             tpe.ref.internalName,
             "<init>",
-            "()V",
+            "(I)V",
             false)
           params.zipWithIndex.foreach {
             case (t, i) =>
@@ -362,13 +373,29 @@ class Assembler(baseDir: Path) {
           val tosImpl = cw.visitMethod(
             op.ACC_PUBLIC,
             "toString",
-            "(Z)Ljava/lang/String;",
+            "()Ljava/lang/String;",
             null,
             Array())
-          tosImpl.visitLdcInsn("")
+          tosImpl.visitLdcInsn(name.value)
           params.zipWithIndex.foreach {
             case (t, i) =>
+              tosImpl.visitLdcInsn(" ")
+              tosImpl.visitMethodInsn(
+                op.INVOKEVIRTUAL,
+                "java/lang/String",
+                "concat",
+                "(Ljava/lang/String;)Ljava/lang/String;",
+                false)
+              tosImpl.visitVarInsn(op.ALOAD, 0)
               tosImpl.visitFieldInsn(op.GETFIELD, subClass.internalName, s"v$i", descriptor(t))
+              autobox(tosImpl, t, t.boxed)
+              tosImpl.visitLdcInsn(true)
+              tosImpl.visitMethodInsn(
+                op.INVOKESTATIC,
+                dataBaseClass.internalName,
+                "format",
+                s"(L${objectClass};Z)Ljava/lang/String;",
+                false)
               tosImpl.visitMethodInsn(
                 op.INVOKEVIRTUAL,
                 "java/lang/String",
@@ -379,23 +406,6 @@ class Assembler(baseDir: Path) {
           tosImpl.visitInsn(op.ARETURN)
           methodEnd(tosImpl)
 
-          val tos = cw.visitMethod(
-            op.ACC_PUBLIC,
-            "toString",
-            "()Ljava/lang/String;",
-            null,
-            Array())
-          tos.visitVarInsn(op.ALOAD, 0)
-          tos.visitLdcInsn(false)
-          tos.visitMethodInsn(
-            op.INVOKEVIRTUAL,
-            subClass.internalName,
-            "toString",
-            "(Z)Ljava/lang/String;",
-            false)
-          tos.visitInsn(op.ARETURN)
-          methodEnd(tos)
-
           cw.visitEnd()
           write(subClass.pkg.internalName, subClass.name, cw.toByteArray)
       }
@@ -403,12 +413,12 @@ class Assembler(baseDir: Path) {
 
     struct.body.foreach {
       case TT.TLet(name, tpe, expr) =>
-        defineField(cw, name.value, tpe)
+        defineStaticField(cw, name.value, tpe)
       case TT.Data(name, tpe, ctors) =>
         emitDataType(cw, tpe, ctors)
         ctors.foreach {
           case (name, params) =>
-          // defineField(cw, name.value, params.foldRight(tpe: Type) { (from, to) => Type.Fun(from, to) })
+          // defineStaticField(cw, name.value, params.foldRight(tpe: Type) { (from, to) => Type.Fun(from, to) })
         }
       case _: TT.Expr =>
       // ignore
