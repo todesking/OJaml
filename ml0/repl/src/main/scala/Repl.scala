@@ -3,8 +3,11 @@ package com.todesking.ojaml.ml0
 import com.todesking.ojaml.ml0.compiler.{ scala => ojaml }
 
 import ojaml.util.Syntax._
+import com.todesking.ojaml.ml0.compiler.scala.PackageEnv
 
 class Repl {
+  import ojaml.{ RawAST => RT, TypedAST => TT }
+  import Repl.Input
   import Repl.Result
 
   val replFileName = "<REPL>"
@@ -73,67 +76,97 @@ class Repl {
         this.imports ++= predefImports
     })
   }
-  def eval(code: String): Result = {
+
+  private[this] def input(tree: ojaml.RawAST.Term): Input = {
+    import ojaml.{ RawAST => RT }
+    tree match {
+      case tree @ RT.TLet(name, expr) => Input.Let(name.value, tree)
+      case tree @ RT.Data(name, ctors) => Input.Data(name.value, ctors.map(_._1.value), tree)
+      case expr: RT.Expr => Input.Expr(s"res$nextIndex", expr)
+    }
+  }
+
+  private[this] def parse(code: String): Either[Result, Input] = {
     val parser = new ojaml.Parser(replFileName)
     parser.parseTerm(code) match {
-      case parser.NoSuccess(msg, _) =>
-        Result.CompileError(msg)
-      case parser.Success(rawTree, _) =>
-        import ojaml.{ RawAST => RT }
-        val (isExpr, bindingName, letTree) = rawTree match {
-          case RT.TLet(name, expr) => (false, name.value, rawTree)
-          // TODO: Data
-          case expr: RT.Expr =>
-            val name = s"res$nextIndex"
-            (true, name, RT.TLet(mkName(name), expr))
-        }
-        val program = RT.Program(
-          mkQName("ojaml.repl"),
-          imports,
-          Seq(
-            RT.Module(
-              mkName(s"Repl_$nextIndex"),
-              Seq(letTree))))
-        val compileResult =
-          for {
-            x1 <- compiler.namePhase(packageEnv, program)
-            (newPEnv, Seq(namedTree)) = x1
-            x2 <- compiler.typePhase(moduleEnv, namedTree)
-            (newMEnv, typedTree) = x2
-          } yield (newPEnv, newMEnv, typedTree)
-
-        compileResult.fold({ errors =>
-          Result.CompileError(errors.mkString(", "))
-        }, {
-          case (newPEnv, newMEnv, tree) =>
-            compiler.assemble(tree)
-            this.packageEnv = newPEnv
-            this.moduleEnv = newMEnv
-            this.imports :+= ojaml.Import(mkQName(s"${tree.moduleRef.fullName}.$bindingName"))
-            nextIndex += 1
-            val tpe =
-              tree match {
-                case ojaml.TypedAST.Module(_, _, Seq(ojaml.TypedAST.TLet(_, t, _))) =>
-                  t
-                case unk => throw new AssertionError(s"TLet expected: $unk")
-              }
-            val isUnit = tpe == ojaml.Type.Unit
-            try {
-              val klass = targetClassLoader.loadClass(tree.moduleRef.fullName)
-              if (isExpr && !isUnit) {
-                val fieldName = compiler.assembler.escape(bindingName)
-                val field = klass.getField(fieldName)
-                val value = field.get(null)
-                Result.Value(bindingName, value, tpe.toString)
-              } else {
-                Result.Empty
-              }
-            } catch {
-              case e: Throwable =>
-                Result.RuntimeError(e)
-            }
-        })
+      case parser.NoSuccess(msg, _) => Left(Result.CompileError(msg))
+      case parser.Success(rawTree, _) => Right(input(rawTree))
     }
+  }
+
+  private[this] def compile(statement: RT.Term): Either[Result, (PackageEnv, ojaml.Compiler.ModuleEnv, TT.Module)] = {
+    val program = RT.Program(
+      mkQName("ojaml.repl"),
+      imports,
+      Seq(
+        RT.Module(
+          mkName(s"Repl_$nextIndex"),
+          Seq(statement))))
+    val result =
+      for {
+        x1 <- compiler.namePhase(packageEnv, program)
+        (newPEnv, Seq(namedTree)) = x1
+        x2 <- compiler.typePhase(moduleEnv, namedTree)
+        (newMEnv, typedTree) = x2
+      } yield (newPEnv, newMEnv, typedTree)
+    result.swap.map { errors =>
+      Result.CompileError(errors.mkString(", "))
+    }.swap
+  }
+
+  private[this] def evalClass(name: String): Either[Result, Class[_]] =
+    try {
+      Right(targetClassLoader.loadClass(name))
+    } catch {
+      case e: Throwable => Left(Result.RuntimeError(e))
+    }
+
+  private[this] def readValue(klass: Class[_], tree: TT.Module): Result = {
+    val (name, tpe) =
+      tree match {
+        case ojaml.TypedAST.Module(_, _, Seq(ojaml.TypedAST.TLet(n, t, _))) =>
+          (n, t)
+        case unk => throw new AssertionError(s"TLet expected: $unk")
+      }
+    val isUnit = tpe == ojaml.Type.Unit
+    if (isUnit) Result.Empty
+    else {
+      val fieldName = compiler.assembler.escape(name.value)
+      val field = klass.getField(fieldName)
+      val value = field.get(null)
+      Result.Value(name.value, value, tpe.toString)
+    }
+  }
+
+  private[this] def evalRuntime(in: Input, tree: TT.Module): Either[Result, Result] = {
+    evalClass(tree.moduleRef.fullName).map { klass =>
+      in match {
+        case Input.Data(_, _, _) => Result.Empty
+        case Input.Let(name, _) => readValue(klass, tree)
+        case Input.Expr(name, _) => readValue(klass, tree)
+      }
+    }
+  }
+
+  def eval(code: String): Result = {
+    parse(code).flatMap { in =>
+      val (statement, names) = in match {
+        case Input.Data(name, cnames, tree) => (tree, name +: cnames)
+        case Input.Expr(name, tree) => (RT.TLet(mkName(name), tree), Seq(name))
+        case Input.Let(name, tree) => (tree, Seq(name))
+      }
+      compile(statement).flatMap {
+        case (newPEnv, newMEnv, tree) =>
+          compiler.assemble(tree)
+          this.packageEnv = newPEnv
+          this.moduleEnv = newMEnv
+          this.imports = this.imports ++ names.map { name =>
+            ojaml.Import(mkQName(s"${tree.moduleRef.fullName}.$name"))
+          }
+          nextIndex += 1
+          evalRuntime(in, tree)
+      }
+    }.merge
   }
 
   def setDebugPrint(x: Boolean): Unit = {
@@ -158,6 +191,13 @@ object Repl {
     case class Value(bindingName: String, value: Any, tpe: String) extends Result
     case class CompileError(msg: String) extends Result
     case class RuntimeError(exception: Throwable) extends Result
+  }
+
+  sealed abstract class Input
+  object Input {
+    case class Expr(name: String, tree: ojaml.RawAST.Expr) extends Input
+    case class Let(name: String, tree: ojaml.RawAST.TLet) extends Input
+    case class Data(name: String, ctors: Seq[String], tree: ojaml.RawAST.Data) extends Input
   }
 
   @scala.annotation.tailrec

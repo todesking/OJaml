@@ -10,6 +10,7 @@ import util.Syntax._
 // Facade of compile phases
 class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TypedAST => TT }
+  import Compiler.ModuleEnv
 
   val classRepo = new ClassRepo(cl)
   val assembler = new Assembler(baseDir)
@@ -28,8 +29,6 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
 
   def assemble(tree: TypedAST.Module) =
     assembler.emit(tree)
-
-  type ModuleEnv = Map[VarRef.ModuleMember, Type]
 
   def parsePhase(file: FileContent): Result[RawAST.Program] = {
     val parser = new Parser(file.path.toString)
@@ -106,5 +105,6 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
 }
 
 object Compiler {
+  type ModuleEnv = Map[VarRef.ModuleMember, Type]
 }
 
