@@ -1,5 +1,5 @@
-scalaVersion := "2.12.8"
-val commonSettings = Seq(scalaVersion := "2.12.8")
+scalaVersion := "2.12.10"
+val commonSettings = Seq(scalaVersion := "2.12.10")
 
 val compilerScala = (project in file("compiler-scala"))
   .settings(commonSettings)
