@@ -1,6 +1,5 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
-import Result.Error
 import Result.error
 
 import com.todesking.ojaml.ml0.compiler.scala.{ NamedAST => NT, TypedAST => TT }
@@ -24,9 +23,8 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       .mapWithContext(env) {
         case (e, t) =>
           appTerm(e, t).fold({ l =>
-            (e, Left(l))
-          }, { case (ee, tt) => (ee, Right(tt)) })
-
+            (e, Result.errors(l))
+          }, { case (ee, tt) => (ee, Result.ok(tt)) })
       }
       .validated
       .map(_.flatten)
@@ -90,7 +88,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
   }
 
   private[this] def ok(s: Subst, e: TT.Expr): Result[(Subst, TT.Expr)] =
-    Right((s, e))
+    Result.ok((s, e))
   private[this] def ok0(e: TT.Expr): Result[(Subst, TT.Expr)] =
     ok(Subst.empty, e)
 
@@ -322,7 +320,7 @@ object Typer {
     def unify(pos: Pos): Result[Subst] = unify0(items, pos)
     private[this] def unify0(items: List[(Type, Type)], pos: Pos): Result[Subst] =
       items match {
-        case Nil => Right(Subst.empty)
+        case Nil => Result.ok(Subst.empty)
         case (l, r) :: xs if l == r =>
           unify0(xs, pos)
         case (a: Type.Var, t) :: xs =>
@@ -363,7 +361,7 @@ object Typer {
     def bindModuleValue(name: Name, tpe: Type): Result[Ctx] = {
       val ref = VarRef.ModuleMember(currentModule, name.value)
       if (gamma.contains(ref)) error(name.pos, s"Member $name is already defined")
-      else Right(copy(gamma = gamma + (ref -> tpe)))
+      else Result.ok(copy(gamma = gamma + (ref -> tpe)))
     }
 
     def bindModuleValues(mvs: Map[VarRef.ModuleMember, Type]): Ctx =

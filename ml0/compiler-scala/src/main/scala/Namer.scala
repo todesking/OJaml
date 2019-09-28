@@ -1,14 +1,15 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
-import Result.Error
+import Result.ok
 import Result.error
+import Result.validate
+import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, NamedAST => NT }
+import Namer.Ctx
+import Namer.ValueLike
 
 import util.Syntax._
 
 class Namer(packageEnv: PackageEnv) {
-  import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, NamedAST => NT }
-  import Namer.Ctx
-  import Namer.ValueLike
 
   def appProgram(p: RT.Program): Result[(PackageEnv, Seq[NT.Module])] =
     p.items.mapWithContextEC(packageEnv) { (penv, x) =>
@@ -23,7 +24,7 @@ class Namer(packageEnv: PackageEnv) {
     if (penv.memberExists(currentModule.pkg, currentModule.name))
       return error(s.name.pos, s"${currentModule.fullName} already defined")
     val init = Ctx(penv.addModule(currentModule), currentModule)
-    imports.foldLeft[Result[Ctx]](Right(init)) { (c, i) =>
+    imports.foldLeft(Result.ok(init)) { (c, i) =>
       c.flatMap(_.addImport(i))
     }.flatMap { ctx =>
       s.body.mapWithContextEC(ctx) {
@@ -61,12 +62,6 @@ class Namer(packageEnv: PackageEnv) {
       appExpr(ctx, e).map { te => (ctx, te) }
   }
 
-  private[this] def validate[A](xs: Seq[Result[A]]): Result[Seq[A]] = {
-    val rights = xs.collect { case Right(x) => x }
-    if (rights.size == xs.size) Right(rights)
-    else Left(xs.collect { case Left(x) => x }.flatten)
-  }
-
   def appExpr(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = {
     if (expr.pos == null) println(s"[WARN] NOPOS: $expr")
     appExpr0(ctx, expr).map(Pos.fill(_, expr.pos))
@@ -81,9 +76,9 @@ class Namer(packageEnv: PackageEnv) {
       valueLike(ctx, expr)
         .flatMap(_.toValue(n.pos, s"${n.value} is not a value"))
         .map(NT.Ref)
-    case RT.LitInt(v) => Right(NT.LitInt(v))
-    case RT.LitBool(v) => Right(NT.LitBool(v))
-    case RT.LitString(v) => Right(NT.LitString(v))
+    case RT.LitInt(v) => ok(NT.LitInt(v))
+    case RT.LitBool(v) => ok(NT.LitBool(v))
+    case RT.LitString(v) => ok(NT.LitString(v))
     case RT.If(cond, th, el) =>
       for {
         e0 <- appExpr(ctx, cond)
@@ -125,7 +120,7 @@ class Namer(packageEnv: PackageEnv) {
           valueLike(ctx, expr).flatMap {
             case ValueLike.TopLevel(ref) => ref match {
               case PackageMember.Class(ref) =>
-                Right(NT.JCallStatic(ref, name, targs))
+                ok(NT.JCallStatic(ref, name, targs))
               case PackageMember.Module(ref) =>
                 error(name.pos, "Module is not a class")
               case PackageMember.Package(ref) =>
@@ -175,7 +170,7 @@ object Namer {
       override def toValue(pos: Pos, msg: String) = error(pos, msg)
     }
     case class Value(ref: VarRef) extends ValueLike {
-      override def toValue(pos: Pos, msg: String) = Right(ref)
+      override def toValue(pos: Pos, msg: String) = ok(ref)
     }
   }
 
@@ -193,7 +188,7 @@ object Namer {
       if (venv.contains(name.value))
         error(name.pos, s"""Name "${name.value}" is already defined in ${currentModule.name}""")
       else
-        Right(copy(venv = venv + (varRef.name -> ValueLike.Value(varRef))))
+        ok(copy(venv = venv + (varRef.name -> ValueLike.Value(varRef))))
     }
 
     def findValue(name: String): Option[ValueLike] =
@@ -213,9 +208,9 @@ object Namer {
     def findType(tname: TypeName): Result[Type] = tname match {
       case TypeName.Atom(n) => n match {
         case n if localTypes.contains(n) => // TODO: Support qualified type name
-          Right(localTypes(n))
-        case "int" => Right(Type.Int)
-        case "bool" => Right(Type.Bool)
+          ok(localTypes(n))
+        case "int" => ok(Type.Int)
+        case "bool" => ok(Type.Bool)
         case unk => error(tname.pos, s"Type not found: $unk")
       }
       case TypeName.Fun(l, r) =>
@@ -237,7 +232,7 @@ object Namer {
         if (a.contains(name.value))
           error(name.pos, s"Name conflict: ${name.value}")
         else
-          Right((a + name.value, name.value))
+          ok((a + name.value, name.value))
       }.map { ns =>
         val refs = ns.zipWithIndex.map { case (_, i) => VarRef.Local(depth + 1, i + 1) }
         val c = copy(
@@ -250,7 +245,7 @@ object Namer {
     def addModuleMember(name: String): Ctx = copy(penv = penv.addModuleMember(currentModule, name))
     def findModuleMember(m: ModuleRef, name: Name): Result[VarRef.ModuleMember] =
       if (penv.moduleMemberExists(m, name.value))
-        Right(VarRef.ModuleMember(m, name.value))
+        ok(VarRef.ModuleMember(m, name.value))
       else
         error(name.pos, s"Member ${name.value} is not found in module ${m.fullName}")
 
@@ -262,7 +257,7 @@ object Namer {
       findPackageMember(PackageRef.Root, nameParts.head.value)
         .toResult(i.qname.pos, s"Member not found: ${nameParts.head.value}")
         .flatMap { head =>
-          nameParts.tail.foldLeft[Result[ValueLike]](Right(ValueLike.TopLevel(head))) { (v, n) =>
+          nameParts.tail.foldLeft[Result[ValueLike]](ok(ValueLike.TopLevel(head))) { (v, n) =>
             v.flatMap {
               case ValueLike.TopLevel(pm) => pm match {
                 case PackageMember.Package(ref) =>
@@ -290,7 +285,7 @@ object Namer {
         val c = copy(
           localTypes = localTypes + (name.value -> tpe),
           penv = penv.addModuleTypeMember(currentModule, name.value))
-        Right((tpe, c))
+        ok((tpe, c))
       }
     }
   }

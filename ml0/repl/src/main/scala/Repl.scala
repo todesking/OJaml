@@ -109,7 +109,7 @@ class Repl {
         x2 <- compiler.typePhase(moduleEnv, namedTree)
         (newMEnv, typedTree) = x2
       } yield (newPEnv, newMEnv, typedTree)
-    result.swap.map { errors =>
+    result.toEither.swap.map { errors =>
       Result.CompileError(errors.mkString(", "))
     }.swap
   }

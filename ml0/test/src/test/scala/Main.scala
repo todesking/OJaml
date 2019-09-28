@@ -74,7 +74,7 @@ class Main extends FunSpec {
 
     assert(expectedErrors.isEmpty || assertions.isEmpty)
 
-    def validateErrors(result: Seq[Result.Error]): Unit = {
+    def validateErrors(result: Seq[Result.Message]): Unit = {
       val errors = result.map { e =>
         (e.pos.location, e.pos.line, e.pos.col) -> e
       }.toMap

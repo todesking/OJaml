@@ -4,7 +4,6 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.Files
 
-import Result.Error
 import util.Syntax._
 
 // Facade of compile phases
@@ -15,15 +14,15 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   val classRepo = new ClassRepo(cl)
   val assembler = new Assembler(baseDir)
 
-  def compileFiles(files: Seq[Path]): Seq[Error] =
+  def compileFiles(files: Seq[Path]): Seq[Result.Message] =
     compileContents(files.map(FileContent.read))
 
-  def compileContents(files: Seq[FileContent]): Seq[Error] = {
+  def compileContents(files: Seq[FileContent]): Seq[Result.Message] = {
     typeContents(files)
       .map {
         case (_, trees) =>
           trees.foreach(assembler.emit)
-          Seq.empty[Error]
+          Seq.empty[Result.Message]
       }.merge
   }
 
@@ -37,13 +36,13 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
         // TODO: move error handling in to Parser
         val line = next.pos.line
         val col = next.pos.column
-        Left(Seq(Error(Pos(file.path.toString, line, col), s"Parse error: $msg\n${next.pos.longString}")))
+        Result.error(Pos(file.path.toString, line, col), s"Parse error: $msg\n${next.pos.longString}")
       case parser.Success(ast, _) =>
         if (debugPrint) {
           println("Phase: Parer")
           println(AST.pretty(ast))
         }
-        Right(ast)
+        Result.ok(ast)
     }
   }
 
