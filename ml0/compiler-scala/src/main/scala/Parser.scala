@@ -3,11 +3,17 @@ package com.todesking.ojaml.ml0.compiler.scala
 class Parser(sourceLocation: String) extends scala.util.parsing.combinator.RegexParsers {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => T }
 
-  def parse(s: String): ParseResult[T.Program] =
-    parseAll(program, s)
+  def parse(s: String): Result[T.Program] =
+    translate(parseAll(program, s))
 
-  def parseTerm(s: String): ParseResult[T.Term] =
-    parseAll(term, s)
+  def parseTerm(s: String): Result[T.Term] =
+    translate(parseAll(term, s))
+
+  private[this] def translate[A](a: ParseResult[A]): Result[A] = a match {
+    case Success(value, _) => Result.ok(value)
+    case NoSuccess(msg, next) =>
+      Result.error(Pos(sourceLocation, next.pos.line, next.pos.column), s"Parse error: $msg\n${next.pos.longString}")
+  }
 
   private[this] val discard = { _: Any => () }
 

@@ -31,19 +31,14 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
 
   def parsePhase(file: FileContent): Result[RawAST.Program] = {
     val parser = new Parser(file.path.toString)
-    parser.parse(file.content) match {
-      case parser.NoSuccess(msg, next) =>
-        // TODO: move error handling in to Parser
-        val line = next.pos.line
-        val col = next.pos.column
-        Result.error(Pos(file.path.toString, line, col), s"Parse error: $msg\n${next.pos.longString}")
-      case parser.Success(ast, _) =>
-        if (debugPrint) {
-          println("Phase: Parer")
-          println(AST.pretty(ast))
-        }
-        Result.ok(ast)
+    val result = parser.parse(file.content)
+    if (debugPrint) {
+      result.foreach { ast =>
+        println("Phase: Parer")
+        println(AST.pretty(ast))
+      }
     }
+    result
   }
 
   def namePhase(penv: PackageEnv, tree: RawAST.Program): Result[(PackageEnv, Seq[NamedAST.Module])] = {
