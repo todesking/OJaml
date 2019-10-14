@@ -48,7 +48,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
         if (debugPrint) {
           println("Phase: Namer")
           namedTrees.foreach { nt =>
-            println(AST.pretty(nt))
+            println(NamedAST.pretty(nt))
           }
           println(pe.pretty)
         }
@@ -62,7 +62,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
       val newMvs = moduleVars ++ Typer.moduleVarsOf(typed)
       if (debugPrint) {
         println("Phase: Typer")
-        println(AST.pretty(typed))
+        println(TypedAST.pretty(typed))
         println("Module members")
         newMvs.toSeq
           .map { case (k, v) => s"${k.module.fullName}.${k.name}" -> v }
