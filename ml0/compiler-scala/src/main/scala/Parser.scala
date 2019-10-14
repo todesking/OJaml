@@ -60,7 +60,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   }
 
   val normalName: Parser[Name] = withpos("""[a-zA-Z][a-zA-Z0-9_]*""".r ^? ({ case s if !keywords(s) => Name(s) }, { s => s"Invalid name: $s" }))
-  val opName: Parser[Name] = withpos("""==|<=|>=|[-+*/%<>&|]""".r ^? ({ case s if !keywords(s) => Name(s) }, { s => s"Invalid op name: $s" }))
+  val opName: Parser[Name] = withpos("""==|<=|>=|[-+*/%<>]|&&|\|\|""".r ^? ({ case s if !keywords(s) => Name(s) }, { s => s"Invalid op name: $s" }))
   val name: Parser[Name] = normalName | opName
   val qname: Parser[QName] = withpos(rep1sep(name, ".") ^^ { xs => QName(xs) })
 
@@ -115,7 +115,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   def expr1: Parser[T.Expr] =
     Seq(
-      binop("&" | "|"),
+      binop("&&" | "||"),
       binop("==" | "<" | "<=" | ">=" | ">"),
       binop("+" | "-"),
       binop("*" | "/" | "%")).foldRight(expr3) { (op, e) =>

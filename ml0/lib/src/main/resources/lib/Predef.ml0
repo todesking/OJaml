@@ -4,8 +4,8 @@ import com.todesking.ojaml.ml0.runtime.Int
 import com.todesking.ojaml.ml0.runtime.Bool
 
 module Predef {
-  let & = fun l: bool => fun r: bool => Bool##and(l, r) ;;
-  let | = fun l: bool => fun r: bool => Bool##or(l, r) ;;
+  let && = fun l: bool => fun r: bool => Bool##and(l, r) ;;
+  let || = fun l: bool => fun r: bool => Bool##or(l, r) ;;
 
   let + = fun l: int => fun r: int => Int##add(l, r) ;;
   let - = fun l: int => fun r: int => Int##sub(l, r) ;;
@@ -14,8 +14,8 @@ module Predef {
   let % = fun l: int => fun r: int => Int##mod(l, r) ;;
   let == = fun l: int => fun r: int => Int##eq(l, r) ;;
   let > = fun l: int => fun r: int => Int##gt(l, r) ;;
-  let >= = fun l: int => fun r: int => l > r | l == r ;;
+  let >= = fun l: int => fun r: int => l > r || l == r ;;
   let < = fun l: int => fun r: int => Int##lt(l, r) ;;
-  let <= = fun l: int => fun r: int => l < r | l == r ;;
+  let <= = fun l: int => fun r: int => l < r || l == r ;;
 
 }
