@@ -35,7 +35,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
     if (debugPrint) {
       result.foreach { ast =>
         println("Phase: Parer")
-        println(AST.pretty(ast))
+        println(RawAST.pretty(ast))
       }
     }
     result
