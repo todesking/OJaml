@@ -27,7 +27,7 @@ object Asm {
   }
 }
 
-class Assembler(baseDir: Path) {
+class Emitter(baseDir: Path) {
   import com.todesking.ojaml.ml0.compiler.scala.{ TypedAST => TT }
   import com.todesking.ojaml.ml0.compiler.scala.{ Asm => A }
 
