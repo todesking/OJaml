@@ -81,10 +81,12 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         }
         (bound, TT.Data(name, tpe, ctors) +: ctorDefs)
       }
+    /*
     case e: NT.Expr =>
       val te = appExpr(ctx, e).map { case (s, tree) => (ctx, Seq(reindex(Subst.empty, 1, subst(s, tree)))) }
       te.map(_._2).foreach(_.foreach(assertNoFVs(_, Set())))
       te
+      */
   }
 
   private[this] def ok(s: Subst, e: TT.Expr): Result[(Subst, TT.Expr)] =

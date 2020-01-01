@@ -420,8 +420,6 @@ class Emitter(baseDir: Path) {
           case (name, params) =>
           // defineStaticField(cw, name.value, params.foldRight(tpe: Type) { (from, to) => Type.Fun(from, to) })
         }
-      case _: TT.Expr =>
-      // ignore
     }
 
     val clinit = cw.visitMethod(
@@ -436,8 +434,6 @@ class Emitter(baseDir: Path) {
         autobox(clinit, expr.tpe, tpe)
         clinit.visitFieldInsn(op.PUTSTATIC, className, escape(name.value), descriptor(tpe))
       case TT.Data(name, tpe, ctors) =>
-      case e: TT.Expr =>
-      // ignore for now
     }
 
     clinit.visitInsn(op.RETURN)

@@ -1,15 +1,19 @@
 package com.todesking.ojaml.ml0.compiler.scala
+import com.todesking.ojaml.ml0.compiler.scala.util.pretty.PrettyPrinter
+import com.todesking.ojaml.ml0.compiler.scala.util.pretty.Doc
+import com.todesking.ojaml.ml0.compiler.scala.util.pretty.PrettySyntax._
 
-import com.todesking.ojaml.ml0.compiler.scala.util.pretty
-import pretty.PrettyPrinter
-import pretty.Doc
-import pretty.PrettySyntax._
+case class FieldRef(klass: ClassRef, isStatic: Boolean, name: String, tpe: Type)
 
-sealed abstract class TypedAST
-object TypedAST {
-  def pretty(ast: TypedAST): String =
+sealed abstract class JAST
+object JAST {
+  case class MethodDef(name: String, params: Seq[Type], ret: Option[Type])
+  case class FieldDef(name: String, tpe: Type)
+  case class ClassDef(ref: ClassRef, fields: Seq[FieldDef], methods: Seq[MethodDef])
+
+  def pretty(ast: JAST): String =
     PrettyPrinter.pretty(80, prettyDoc(ast, false))
-  def prettyDoc(ast: TypedAST, paren: Boolean): Doc = ast match {
+  def prettyDoc(ast: JAST, paren: Boolean): Doc = ast match {
     case Module(pkg, name, body) =>
       P.module(s"${pkg.value}.${name.value}", body.map(prettyDoc(_, false)))
     case TLet(name, tpe, expr) =>
@@ -62,16 +66,20 @@ object TypedAST {
       prettyDoc(body, true) ^^ ": ".doc ^^ tpe.toString().doc
     case TAbs(params, body, tpe) =>
       s"[${params.map(_.toString()).mkString(", ")}]".doc ^^ prettyDoc(body, true)
+    case PutField(f, b) =>
+      P.group(
+        s"$f = ",
+        pretty(b))
   }
-  case class Module(pkg: QName, name: Name, body: Seq[Term]) extends TypedAST {
+  case class Module(pkg: QName, name: Name, body: Seq[Term]) extends JAST {
     def moduleRef = ModuleRef(pkg.asPackage, name.value)
   }
 
-  sealed abstract class Term extends TypedAST
+  sealed abstract class Term extends JAST
   case class TLet(name: Name, tpe: Type, expr: Expr) extends Term
   case class Data(name: Name, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]) extends Term
 
-  sealed abstract class Expr extends TypedAST {
+  sealed abstract class Expr extends JAST {
     def tpe: Type
   }
   sealed abstract class Lit(override val tpe: Type) extends Expr {
@@ -105,4 +113,7 @@ object TypedAST {
     override def tpe = Type.Klass(ref)
   }
   case class Upcast(body: Expr, tpe: Type.Reference) extends Expr
+  case class PutField(ref: FieldRef, expr: Expr) extends Expr {
+    override val tpe = Type.Unit
+  }
 }

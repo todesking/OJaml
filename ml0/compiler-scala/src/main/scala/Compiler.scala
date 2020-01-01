@@ -12,7 +12,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   import Compiler.ModuleEnv
 
   val classRepo = new ClassRepo(cl)
-  val assembler = new Assembler(baseDir)
+  val assembler = new Emitter(baseDir)
 
   def compileFiles(files: Seq[Path]): Seq[Result.Message] =
     compileContents(files.map(FileContent.read))
