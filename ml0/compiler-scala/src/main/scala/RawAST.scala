@@ -68,7 +68,7 @@ object RawAST {
   case class TLet(name: Name, expr: Expr) extends Term
   case class Data(name: Name, ctors: Seq[(Name, Seq[TypeName])]) extends Term
 
-  sealed abstract class Expr extends Term
+  sealed abstract class Expr extends RawAST
 
   sealed abstract class Lit extends Expr
 

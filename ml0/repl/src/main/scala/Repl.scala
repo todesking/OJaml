@@ -4,6 +4,7 @@ import com.todesking.ojaml.ml0.compiler.{ scala => ojaml }
 
 import ojaml.util.Syntax._
 import com.todesking.ojaml.ml0.compiler.scala.PackageEnv
+import com.todesking.ojaml.ml0.compiler.scala.Javalizer
 
 class Repl {
   import ojaml.{ RawAST => RT, TypedAST => TT }
@@ -70,7 +71,7 @@ class Repl {
       }
     }, {
       case (newPEnv, newMEnv, trees) =>
-        trees.foreach(compiler.assemble)
+        trees.flatMap(compiler.javalizePhase(_)) foreach (compiler.emit)
         this.packageEnv = newPEnv
         this.moduleEnv = newMEnv
         this.imports ++= predefImports
@@ -82,7 +83,7 @@ class Repl {
     tree match {
       case tree @ RT.TLet(name, expr) => Input.Let(name.value, tree)
       case tree @ RT.Data(name, ctors) => Input.Data(name.value, ctors.map(_._1.value), tree)
-      case expr: RT.Expr => Input.Expr(s"res$nextIndex", expr)
+      // TODO: Support expr
     }
   }
 
@@ -131,7 +132,7 @@ class Repl {
     val isUnit = tpe == ojaml.Type.Unit
     if (isUnit) Result.Empty
     else {
-      val fieldName = compiler.assembler.escape(name.value)
+      val fieldName = compiler.emitter.escape(name.value)
       val field = klass.getField(fieldName)
       val value = field.get(null)
       Result.Value(name.value, value, tpe.toString)
@@ -157,7 +158,8 @@ class Repl {
       }
       compile(statement).flatMap {
         case (newPEnv, newMEnv, tree) =>
-          compiler.assemble(tree)
+          val j = new Javalizer
+          compiler.javalizePhase(tree).foreach(compiler.emit)
           this.packageEnv = newPEnv
           this.moduleEnv = newMEnv
           this.imports = this.imports ++ names.map { name =>

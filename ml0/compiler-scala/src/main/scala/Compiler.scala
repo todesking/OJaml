@@ -12,8 +12,9 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   import Compiler.ModuleEnv
 
   val classRepo = new ClassRepo(cl)
-  val assembler = new Emitter(baseDir)
+  val emitter = new Emitter(baseDir)
 
+  /*
   def compileFiles(files: Seq[Path]): Seq[Result.Message] =
     compileContents(files.map(FileContent.read))
 
@@ -21,13 +22,14 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
     typeContents(files)
       .map {
         case (_, trees) =>
-          trees.foreach(assembler.emit)
+          trees.foreach(emitter.emit)
           Seq.empty[Result.Message]
       }.merge
   }
+  */
 
-  def assemble(tree: TypedAST.Module) =
-    assembler.emit(tree)
+  def emit(tree: JAST.ClassDef) =
+    emitter.emit(tree)
 
   def parsePhase(file: FileContent): Result[RawAST.Program] = {
     val parser = new Parser(file.path.toString)
@@ -74,6 +76,18 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
       }
       (newMvs, typed)
     }
+  }
+
+  def javalizePhase(module: TypedAST.Module): Seq[JAST.ClassDef] = {
+    val javalizer = new Javalizer
+    val klasses = javalizer.apply(module)
+    if (debugPrint) {
+      println("Phase: Javalizer")
+      klasses.foreach { k =>
+        println(JAST.pretty(k))
+      }
+    }
+    klasses
   }
 
   def typeContents(files: Seq[FileContent]): Result[(Map[VarRef.ModuleMember, Type], Seq[TypedAST.Module])] = {

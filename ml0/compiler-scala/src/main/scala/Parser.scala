@@ -77,7 +77,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case n ~ ts => T.Module(n, ts)
   })
 
-  def term: Parser[T.Term] = tlet | data | expr
+  def term: Parser[T.Term] = tlet | data
   def tlet: Parser[RawAST.TLet] = withpos((kwd("let") ~> name) ~ (fun_params.? <~ "=") ~ expr <~ ";;" ^^ {
     case n ~ None ~ e =>
       T.TLet(n, e)

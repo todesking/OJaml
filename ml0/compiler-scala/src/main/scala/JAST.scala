@@ -3,19 +3,33 @@ import com.todesking.ojaml.ml0.compiler.scala.util.pretty.PrettyPrinter
 import com.todesking.ojaml.ml0.compiler.scala.util.pretty.Doc
 import com.todesking.ojaml.ml0.compiler.scala.util.pretty.PrettySyntax._
 
-case class FieldRef(klass: ClassRef, isStatic: Boolean, name: String, tpe: Type)
+case class FieldRef(klass: ClassRef, name: String, tpe: Type)
 
 sealed abstract class JAST
 object JAST {
-  case class MethodDef(name: String, params: Seq[Type], ret: Option[Type])
-  case class FieldDef(name: String, tpe: Type)
-  case class ClassDef(ref: ClassRef, fields: Seq[FieldDef], methods: Seq[MethodDef])
+  case class MethodDef(name: String, isStatic: Boolean, params: Seq[Type], ret: Option[Type], body: Seq[Term]) extends JAST
+  case class FieldDef(name: String, tpe: Type) extends JAST
+  case class ClassDef(ref: ClassRef, fields: Seq[FieldDef], methods: Seq[MethodDef], datas: Seq[Data]) extends JAST {
+    def methodSig(md: MethodDef) = MethodSig(ref, md.isStatic, false, md.name, md.params, md.ret)
+  }
 
   def pretty(ast: JAST): String =
     PrettyPrinter.pretty(80, prettyDoc(ast, false))
   def prettyDoc(ast: JAST, paren: Boolean): Doc = ast match {
-    case Module(pkg, name, body) =>
-      P.module(s"${pkg.value}.${name.value}", body.map(prettyDoc(_, false)))
+    case ClassDef(ref, fields, methods, datas) =>
+      P.bgroup(
+        s"class $ref {",
+        P.bgroupi(fields.map(prettyDoc(_, false))),
+        P.bgroupi(methods.map(prettyDoc(_, false))),
+        P.bgroupi(datas.map(prettyDoc(_, false))),
+        "}")
+    case FieldDef(name, tpe) =>
+      s"field $name: $tpe".doc
+    case MethodDef(name, isStatic, params, ret, body) =>
+      P.group(
+        s"def ${if (isStatic) "static " else ""}$name(${params.mkString(", ")}): ${ret.map(_.toString) getOrElse "void"} {",
+        P.groupi(body.map(prettyDoc(_, false))),
+        "}")
     case TLet(name, tpe, expr) =>
       P.tlet(name, Some(tpe.toString), prettyDoc(expr, false))
     case Data(name, tpe, ctors) =>
@@ -66,18 +80,17 @@ object JAST {
       prettyDoc(body, true) ^^ ": ".doc ^^ tpe.toString().doc
     case TAbs(params, body, tpe) =>
       s"[${params.map(_.toString()).mkString(", ")}]".doc ^^ prettyDoc(body, true)
-    case PutField(f, b) =>
+    case PutStatic(f, b) =>
       P.group(
         s"$f = ",
         pretty(b))
-  }
-  case class Module(pkg: QName, name: Name, body: Seq[Term]) extends JAST {
-    def moduleRef = ModuleRef(pkg.asPackage, name.value)
   }
 
   sealed abstract class Term extends JAST
   case class TLet(name: Name, tpe: Type, expr: Expr) extends Term
   case class Data(name: Name, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]) extends Term
+
+  case class PutStatic(ref: FieldRef, expr: Expr) extends Term
 
   sealed abstract class Expr extends JAST {
     def tpe: Type
@@ -113,7 +126,4 @@ object JAST {
     override def tpe = Type.Klass(ref)
   }
   case class Upcast(body: Expr, tpe: Type.Reference) extends Expr
-  case class PutField(ref: FieldRef, expr: Expr) extends Expr {
-    override val tpe = Type.Unit
-  }
 }

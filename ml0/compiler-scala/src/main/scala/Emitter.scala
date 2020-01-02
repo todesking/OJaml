@@ -28,7 +28,7 @@ object Asm {
 }
 
 class Emitter(baseDir: Path) {
-  import com.todesking.ojaml.ml0.compiler.scala.{ TypedAST => TT }
+  import com.todesking.ojaml.ml0.compiler.scala.{ JAST => J }
   import com.todesking.ojaml.ml0.compiler.scala.{ Asm => A }
 
   val sym2name: Map[Char, String] = """
@@ -77,9 +77,9 @@ class Emitter(baseDir: Path) {
     mw.visitEnd()
   }
 
-  def emit(struct: TT.Module): Unit = {
-    val pkg = struct.pkg.value
-    val className = s"$pkg.${struct.name.value}".replaceAll("\\.", "/")
+  def emit(klass: J.ClassDef): Unit = {
+    val pkg = klass.ref.pkg
+    val className = klass.ref.internalName
     val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)
     cw.visit(
       op.V1_8,
@@ -90,9 +90,9 @@ class Emitter(baseDir: Path) {
       Array())
 
     var funID = 0
-    def emitFun(body: TT.Expr, depth: Int, recValues: Option[Seq[TT.Expr]]): String = {
-      val cname = s"${struct.name.value}$$$funID"
-      val qcname = s"$pkg.$cname".replaceAll("\\.", "/")
+    def emitFun(body: J.Expr, depth: Int, recValues: Option[Seq[J.Expr]]): String = {
+      val cname = s"${klass.ref.name}$$$funID"
+      val qcname = s"${pkg.internalName}/$cname"
       funID += 1
 
       val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)
@@ -143,20 +143,20 @@ class Emitter(baseDir: Path) {
       app.visitInsn(op.ARETURN)
       methodEnd(app)
       cw.visitEnd()
-      write(pkg, cname, cw.toByteArray)
+      write(pkg.fullName, cname, cw.toByteArray)
       qcname
     }
 
-    def eval(method: asm.MethodVisitor, expr: TT.Expr, depth: Int): Unit = expr match {
-      case TT.LitInt(v) =>
+    def eval(method: asm.MethodVisitor, expr: J.Expr, depth: Int): Unit = expr match {
+      case J.LitInt(v) =>
         method.visitLdcInsn(v)
-      case TT.LitBool(v) =>
+      case J.LitBool(v) =>
         method.visitLdcInsn(v)
-      case TT.LitString(v) =>
+      case J.LitString(v) =>
         method.visitLdcInsn(v)
-      case TT.ModuleVarRef(module, name, tpe) =>
+      case J.ModuleVarRef(module, name, tpe) =>
         method.visitFieldInsn(op.GETSTATIC, msig(module), escape(name), descriptor(tpe))
-      case TT.LocalRef(d, index, tpe) =>
+      case J.LocalRef(d, index, tpe) =>
         if (depth == d) {
           method.visitVarInsn(op.ALOAD, 1)
           if (index == 0) {
@@ -178,7 +178,7 @@ class Emitter(baseDir: Path) {
         }
         method.visitTypeInsn(op.CHECKCAST, tpe.boxed.ref.internalName)
         unbox(method, tpe.boxed)
-      case TT.LetRec(values, body) =>
+      case J.LetRec(values, body) =>
         val klass = emitFun(body, depth, Some(values))
         method.visitTypeInsn(op.NEW, klass)
         method.visitInsn(op.DUP)
@@ -199,7 +199,7 @@ class Emitter(baseDir: Path) {
         method.visitMethodInsn(op.INVOKEVIRTUAL, funClass, "app", s"($objectSig)$objectSig", false)
         method.visitTypeInsn(op.CHECKCAST, body.tpe.boxed.ref.internalName)
         autobox(method, body.tpe.boxed, body.tpe)
-      case TT.If(cond, th, el, tpe) =>
+      case J.If(cond, th, el, tpe) =>
         val lElse = new asm.Label()
         val lEnd = new asm.Label()
         eval(method, cond, depth)
@@ -209,7 +209,7 @@ class Emitter(baseDir: Path) {
         method.visitLabel(lElse)
         eval(method, el, depth)
         method.visitLabel(lEnd)
-      case TT.Fun(body, tpe) =>
+      case J.Fun(body, tpe) =>
         val klass = emitFun(body, depth, None)
         method.visitTypeInsn(op.NEW, klass)
         method.visitInsn(op.DUP)
@@ -226,7 +226,7 @@ class Emitter(baseDir: Path) {
           "<init>",
           s"($objectSig$funSig)V", false)
         method.visitTypeInsn(op.CHECKCAST, funClass)
-      case TT.App(f, x, tpe) =>
+      case J.App(f, x, tpe) =>
         eval(method, f, depth)
         eval(method, x, depth)
         box(method, x.tpe)
@@ -237,9 +237,9 @@ class Emitter(baseDir: Path) {
           s"($objectSig)$objectSig", false)
         method.visitTypeInsn(op.CHECKCAST, tpe.boxed.ref.internalName)
         autobox(method, tpe.boxed, tpe)
-      case TT.TAbs(ps, e, t) =>
+      case J.TAbs(ps, e, t) =>
         eval(method, e, depth)
-      case e @ TT.JCallStatic(target, args) =>
+      case e @ J.JCallStatic(target, args) =>
         args.zip(target.args).foreach {
           case (x, t) =>
             eval(method, x, depth)
@@ -251,7 +251,7 @@ class Emitter(baseDir: Path) {
           target.name,
           target.descriptor, false)
         autobox(method, target.ret, e.tpe)
-      case e @ TT.JCallInstance(target, receiver, args) =>
+      case e @ J.JCallInstance(target, receiver, args) =>
         eval(method, receiver, depth)
         autobox(method, receiver.tpe, receiver.tpe.boxed)
         args.zip(target.args).foreach {
@@ -265,7 +265,7 @@ class Emitter(baseDir: Path) {
           target.name,
           target.descriptor, target.isInterface)
         autobox(method, target.ret, e.tpe)
-      case TT.JNew(ref, args) =>
+      case J.JNew(ref, args) =>
         method.visitTypeInsn(op.NEW, ref.internalName)
         method.visitInsn(op.DUP)
         args.foreach { a =>
@@ -277,7 +277,7 @@ class Emitter(baseDir: Path) {
           "<init>",
           asm.Type.getMethodType(asm.Type.VOID_TYPE, args.map(_.tpe).map(Type.toAsm).toArray: _*).getDescriptor,
           false)
-      case TT.Upcast(body, tpe) =>
+      case J.Upcast(body, tpe) =>
         eval(method, body, depth)
         method.visitTypeInsn(op.CHECKCAST, tpe.ref.internalName)
     }
@@ -411,36 +411,45 @@ class Emitter(baseDir: Path) {
       }
     }
 
-    struct.body.foreach {
-      case TT.TLet(name, tpe, expr) =>
-        defineStaticField(cw, name.value, tpe)
-      case TT.Data(name, tpe, ctors) =>
+    klass.datas.foreach {
+      case J.Data(name, tpe, ctors) =>
         emitDataType(cw, tpe, ctors)
         ctors.foreach {
           case (name, params) =>
           // defineStaticField(cw, name.value, params.foldRight(tpe: Type) { (from, to) => Type.Fun(from, to) })
         }
     }
-
-    val clinit = cw.visitMethod(
-      op.ACC_PUBLIC | op.ACC_STATIC,
-      "<clinit>",
-      "()V",
-      null,
-      Array())
-    struct.body.foreach {
-      case TT.TLet(name, tpe, expr) =>
-        eval(clinit, expr, 0)
-        autobox(clinit, expr.tpe, tpe)
-        clinit.visitFieldInsn(op.PUTSTATIC, className, escape(name.value), descriptor(tpe))
-      case TT.Data(name, tpe, ctors) =>
+    klass.fields.foreach { f =>
+      defineStaticField(cw, f.name, f.tpe)
     }
 
-    clinit.visitInsn(op.RETURN)
-    methodEnd(clinit)
+    klass.methods.foreach { m =>
+      var flags = op.ACC_PUBLIC
+      if (m.isStatic) flags |= op.ACC_STATIC
+
+      val mw = cw.visitMethod(
+        flags,
+        m.name,
+        klass.methodSig(m).descriptor,
+        null,
+        Array())
+      m.body.foreach {
+        case J.PutStatic(ref, expr) =>
+          eval(mw, expr, 0)
+          mw.visitFieldInsn(op.PUTSTATIC, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
+      }
+      m.ret match {
+        case None =>
+          mw.visitInsn(op.RETURN)
+        case Some(t) =>
+          ???
+      }
+      methodEnd(mw)
+    }
+
     cw.visitEnd()
 
-    write(pkg, struct.name.value, cw.toByteArray)
+    write(pkg.fullName, klass.ref.name, cw.toByteArray)
   }
 
   private[this] def autobox(method: asm.MethodVisitor, from: Option[Type], to: Type): Unit = from match {

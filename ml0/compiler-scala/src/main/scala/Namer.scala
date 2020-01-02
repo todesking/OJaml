@@ -58,8 +58,6 @@ class Namer(packageEnv: PackageEnv) {
         }.validated
         ctx2 = ctors.foldLeft(ctx) { case (c, (n, ns)) => c.addModuleMember(n.value) }
       } yield (ctx2, NT.Data(name, tpe, resolved))
-    case e: RT.Expr =>
-      appExpr(ctx, e).map { te => (ctx, te) }
   }
 
   def appExpr(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = {

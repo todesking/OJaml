@@ -65,7 +65,7 @@ object NamedAST {
 
   case class Data(name: Name, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]) extends Term
 
-  sealed abstract class Expr extends Term
+  sealed abstract class Expr extends NamedAST
 
   sealed abstract class Lit extends Expr
   case class LitInt(value: Int) extends Lit

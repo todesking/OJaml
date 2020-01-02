@@ -10,6 +10,7 @@ import com.todesking.ojaml.ml0.compiler.scala.Type
 import com.todesking.ojaml.ml0.compiler.scala.VarRef
 
 import scala.collection.JavaConverters._
+import com.todesking.ojaml.ml0.compiler.scala.Javalizer
 
 class Main extends FunSpec {
   private[this] val classLoader = getClass.getClassLoader
@@ -134,7 +135,7 @@ class Main extends FunSpec {
     }, {
       case (env, trees) =>
         validateErrors(Seq())
-        trees.foreach(compiler.assemble)
+        trees.flatMap(compiler.javalizePhase).foreach(compiler.emit)
         validateRuntime(env)
     })
   }
