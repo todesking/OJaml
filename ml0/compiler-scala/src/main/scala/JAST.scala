@@ -44,12 +44,6 @@ object JAST {
       s"(local:$depth,$index: $tpe)".doc
     case ModuleVarRef(module, name, tpe) =>
       s"(${module.fullName}.$name: $tpe)".doc
-    case JCallStatic(method, args) =>
-      P.jcall(
-        method.klass.fullName.doc,
-        s"(${method.name}/${method.descriptor})",
-        args.map(prettyDoc(_, false)),
-        true)
     case JCallInstance(method, receiver, args) =>
       P.jcall(
         prettyDoc(receiver, true),
@@ -135,19 +129,14 @@ object JAST {
   case class Fun(body: Expr, tpe: Type) extends Expr
   case class TAbs(params: Seq[Type.Var], body: Expr, tpe: Type.Abs) extends Expr
 
+  // TODO: test void-method invocation
   case class Invoke(method: MethodSig, receiver: Option[Expr], args: Seq[Expr]) extends Expr {
     require(method.args.size == args.size)
     require(method.isStatic ^ receiver.nonEmpty)
-    require(method.ret.nonEmpty)
-    override val tpe: Type = method.ret.get
+    override val tpe: Type = method.ret getOrElse Type.Unit
   }
   // TODO: term InvokeVoid
 
-  case class JCallStatic(method: MethodSig, args: Seq[Expr]) extends Expr {
-    require(method.isStatic)
-    require(method.args.size == args.size)
-    override def tpe: Type = method.ret.getOrElse(Type.Unit)
-  }
   case class JCallInstance(method: MethodSig, receiver: Expr, args: Seq[Expr]) extends Expr {
     require(!method.isStatic)
     require(method.args.size == args.size)

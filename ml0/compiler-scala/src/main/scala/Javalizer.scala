@@ -76,12 +76,22 @@ object Javalizer {
       case T.Fun(b, t) => J.Fun(appExpr(b, depth), t)
       case T.TAbs(ps, b, t) => J.TAbs(ps, appExpr(b, depth), t)
       case T.JCallStatic(m, a) =>
-        J.JCallStatic(m, a.map(appExpr(_, depth)))
+        val args = m.args.zip(a).map {
+          case (t, a) =>
+            autobox(appExpr(a, depth), t)
+        }
+        J.Invoke(m, None, args)
       case T.JCallInstance(m, r, a) =>
         J.JCallInstance(m, appExpr(r, depth), a.map(appExpr(_, depth)))
       case T.JNew(r, a) => J.JNew(r, a.map(appExpr(_, depth)))
       case T.Upcast(b, t) => J.Upcast(appExpr(b, depth), t)
     }
+
+    def autobox(e: J.Expr, to: Type) =
+      if (e.tpe == to) e
+      else if (e.tpe.boxed == to) box(e)
+      else if (e.tpe == to.boxed) unbox(e, to)
+      else throw new RuntimeException(s"Can't autobox: ${e.tpe} -> $to")
 
     def box(e: J.Expr): J.Expr =
       if (e.tpe == e.tpe.boxed) e
