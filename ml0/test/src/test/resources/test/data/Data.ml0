@@ -1,5 +1,4 @@
 package test.ml0
-(* debug *)
 
 module Data {
   data IList = ICons int IList, INil ;;

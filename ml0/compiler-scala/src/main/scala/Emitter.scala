@@ -226,17 +226,6 @@ class Emitter(baseDir: Path) {
           "<init>",
           s"($objectSig$funSig)V", false)
         method.visitTypeInsn(op.CHECKCAST, funClass)
-      case J.App(f, x, tpe) =>
-        eval(method, f, depth)
-        eval(method, x, depth)
-        box(method, x.tpe)
-        method.visitMethodInsn(
-          op.INVOKEVIRTUAL,
-          funClass,
-          "app",
-          s"($objectSig)$objectSig", false)
-        method.visitTypeInsn(op.CHECKCAST, tpe.boxed.ref.internalName)
-        autobox(method, tpe.boxed, tpe)
       case J.TAbs(ps, e, t) =>
         eval(method, e, depth)
       case e @ J.JCallStatic(target, args) =>
@@ -280,6 +269,28 @@ class Emitter(baseDir: Path) {
       case J.Upcast(body, tpe) =>
         eval(method, body, depth)
         method.visitTypeInsn(op.CHECKCAST, tpe.ref.internalName)
+      case J.Box(body) =>
+        eval(method, body, depth)
+        box(method, body.tpe)
+      case J.Unbox(body) =>
+        eval(method, body, depth)
+        unbox(method, body.tpe)
+      case J.Downcast(body, tpe) =>
+        eval(method, body, depth)
+        method.visitTypeInsn(op.CHECKCAST, tpe.ref.internalName)
+      case J.Invoke(sig, receiver, args) =>
+        receiver.foreach(eval(method, _, depth))
+        args.foreach(eval(method, _, depth))
+        val insn =
+          if (sig.isInterface) op.INVOKEINTERFACE
+          else if (sig.isStatic) op.INVOKESTATIC
+          else op.INVOKEVIRTUAL
+        method.visitMethodInsn(
+          insn,
+          sig.klass.internalName,
+          sig.name,
+          sig.descriptor,
+          sig.isInterface)
     }
 
     def defineStaticField(cw: asm.ClassWriter, name: String, tpe: Type): Unit = {

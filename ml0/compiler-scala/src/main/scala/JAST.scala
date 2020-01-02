@@ -63,8 +63,6 @@ object JAST {
         prettyDoc(el, false))
     case Fun(body, tpe) =>
       P.funT(tpe.toString, prettyDoc(body, false))
-    case App(fun, arg, tpe) =>
-      P.app(paren, prettyDoc(fun, false), prettyDoc(arg, true))
     case LetRec(values, body) =>
       P.eletrec(
         values.map { f =>
@@ -83,7 +81,33 @@ object JAST {
     case PutStatic(f, b) =>
       P.group(
         s"$f = ",
-        pretty(b))
+        prettyDoc(b, false))
+    case Downcast(e, t) =>
+      P.group(
+        s"(${t.ref.fullName})",
+        prettyDoc(e, true))
+    case b @ Box(e) =>
+      P.group(
+        s"(${b.tpe.ref.fullName})",
+        prettyDoc(e, true))
+    case b @ Unbox(e) =>
+      P.group(
+        s"(${b.tpe.javaName})",
+        prettyDoc(e, true))
+    case Invoke(sig, r, a) =>
+      val adoc = P.mks(",".doc)(a.map(prettyDoc(_, false)))
+      if (sig.isStatic) {
+        P.group(
+          s"[${sig.klass.fullName}].${sig.name}(",
+          adoc,
+          ")")
+      } else {
+        P.group(
+          prettyDoc(r.get, true),
+          s".[${sig.klass.fullName}].${sig.name}(",
+          adoc,
+          ")")
+      }
   }
 
   sealed abstract class Term extends JAST
@@ -108,9 +132,16 @@ object JAST {
     override def tpe: Type = body.tpe
   }
   case class If(cond: Expr, th: Expr, el: Expr, tpe: Type) extends Expr
-  case class App(fun: Expr, arg: Expr, tpe: Type) extends Expr
   case class Fun(body: Expr, tpe: Type) extends Expr
   case class TAbs(params: Seq[Type.Var], body: Expr, tpe: Type.Abs) extends Expr
+
+  case class Invoke(method: MethodSig, receiver: Option[Expr], args: Seq[Expr]) extends Expr {
+    require(method.args.size == args.size)
+    require(method.isStatic ^ receiver.nonEmpty)
+    require(method.ret.nonEmpty)
+    override val tpe: Type = method.ret.get
+  }
+  // TODO: term InvokeVoid
 
   case class JCallStatic(method: MethodSig, args: Seq[Expr]) extends Expr {
     require(method.isStatic)
@@ -126,4 +157,13 @@ object JAST {
     override def tpe = Type.Klass(ref)
   }
   case class Upcast(body: Expr, tpe: Type.Reference) extends Expr
+  case class Box(expr: Expr) extends Expr {
+    require(expr.tpe.boxed != expr.tpe)
+    override val tpe = expr.tpe.boxed
+  }
+  case class Unbox(expr: Expr) extends Expr {
+    require(expr.tpe.unboxed.nonEmpty)
+    override def tpe: Type = expr.tpe.unboxed.get
+  }
+  case class Downcast(body: Expr, tpe: Type.Reference) extends Expr
 }

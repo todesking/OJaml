@@ -1,3 +1,4 @@
+(* debug *)
 (* using: Predef *)
 package test.ml0
 

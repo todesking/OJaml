@@ -66,7 +66,13 @@ object Javalizer {
         J.LetRec(funs, appExpr(b, depth))
       case T.If(c, th, el, t) =>
         J.If(appExpr(c, depth), appExpr(th, depth), appExpr(el, depth), t)
-      case T.App(f, a, t) => J.App(appExpr(f, depth), appExpr(a, depth), t)
+      case T.App(f, a, t) =>
+        val appSig = MethodSig(Type.Fun.ref, false, false, "app", Seq(Type.Object), Some(Type.Object))
+        val invoke = J.Invoke(
+          appSig,
+          Some(box(appExpr(f, depth))),
+          Seq(box(appExpr(a, depth))))
+        unbox(J.Downcast(invoke, t.boxed), t)
       case T.Fun(b, t) => J.Fun(appExpr(b, depth), t)
       case T.TAbs(ps, b, t) => J.TAbs(ps, appExpr(b, depth), t)
       case T.JCallStatic(m, a) =>
@@ -75,8 +81,16 @@ object Javalizer {
         J.JCallInstance(m, appExpr(r, depth), a.map(appExpr(_, depth)))
       case T.JNew(r, a) => J.JNew(r, a.map(appExpr(_, depth)))
       case T.Upcast(b, t) => J.Upcast(appExpr(b, depth), t)
-
     }
+
+    def box(e: J.Expr): J.Expr =
+      if (e.tpe == e.tpe.boxed) e
+      else J.Box(e)
+
+    def unbox(e: J.Expr, to: Type): J.Expr =
+      if (e.tpe == to) e
+      else J.Unbox(e)
+
   }
 }
 class Javalizer {
