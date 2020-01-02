@@ -44,12 +44,6 @@ object JAST {
       s"(local:$depth,$index: $tpe)".doc
     case ModuleVarRef(module, name, tpe) =>
       s"(${module.fullName}.$name: $tpe)".doc
-    case JCallInstance(method, receiver, args) =>
-      P.jcall(
-        prettyDoc(receiver, true),
-        s"($method)",
-        args.map(prettyDoc(_, false)),
-        false)
     case If(cond, th, el, tpe) =>
       P.eif(
         prettyDoc(cond, false),
@@ -137,11 +131,6 @@ object JAST {
   }
   // TODO: term InvokeVoid
 
-  case class JCallInstance(method: MethodSig, receiver: Expr, args: Seq[Expr]) extends Expr {
-    require(!method.isStatic)
-    require(method.args.size == args.size)
-    override def tpe: Type = method.ret.getOrElse(Type.Unit)
-  }
   case class JNew(ref: ClassRef, args: Seq[Expr]) extends Expr {
     override def tpe = Type.Klass(ref)
   }

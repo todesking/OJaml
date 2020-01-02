@@ -82,7 +82,11 @@ object Javalizer {
         }
         J.Invoke(m, None, args)
       case T.JCallInstance(m, r, a) =>
-        J.JCallInstance(m, appExpr(r, depth), a.map(appExpr(_, depth)))
+        val args = m.args.zip(a).map {
+          case (t, a) =>
+            autobox(appExpr(a, depth), t)
+        }
+        J.Invoke(m, Some(box(appExpr(r, depth))), args)
       case T.JNew(r, a) => J.JNew(r, a.map(appExpr(_, depth)))
       case T.Upcast(b, t) => J.Upcast(appExpr(b, depth), t)
     }

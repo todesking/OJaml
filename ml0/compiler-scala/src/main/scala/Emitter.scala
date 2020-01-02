@@ -228,20 +228,6 @@ class Emitter(baseDir: Path) {
         method.visitTypeInsn(op.CHECKCAST, funClass)
       case J.TAbs(ps, e, t) =>
         eval(method, e, depth)
-      case e @ J.JCallInstance(target, receiver, args) =>
-        eval(method, receiver, depth)
-        autobox(method, receiver.tpe, receiver.tpe.boxed)
-        args.zip(target.args).foreach {
-          case (x, t) =>
-            eval(method, x, depth)
-            autobox(method, x.tpe, t)
-        }
-        method.visitMethodInsn(
-          if (target.isInterface) op.INVOKEINTERFACE else op.INVOKEVIRTUAL,
-          target.klass.internalName,
-          target.name,
-          target.descriptor, target.isInterface)
-        autobox(method, target.ret, e.tpe)
       case J.JNew(ref, args) =>
         method.visitTypeInsn(op.NEW, ref.internalName)
         method.visitInsn(op.DUP)
