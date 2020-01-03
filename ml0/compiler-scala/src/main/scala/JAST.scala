@@ -30,8 +30,6 @@ object JAST {
         s"def ${if (isStatic) "static " else ""}$name(${params.mkString(", ")}): ${ret.map(_.toString) getOrElse "void"} {",
         P.groupi(body.map(prettyDoc(_, false))),
         "}")
-    case TLet(name, tpe, expr) =>
-      P.tlet(name, Some(tpe.toString), prettyDoc(expr, false))
     case TExpr(expr) =>
       prettyDoc(expr, false)
     case TReturn(expr) =>
@@ -53,12 +51,6 @@ object JAST {
         prettyDoc(cond, false),
         prettyDoc(th, false),
         prettyDoc(el, false))
-    case LetRec(values, body) =>
-      P.eletrec(
-        values.map { f =>
-          ("?", None, prettyDoc(f, false))
-        },
-        prettyDoc(body, false))
     case JNew(ref, args) =>
       P.group(
         s"new ${ref.fullName}(",
@@ -104,13 +96,20 @@ object JAST {
         s"[$index]")
     case Null(tpe) =>
       "null".doc
+    case NewObjectArray(size) =>
+      s"new Object[$size]".doc
+    case PutValuesToUncheckedObjectArray(arr, vs) =>
+      P.group(
+        prettyDoc(arr, false),
+        "<-",
+        P.group("[", P.mks(", ".doc)(vs.map(prettyDoc(_, false))), "]"))
   }
 
   sealed abstract class Term extends JAST
-  case class TLet(name: Name, tpe: Type, expr: Expr) extends Term
-  case class Data(name: Name, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]) extends Term
+  case class Data(name: Name, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]) extends JAST
   case class TExpr(expr: Expr) extends Term
   case class TReturn(expr: Expr) extends Term
+  case class PutValuesToUncheckedObjectArray(arr: Expr, values: Seq[Expr]) extends Term
 
   case class PutStatic(ref: FieldRef, expr: Expr) extends Term
 
@@ -125,9 +124,6 @@ object JAST {
   case class LitString(value: String) extends Lit(Type.String)
 
   case class ModuleVarRef(module: ModuleRef, name: String, tpe: Type) extends Expr
-  case class LetRec(values: Seq[Expr], body: Expr) extends Expr {
-    override def tpe: Type = body.tpe
-  }
   case class If(cond: Expr, th: Expr, el: Expr, tpe: Type) extends Expr
 
   // TODO: test void-method invocation
@@ -156,4 +152,7 @@ object JAST {
     override def tpe: Type = Type.Object
   }
   case class Null(tpe: Type) extends Expr
+  case class NewObjectArray(size: Int) extends Expr {
+    override def tpe: Type = Type.Object
+  }
 }

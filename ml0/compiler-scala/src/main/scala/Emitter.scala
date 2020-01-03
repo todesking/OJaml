@@ -156,27 +156,6 @@ class Emitter(baseDir: Path) {
         method.visitLdcInsn(v)
       case J.ModuleVarRef(module, name, tpe) =>
         method.visitFieldInsn(op.GETSTATIC, msig(module), escape(name), descriptor(tpe))
-      case J.LetRec(values, body) =>
-        val klass = emitFun(body, depth, Some(values))
-        method.visitTypeInsn(op.NEW, klass)
-        method.visitInsn(op.DUP)
-        if (depth == 0) {
-          method.visitInsn(op.ACONST_NULL)
-          method.visitInsn(op.ACONST_NULL)
-        } else {
-          method.visitVarInsn(op.ALOAD, 1)
-          method.visitVarInsn(op.ALOAD, 0)
-        }
-        method.visitMethodInsn(
-          op.INVOKESPECIAL,
-          klass,
-          "<init>",
-          s"($objectSig$funSig)V", false)
-        method.visitLdcInsn(values.size)
-        method.visitTypeInsn(op.ANEWARRAY, Type.Object.ref.internalName) // letrec environement
-        method.visitMethodInsn(op.INVOKEVIRTUAL, funClass, "app", s"($objectSig)$objectSig", false)
-        method.visitTypeInsn(op.CHECKCAST, body.tpe.boxed.ref.internalName)
-        autobox(method, body.tpe.boxed, body.tpe)
       case J.If(cond, th, el, tpe) =>
         val lElse = new asm.Label()
         val lEnd = new asm.Label()
@@ -237,6 +216,9 @@ class Emitter(baseDir: Path) {
         method.visitInsn(op.AALOAD)
       case J.Null(tpe) =>
         method.visitInsn(op.ACONST_NULL)
+      case J.NewObjectArray(size) =>
+        method.visitLdcInsn(size)
+        method.visitTypeInsn(op.ANEWARRAY, Type.Object.ref.internalName)
     }
 
     def defineStaticField(cw: asm.ClassWriter, name: String, tpe: Type): Unit = {
@@ -404,6 +386,16 @@ class Emitter(baseDir: Path) {
               mw.visitInsn(op.ARETURN)
             case tpe =>
               throw new NotImplementedError(s"Not supported yet: $tpe")
+          }
+        case J.PutValuesToUncheckedObjectArray(arr, values) =>
+          eval(mw, arr, 0)
+          mw.visitTypeInsn(op.CHECKCAST, s"[L${Type.Object.ref.internalName};")
+          values.zipWithIndex.foreach {
+            case (v, i) =>
+              mw.visitInsn(op.DUP)
+              mw.visitLdcInsn(i)
+              eval(mw, v, 0)
+              mw.visitInsn(op.AASTORE)
           }
       }
       if (m.ret.isEmpty)

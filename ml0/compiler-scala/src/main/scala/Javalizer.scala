@@ -94,7 +94,19 @@ object Javalizer {
         }
       case T.LetRec(vs, b) =>
         val funs = vs.map(appExpr(_, depth + 1))
-        J.LetRec(funs, appExpr(b, depth + 1))
+        val body = appExpr(b, depth + 1)
+        val funKlass = createFun(body, Some(funs))
+        val funNewArgs =
+          if (depth == 0) Seq(J.Null(Type.Object), J.Null(Type.Klass(Type.Fun.ref)))
+          else Seq(J.GetLocal(1, Type.Object), J.GetLocal(0, Type.Klass(Type.Fun.ref)))
+        unbox(
+          J.Downcast(
+            J.Invoke(
+              MethodSig(Type.Fun.ref, false, false, "app", Seq(Type.Object), Some(Type.Object)),
+              false,
+              Some(J.JNew(funKlass, funNewArgs)),
+              Seq(J.NewObjectArray(vs.size))),
+            b.tpe.boxed), b.tpe)
       case T.If(c, th, el, t) =>
         J.If(appExpr(c, depth), appExpr(th, depth), appExpr(el, depth), t)
       case T.App(f, a, t) =>
@@ -106,7 +118,7 @@ object Javalizer {
           Seq(box(appExpr(a, depth))))
         unbox(J.Downcast(invoke, t.boxed), t)
       case T.Fun(b, t) =>
-        val funKlass = createFun(appExpr(b, depth + 1))
+        val funKlass = createFun(appExpr(b, depth + 1), None)
         val args =
           if (depth == 0) Seq(J.Null(Type.Object), J.Null(Type.Klass(Type.Fun.ref)))
           else Seq(J.GetLocal(1, Type.Object), J.GetLocal(0, Type.Klass(Type.Fun.ref)))
@@ -128,7 +140,7 @@ object Javalizer {
       case T.Upcast(b, t) => J.Upcast(appExpr(b, depth), t)
     }
 
-    def createFun(body: J.Expr) = {
+    def createFun(body: J.Expr, recValues: Option[Seq[J.Expr]]) = {
       val funKlass = ClassRef(moduleClass.pkg, s"${moduleClass.name}$$${nextFunClassID}")
       nextFunClassID += 1
       val builder = new ClassBuilder(funKlass, Type.Fun.ref)
@@ -140,12 +152,15 @@ object Javalizer {
             Some(J.GetLocal(0, Type.Klass(Type.Fun.ref))),
             Seq(J.GetLocal(1, Type.Klass(Type.Fun.ref)), J.GetLocal(2, Type.Object)))))
       builder.addMethod(J.MethodDef("<init>", false, Seq(Type.Object, Type.Klass(Type.Fun.ref)), None, initBody))
+      val prepareRec = recValues.fold(Seq.empty[J.Term]) { rvs =>
+        Seq(J.PutValuesToUncheckedObjectArray(J.GetLocal(1, Type.Object), rvs))
+      }
       builder.addMethod(J.MethodDef(
         "app",
         false,
         Seq(Type.Object),
         Some(Type.Object),
-        Seq(J.TReturn(box(body)))))
+        prepareRec ++ Seq(J.TReturn(box(body)))))
       klasses :+= builder.build()
       funKlass
     }
