@@ -5,44 +5,47 @@ import com.todesking.ojaml.ml0.compiler.scala.{ TypedAST => T }
 import com.todesking.ojaml.ml0.compiler.scala.TypedAST.ModuleVarRef
 
 object Javalizer {
-  class ClassBuilder(moduleClass: ClassRef) {
+  class ClassBuilder(ref: ClassRef, superRef: ClassRef) {
     private[this] var nextFunClassID = 0
-    private[this] var methodDefs = Seq.empty[J.MethodDef]
-    private[this] var fieldDefs = Seq.empty[J.FieldDef]
-    private[this] var initializers = Seq.empty[J.Term]
-    private[this] var funClassDefs = Seq.empty[J.ClassDef]
-    private[this] var datas = Seq.empty[J.Data]
+    private[this] var methodDefs = Vector.empty[J.MethodDef]
+    private[this] var fieldDefs = Vector.empty[J.FieldDef]
+    private[this] var clinits = Vector.empty[J.Term]
+    private[this] var funClassDefs = Vector.empty[J.ClassDef]
+    private[this] var datas = Vector.empty[J.Data]
 
     def build() = J.ClassDef(
-      moduleClass,
+      ref,
+      superRef,
       fieldDefs,
-      methodDefs :+ buildInitializer(),
+      methodDefs :+ buildClinit(),
       datas)
 
-    private[this] def buildInitializer() = {
+    private[this] def buildClinit() =
       J.MethodDef(
         "<clinit>",
         true,
         Seq(),
         None,
-        initializers)
-    }
+        clinits)
 
     def addStaticField(name: String, tpe: Type): FieldRef = {
       val fd = J.FieldDef(name, tpe)
       fieldDefs :+= fd
-      FieldRef(moduleClass, name, tpe)
+      FieldRef(ref, name, tpe)
     }
-    def addInitializer(insn: J.Term): Unit = {
-      initializers :+= insn
+    def addClinit(insn: J.Term): Unit = {
+      clinits :+= insn
     }
     def addData(data: J.Data) = {
       datas :+= data
     }
+    def addMethod(m: J.MethodDef) = {
+      methodDefs :+= m
+    }
   }
   class Transformer(moduleClass: ClassRef) {
     private[this] var nextFunClassID = 0
-    private[this] val builder = new ClassBuilder(moduleClass)
+    private[this] val builder = new ClassBuilder(moduleClass, Type.Object.ref)
     private[this] var klasses = Vector.empty[J.ClassDef]
     def build() = builder.build() +: klasses
 
@@ -50,7 +53,7 @@ object Javalizer {
       case T.TLet(name, tpe, expr) =>
         val f = builder.addStaticField(name.value, tpe)
         val c = appExpr(expr, 0)
-        builder.addInitializer(
+        builder.addClinit(
           J.PutStatic(f, appExpr(expr, 0)))
       case T.Data(name, tpe, ctors) =>
         builder.addData(J.Data(name, tpe, ctors))
@@ -83,13 +86,14 @@ object Javalizer {
             J.Downcast(
               J.Invoke(
                 sig,
+                false,
                 Some(J.GetLocal(0, Type.Klass(Type.Fun.ref))),
                 Seq(J.LitInt(d), J.LitInt(index))),
               t.boxed),
             t)
         }
       case T.LetRec(vs, b) =>
-        val funs = vs.map(appExpr(_, depth + 1)).map(_.asInstanceOf[J.Fun])
+        val funs = vs.map(appExpr(_, depth + 1))
         J.LetRec(funs, appExpr(b, depth + 1))
       case T.If(c, th, el, t) =>
         J.If(appExpr(c, depth), appExpr(th, depth), appExpr(el, depth), t)
@@ -97,25 +101,53 @@ object Javalizer {
         val appSig = MethodSig(Type.Fun.ref, false, false, "app", Seq(Type.Object), Some(Type.Object))
         val invoke = J.Invoke(
           appSig,
+          false,
           Some(box(appExpr(f, depth))),
           Seq(box(appExpr(a, depth))))
         unbox(J.Downcast(invoke, t.boxed), t)
-      case T.Fun(b, t) => J.Fun(appExpr(b, depth + 1), t)
+      case T.Fun(b, t) =>
+        val funKlass = createFun(appExpr(b, depth + 1))
+        val args =
+          if (depth == 0) Seq(J.Null(Type.Object), J.Null(Type.Klass(Type.Fun.ref)))
+          else Seq(J.GetLocal(1, Type.Object), J.GetLocal(0, Type.Klass(Type.Fun.ref)))
+        J.Upcast(J.JNew(funKlass, args), Type.Klass(Type.Fun.ref))
       case T.TAbs(ps, b, t) => appExpr(b, depth)
       case T.JCallStatic(m, a) =>
         val args = m.args.zip(a).map {
           case (t, a) =>
             autobox(appExpr(a, depth), t)
         }
-        J.Invoke(m, None, args)
+        J.Invoke(m, false, None, args)
       case T.JCallInstance(m, r, a) =>
         val args = m.args.zip(a).map {
           case (t, a) =>
             autobox(appExpr(a, depth), t)
         }
-        J.Invoke(m, Some(box(appExpr(r, depth))), args)
+        J.Invoke(m, false, Some(box(appExpr(r, depth))), args)
       case T.JNew(r, a) => J.JNew(r, a.map(appExpr(_, depth)))
       case T.Upcast(b, t) => J.Upcast(appExpr(b, depth), t)
+    }
+
+    def createFun(body: J.Expr) = {
+      val funKlass = ClassRef(moduleClass.pkg, s"${moduleClass.name}$$${nextFunClassID}")
+      nextFunClassID += 1
+      val builder = new ClassBuilder(funKlass, Type.Fun.ref)
+      val initBody = Seq(
+        J.TExpr(
+          J.Invoke(
+            MethodSig(Type.Fun.ref, false, false, "<init>", Seq(Type.Object, Type.Klass(Type.Fun.ref)), None),
+            true,
+            Some(J.GetLocal(0, Type.Klass(Type.Fun.ref))),
+            Seq(J.GetLocal(1, Type.Klass(Type.Fun.ref)), J.GetLocal(2, Type.Object)))))
+      builder.addMethod(J.MethodDef("<init>", false, Seq(Type.Object, Type.Klass(Type.Fun.ref)), None, initBody))
+      builder.addMethod(J.MethodDef(
+        "app",
+        false,
+        Seq(Type.Object),
+        Some(Type.Object),
+        Seq(J.TReturn(box(body)))))
+      klasses :+= builder.build()
+      funKlass
     }
 
     def autobox(e: J.Expr, to: Type) =

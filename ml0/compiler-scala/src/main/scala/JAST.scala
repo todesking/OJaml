@@ -9,16 +9,16 @@ sealed abstract class JAST
 object JAST {
   case class MethodDef(name: String, isStatic: Boolean, params: Seq[Type], ret: Option[Type], body: Seq[Term]) extends JAST
   case class FieldDef(name: String, tpe: Type) extends JAST
-  case class ClassDef(ref: ClassRef, fields: Seq[FieldDef], methods: Seq[MethodDef], datas: Seq[Data]) extends JAST {
+  case class ClassDef(ref: ClassRef, superRef: ClassRef, fields: Seq[FieldDef], methods: Seq[MethodDef], datas: Seq[Data]) extends JAST {
     def methodSig(md: MethodDef) = MethodSig(ref, md.isStatic, false, md.name, md.params, md.ret)
   }
 
   def pretty(ast: JAST): String =
     PrettyPrinter.pretty(80, prettyDoc(ast, false))
   def prettyDoc(ast: JAST, paren: Boolean): Doc = ast match {
-    case ClassDef(ref, fields, methods, datas) =>
+    case ClassDef(ref, superRef, fields, methods, datas) =>
       P.bgroup(
-        s"class $ref {",
+        s"class $ref extends $superRef {",
         P.bgroupi(fields.map(prettyDoc(_, false))),
         P.bgroupi(methods.map(prettyDoc(_, false))),
         P.bgroupi(datas.map(prettyDoc(_, false))),
@@ -32,6 +32,12 @@ object JAST {
         "}")
     case TLet(name, tpe, expr) =>
       P.tlet(name, Some(tpe.toString), prettyDoc(expr, false))
+    case TExpr(expr) =>
+      prettyDoc(expr, false)
+    case TReturn(expr) =>
+      P.group(
+        "return",
+        prettyDoc(expr, false))
     case Data(name, tpe, ctors) =>
       P.data(name, ctors.map { case (n, ts) => (n.value, ts.map(_.toString)) })
     case LitInt(value) =>
@@ -47,8 +53,6 @@ object JAST {
         prettyDoc(cond, false),
         prettyDoc(th, false),
         prettyDoc(el, false))
-    case Fun(body, tpe) =>
-      P.funT(tpe.toString, prettyDoc(body, false))
     case LetRec(values, body) =>
       P.eletrec(
         values.map { f =>
@@ -78,7 +82,7 @@ object JAST {
       P.group(
         s"(${b.tpe.javaName})",
         prettyDoc(e, true))
-    case Invoke(sig, r, a) =>
+    case Invoke(sig, special, r, a) =>
       val adoc = P.mks(",".doc)(a.map(prettyDoc(_, false)))
       if (sig.isStatic) {
         P.group(
@@ -98,11 +102,15 @@ object JAST {
       P.group(
         prettyDoc(arr, true),
         s"[$index]")
+    case Null(tpe) =>
+      "null".doc
   }
 
   sealed abstract class Term extends JAST
   case class TLet(name: Name, tpe: Type, expr: Expr) extends Term
   case class Data(name: Name, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]) extends Term
+  case class TExpr(expr: Expr) extends Term
+  case class TReturn(expr: Expr) extends Term
 
   case class PutStatic(ref: FieldRef, expr: Expr) extends Term
 
@@ -117,14 +125,13 @@ object JAST {
   case class LitString(value: String) extends Lit(Type.String)
 
   case class ModuleVarRef(module: ModuleRef, name: String, tpe: Type) extends Expr
-  case class LetRec(values: Seq[Fun], body: Expr) extends Expr {
+  case class LetRec(values: Seq[Expr], body: Expr) extends Expr {
     override def tpe: Type = body.tpe
   }
   case class If(cond: Expr, th: Expr, el: Expr, tpe: Type) extends Expr
-  case class Fun(body: Expr, tpe: Type) extends Expr
 
   // TODO: test void-method invocation
-  case class Invoke(method: MethodSig, receiver: Option[Expr], args: Seq[Expr]) extends Expr {
+  case class Invoke(method: MethodSig, special: Boolean, receiver: Option[Expr], args: Seq[Expr]) extends Expr {
     require(method.args.size == args.size)
     require(method.isStatic ^ receiver.nonEmpty)
     override val tpe: Type = method.ret getOrElse Type.Unit
@@ -148,4 +155,5 @@ object JAST {
   case class GetObjectFromUncheckedArray(expr: Expr, index: Int) extends Expr {
     override def tpe: Type = Type.Object
   }
+  case class Null(tpe: Type) extends Expr
 }

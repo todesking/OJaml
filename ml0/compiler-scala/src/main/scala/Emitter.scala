@@ -86,10 +86,10 @@ class Emitter(baseDir: Path) {
       op.ACC_PUBLIC,
       className,
       null,
-      objectClass,
+      klass.superRef.internalName,
       Array())
 
-    var funID = 0
+    var funID = 1000
     def emitFun(body: J.Expr, depth: Int, recValues: Option[Seq[J.Expr]]): String = {
       val cname = s"${klass.ref.name}$$$funID"
       val qcname = s"${pkg.internalName}/$cname"
@@ -187,23 +187,6 @@ class Emitter(baseDir: Path) {
         method.visitLabel(lElse)
         eval(method, el, depth)
         method.visitLabel(lEnd)
-      case J.Fun(body, tpe) =>
-        val klass = emitFun(body, depth, None)
-        method.visitTypeInsn(op.NEW, klass)
-        method.visitInsn(op.DUP)
-        if (depth == 0) {
-          method.visitInsn(op.ACONST_NULL)
-          method.visitInsn(op.ACONST_NULL)
-        } else {
-          method.visitVarInsn(op.ALOAD, 1)
-          method.visitVarInsn(op.ALOAD, 0)
-        }
-        method.visitMethodInsn(
-          op.INVOKESPECIAL,
-          klass,
-          "<init>",
-          s"($objectSig$funSig)V", false)
-        method.visitTypeInsn(op.CHECKCAST, funClass)
       case J.JNew(ref, args) =>
         method.visitTypeInsn(op.NEW, ref.internalName)
         method.visitInsn(op.DUP)
@@ -228,11 +211,12 @@ class Emitter(baseDir: Path) {
       case J.Downcast(body, tpe) =>
         eval(method, body, depth)
         method.visitTypeInsn(op.CHECKCAST, tpe.ref.internalName)
-      case J.Invoke(sig, receiver, args) =>
+      case J.Invoke(sig, special, receiver, args) =>
         receiver.foreach(eval(method, _, depth))
         args.foreach(eval(method, _, depth))
         val insn =
-          if (sig.isInterface) op.INVOKEINTERFACE
+          if (special) op.INVOKESPECIAL
+          else if (sig.isInterface) op.INVOKEINTERFACE
           else if (sig.isStatic) op.INVOKESTATIC
           else op.INVOKEVIRTUAL
         method.visitMethodInsn(
@@ -241,6 +225,9 @@ class Emitter(baseDir: Path) {
           sig.name,
           sig.descriptor,
           sig.isInterface)
+        if (sig.ret.isEmpty) {
+          method.visitInsn(op.ACONST_NULL)
+        }
       case J.GetLocal(index, tpe) =>
         method.visitVarInsn(op.ALOAD, index)
       case J.GetObjectFromUncheckedArray(arr, index) =>
@@ -248,6 +235,8 @@ class Emitter(baseDir: Path) {
         method.visitTypeInsn(op.CHECKCAST, s"[L${Type.Object.ref.internalName};")
         method.visitLdcInsn(index)
         method.visitInsn(op.AALOAD)
+      case J.Null(tpe) =>
+        method.visitInsn(op.ACONST_NULL)
     }
 
     def defineStaticField(cw: asm.ClassWriter, name: String, tpe: Type): Unit = {
@@ -405,13 +394,20 @@ class Emitter(baseDir: Path) {
         case J.PutStatic(ref, expr) =>
           eval(mw, expr, 0)
           mw.visitFieldInsn(op.PUTSTATIC, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
+        case J.TExpr(expr) =>
+          eval(mw, expr, 0)
+          mw.visitInsn(op.POP)
+        case J.TReturn(expr) =>
+          eval(mw, expr, 0)
+          expr.tpe match {
+            case Type.Reference(ref) =>
+              mw.visitInsn(op.ARETURN)
+            case tpe =>
+              throw new NotImplementedError(s"Not supported yet: $tpe")
+          }
       }
-      m.ret match {
-        case None =>
-          mw.visitInsn(op.RETURN)
-        case Some(t) =>
-          ???
-      }
+      if (m.ret.isEmpty)
+        mw.visitInsn(op.RETURN)
       methodEnd(mw)
     }
 
