@@ -40,8 +40,6 @@ object JAST {
       Doc.Text(value.toString)
     case LitString(value) =>
       s""""$value"""".doc
-    case LocalRef(depth, index, tpe) =>
-      s"(local:$depth,$index: $tpe)".doc
     case ModuleVarRef(module, name, tpe) =>
       s"(${module.fullName}.$name: $tpe)".doc
     case If(cond, th, el, tpe) =>
@@ -94,6 +92,12 @@ object JAST {
           adoc,
           ")")
       }
+    case GetLocal(index, t) =>
+      s"(local $index: $t)".doc
+    case GetObjectFromUncheckedArray(arr, index) =>
+      P.group(
+        prettyDoc(arr, true),
+        s"[$index]")
   }
 
   sealed abstract class Term extends JAST
@@ -113,7 +117,6 @@ object JAST {
   case class LitString(value: String) extends Lit(Type.String)
 
   case class ModuleVarRef(module: ModuleRef, name: String, tpe: Type) extends Expr
-  case class LocalRef(depth: Int, index: Int, tpe: Type) extends Expr
   case class LetRec(values: Seq[Fun], body: Expr) extends Expr {
     override def tpe: Type = body.tpe
   }
@@ -141,4 +144,8 @@ object JAST {
     override def tpe: Type = expr.tpe.unboxed.get
   }
   case class Downcast(body: Expr, tpe: Type.Reference) extends Expr
+  case class GetLocal(index: Int, tpe: Type) extends Expr
+  case class GetObjectFromUncheckedArray(expr: Expr, index: Int) extends Expr {
+    override def tpe: Type = Type.Object
+  }
 }

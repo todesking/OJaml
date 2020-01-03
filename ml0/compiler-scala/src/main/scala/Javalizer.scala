@@ -60,10 +60,37 @@ object Javalizer {
       case T.LitBool(v) => J.LitBool(v)
       case T.LitString(v) => J.LitString(v)
       case T.ModuleVarRef(m, n, t) => J.ModuleVarRef(m, n, t)
-      case T.LocalRef(d, i, t) => J.LocalRef(d, i, t)
+      case T.LocalRef(d, index, t) =>
+        if (depth == d) {
+          if (index == 0) {
+            unbox(J.Downcast(J.GetLocal(1, t.boxed), t.boxed), t)
+          } else {
+            unbox(
+              J.Downcast(
+                J.GetObjectFromUncheckedArray(J.GetLocal(1, Type.Object), index - 1),
+                t.boxed),
+              t)
+          }
+        } else {
+          val sig = MethodSig(
+            Type.Fun.ref,
+            false,
+            false,
+            "getLocal",
+            Seq(Type.Int, Type.Int),
+            Some(Type.Object))
+          unbox(
+            J.Downcast(
+              J.Invoke(
+                sig,
+                Some(J.GetLocal(0, Type.Klass(Type.Fun.ref))),
+                Seq(J.LitInt(d), J.LitInt(index))),
+              t.boxed),
+            t)
+        }
       case T.LetRec(vs, b) =>
-        val funs = vs.map(appExpr(_, depth)).map(_.asInstanceOf[J.Fun])
-        J.LetRec(funs, appExpr(b, depth))
+        val funs = vs.map(appExpr(_, depth + 1)).map(_.asInstanceOf[J.Fun])
+        J.LetRec(funs, appExpr(b, depth + 1))
       case T.If(c, th, el, t) =>
         J.If(appExpr(c, depth), appExpr(th, depth), appExpr(el, depth), t)
       case T.App(f, a, t) =>
@@ -73,7 +100,7 @@ object Javalizer {
           Some(box(appExpr(f, depth))),
           Seq(box(appExpr(a, depth))))
         unbox(J.Downcast(invoke, t.boxed), t)
-      case T.Fun(b, t) => J.Fun(appExpr(b, depth), t)
+      case T.Fun(b, t) => J.Fun(appExpr(b, depth + 1), t)
       case T.TAbs(ps, b, t) => appExpr(b, depth)
       case T.JCallStatic(m, a) =>
         val args = m.args.zip(a).map {

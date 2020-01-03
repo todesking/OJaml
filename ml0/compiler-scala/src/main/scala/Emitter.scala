@@ -156,28 +156,6 @@ class Emitter(baseDir: Path) {
         method.visitLdcInsn(v)
       case J.ModuleVarRef(module, name, tpe) =>
         method.visitFieldInsn(op.GETSTATIC, msig(module), escape(name), descriptor(tpe))
-      case J.LocalRef(d, index, tpe) =>
-        if (depth == d) {
-          method.visitVarInsn(op.ALOAD, 1)
-          if (index == 0) {
-            // stack top is the target value
-          } else {
-            method.visitTypeInsn(op.CHECKCAST, s"[$objectSig")
-            method.visitLdcInsn(index - 1)
-            method.visitInsn(op.AALOAD)
-          }
-        } else {
-          method.visitVarInsn(op.ALOAD, 0)
-          method.visitLdcInsn(d)
-          method.visitLdcInsn(index)
-          method.visitMethodInsn(
-            op.INVOKEVIRTUAL,
-            funClass,
-            "getLocal",
-            s"(II)$objectSig", false)
-        }
-        method.visitTypeInsn(op.CHECKCAST, tpe.boxed.ref.internalName)
-        unbox(method, tpe.boxed)
       case J.LetRec(values, body) =>
         val klass = emitFun(body, depth, Some(values))
         method.visitTypeInsn(op.NEW, klass)
@@ -263,6 +241,13 @@ class Emitter(baseDir: Path) {
           sig.name,
           sig.descriptor,
           sig.isInterface)
+      case J.GetLocal(index, tpe) =>
+        method.visitVarInsn(op.ALOAD, index)
+      case J.GetObjectFromUncheckedArray(arr, index) =>
+        eval(method, arr, depth)
+        method.visitTypeInsn(op.CHECKCAST, s"[L${Type.Object.ref.internalName};")
+        method.visitLdcInsn(index)
+        method.visitInsn(op.AALOAD)
     }
 
     def defineStaticField(cw: asm.ClassWriter, name: String, tpe: Type): Unit = {
