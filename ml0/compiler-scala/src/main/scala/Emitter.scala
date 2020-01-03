@@ -105,7 +105,8 @@ class Emitter(baseDir: Path) {
     def methodDescriptor(ret: JType, params: Seq[JType]): String =
       asm.Type.getMethodType(JType.toAsm(ret), params.map(JType.toAsm).toArray: _*).getDescriptor
 
-    def emitDataType(cw: asm.ClassWriter, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]): Unit = {
+    def emitDataType(cw: asm.ClassWriter, otype: Type.Data, ctors: Seq[(Name, Seq[Type])]): Unit = {
+      val tpe = otype.jtype
       val dataBaseClass = ClassRef.fromInternalName("com/todesking/ojaml/ml0/runtime/Data")
       val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)
       cw.visit(

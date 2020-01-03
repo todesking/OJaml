@@ -9,6 +9,7 @@ sealed abstract class JType {
   def unboxed: Option[JType.TPrimitive]
   def jname: String
   def jsig: String
+  def hname: String // for human
   def tpe: Type
 }
 object JType {
@@ -22,6 +23,7 @@ object JType {
   case class TKlass(ref: ClassRef) extends TReference {
     override def jname = ref.internalName
     override def jsig = s"L$jname;"
+    override def hname = ref.fullName
     override def tpe = Type.Klass(ref)
   }
   object TKlass {
@@ -32,6 +34,7 @@ object JType {
   case class TArray(element: JType) extends TReference {
     override def jname = s"[${element.jsig}"
     override def jsig = jname
+    override def hname = s"${element.hname}[]"
     override def tpe = ???
   }
 
@@ -48,9 +51,11 @@ object JType {
   }
   case object TInt extends TPrimitive {
     override def jname = "I"
+    override def hname = "int"
   }
   case object TBool extends TPrimitive {
     override def jname = "Z"
+    override def hname = "boolean"
   }
 
   private[this] def klass(name: String) = TKlass.fromInternalName(name)

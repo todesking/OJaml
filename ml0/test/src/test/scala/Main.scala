@@ -112,7 +112,7 @@ class Main extends FunSpec {
               if (typeName != "*") {
                 val tpe = env(VarRef.ModuleMember(ref, fieldName))
                 assert(typeName == tpe.toString)
-                assert(tpe.javaName == field.getType.getName, s"at $fieldName")
+                assert(tpe.jtype.hname == field.getType.getName, s"at $fieldName")
               }
               if (value != "*") {
                 assert(value == s"$actual", s"at $fieldName")

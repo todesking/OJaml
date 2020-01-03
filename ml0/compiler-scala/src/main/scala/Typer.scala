@@ -69,8 +69,8 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         val ctorDefs = ctors.map {
           case (name, params) =>
             val ctorType = params.foldRight(tpe: Type)(Type.Fun.apply)
-            // TODO: Duplicate in Assembler
-            val dataClass = ClassRef(tpe.ref.pkg, s"${tpe.ref.name}$$${name.value}")
+            // TODO: Duplicate in Emitter
+            val dataClass = ClassRef(tpe.jtype.ref.pkg, s"${tpe.jtype.ref.name}$$${name.value}")
             val ctorArgs = params.zipWithIndex.map {
               case (t, i) =>
                 TT.LocalRef(i + 1, 0, t)
@@ -275,7 +275,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         klass <- ctx.findClass(e1.tpe)
           .toResult(expr.pos, s"Class ${e1.tpe} not found. Check classpath.")
         argTypes = targs.map(_._2.tpe)
-        klassName = e1.tpe.boxed.ref.fullName
+        klassName = e1.tpe.jtype.boxed.jname
         method <- klass.findInstanceMethod(name.value, targs.map(_._2.tpe.jtype))
           .toResult(name.pos, s"Can't resolve instance method ${Type.prettyMethod(name.value, argTypes)} in class $klassName")
       } yield (s1, TT.JCallInstance(method, e1, targs.map(_._2)))
@@ -355,7 +355,9 @@ object Typer {
 
     def findClass(tpe: Type): Option[ClassSig] = tpe match {
       case v: Type.Var => None
-      case t => repo.find(t.boxed.ref)
+      case t =>
+        // TODO: Support array
+        repo.find(ClassRef.fromInternalName(t.jtype.boxed.jname))
     }
     def findClass(ref: ClassRef): Option[ClassSig] =
       repo.find(ref)
