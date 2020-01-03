@@ -51,9 +51,6 @@ class Emitter(baseDir: Path) {
     }
   }.mkString("")
 
-  val funClass: String = Type.Fun.ref.internalName
-  val funSig = s"L$funClass;"
-
   val objectClass = "java/lang/Object"
   val objectSig = s"L$objectClass;"
 
@@ -89,65 +86,7 @@ class Emitter(baseDir: Path) {
       klass.superRef.internalName,
       Array())
 
-    var funID = 1000
-    def emitFun(body: J.Expr, depth: Int, recValues: Option[Seq[J.Expr]]): String = {
-      val cname = s"${klass.ref.name}$$$funID"
-      val qcname = s"${pkg.internalName}/$cname"
-      funID += 1
-
-      val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)
-      cw.visit(
-        op.V1_8,
-        op.ACC_PUBLIC,
-        qcname,
-        null,
-        funClass,
-        Array())
-      val init = cw.visitMethod(
-        op.ACC_PUBLIC,
-        "<init>",
-        s"($objectSig$funSig)V",
-        null,
-        Array())
-      init.visitVarInsn(op.ALOAD, 0)
-      init.visitVarInsn(op.ALOAD, 1)
-      init.visitVarInsn(op.ALOAD, 2)
-      init.visitMethodInsn(
-        op.INVOKESPECIAL,
-        funClass,
-        "<init>",
-        s"($objectSig$funSig)V", false)
-      init.visitInsn(op.RETURN)
-      methodEnd(init)
-      val app = cw.visitMethod(
-        op.ACC_PUBLIC,
-        "app",
-        s"($objectSig)$objectSig",
-        null,
-        Array())
-      recValues.foreach { rvs =>
-        app.visitVarInsn(op.ALOAD, 1)
-        app.visitTypeInsn(op.CHECKCAST, s"[$objectSig")
-        rvs.zipWithIndex.foreach {
-          case (rv, i) =>
-            app.visitInsn(op.DUP)
-            app.visitLdcInsn(i)
-            eval(app, rv, depth + 1)
-            autobox(app, rv.tpe, rv.tpe.boxed)
-            app.visitInsn(op.AASTORE)
-        }
-        app.visitLdcInsn(op.POP)
-      }
-      eval(app, body, depth + 1)
-      box(app, body.tpe)
-      app.visitInsn(op.ARETURN)
-      methodEnd(app)
-      cw.visitEnd()
-      write(pkg.fullName, cname, cw.toByteArray)
-      qcname
-    }
-
-    def eval(method: asm.MethodVisitor, expr: J.Expr, depth: Int): Unit = expr match {
+    def eval(method: asm.MethodVisitor, expr: J.Expr): Unit = expr match {
       case J.LitInt(v) =>
         method.visitLdcInsn(v)
       case J.LitBool(v) =>
@@ -159,18 +98,18 @@ class Emitter(baseDir: Path) {
       case J.If(cond, th, el, tpe) =>
         val lElse = new asm.Label()
         val lEnd = new asm.Label()
-        eval(method, cond, depth)
+        eval(method, cond)
         method.visitJumpInsn(op.IFEQ, lElse)
-        eval(method, th, depth)
+        eval(method, th)
         method.visitJumpInsn(op.GOTO, lEnd)
         method.visitLabel(lElse)
-        eval(method, el, depth)
+        eval(method, el)
         method.visitLabel(lEnd)
       case J.JNew(ref, args) =>
         method.visitTypeInsn(op.NEW, ref.internalName)
         method.visitInsn(op.DUP)
         args.foreach { a =>
-          eval(method, a, depth)
+          eval(method, a)
         }
         method.visitMethodInsn(
           op.INVOKESPECIAL,
@@ -179,20 +118,20 @@ class Emitter(baseDir: Path) {
           asm.Type.getMethodType(asm.Type.VOID_TYPE, args.map(_.tpe).map(Type.toAsm).toArray: _*).getDescriptor,
           false)
       case J.Upcast(body, tpe) =>
-        eval(method, body, depth)
+        eval(method, body)
         method.visitTypeInsn(op.CHECKCAST, tpe.ref.internalName)
       case J.Box(body) =>
-        eval(method, body, depth)
+        eval(method, body)
         box(method, body.tpe)
       case J.Unbox(body) =>
-        eval(method, body, depth)
+        eval(method, body)
         unbox(method, body.tpe)
       case J.Downcast(body, tpe) =>
-        eval(method, body, depth)
+        eval(method, body)
         method.visitTypeInsn(op.CHECKCAST, tpe.ref.internalName)
       case J.Invoke(sig, special, receiver, args) =>
-        receiver.foreach(eval(method, _, depth))
-        args.foreach(eval(method, _, depth))
+        receiver.foreach(eval(method, _))
+        args.foreach(eval(method, _))
         val insn =
           if (special) op.INVOKESPECIAL
           else if (sig.isInterface) op.INVOKEINTERFACE
@@ -210,7 +149,7 @@ class Emitter(baseDir: Path) {
       case J.GetLocal(index, tpe) =>
         method.visitVarInsn(op.ALOAD, index)
       case J.GetObjectFromUncheckedArray(arr, index) =>
-        eval(method, arr, depth)
+        eval(method, arr)
         method.visitTypeInsn(op.CHECKCAST, s"[L${Type.Object.ref.internalName};")
         method.visitLdcInsn(index)
         method.visitInsn(op.AALOAD)
@@ -353,10 +292,6 @@ class Emitter(baseDir: Path) {
     klass.datas.foreach {
       case J.Data(name, tpe, ctors) =>
         emitDataType(cw, tpe, ctors)
-        ctors.foreach {
-          case (name, params) =>
-          // defineStaticField(cw, name.value, params.foldRight(tpe: Type) { (from, to) => Type.Fun(from, to) })
-        }
     }
     klass.fields.foreach { f =>
       defineStaticField(cw, f.name, f.tpe)
@@ -374,13 +309,13 @@ class Emitter(baseDir: Path) {
         Array())
       m.body.foreach {
         case J.PutStatic(ref, expr) =>
-          eval(mw, expr, 0)
+          eval(mw, expr)
           mw.visitFieldInsn(op.PUTSTATIC, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
         case J.TExpr(expr) =>
-          eval(mw, expr, 0)
+          eval(mw, expr)
           mw.visitInsn(op.POP)
         case J.TReturn(expr) =>
-          eval(mw, expr, 0)
+          eval(mw, expr)
           expr.tpe match {
             case Type.Reference(ref) =>
               mw.visitInsn(op.ARETURN)
@@ -388,13 +323,13 @@ class Emitter(baseDir: Path) {
               throw new NotImplementedError(s"Not supported yet: $tpe")
           }
         case J.PutValuesToUncheckedObjectArray(arr, values) =>
-          eval(mw, arr, 0)
+          eval(mw, arr)
           mw.visitTypeInsn(op.CHECKCAST, s"[L${Type.Object.ref.internalName};")
           values.zipWithIndex.foreach {
             case (v, i) =>
               mw.visitInsn(op.DUP)
               mw.visitLdcInsn(i)
-              eval(mw, v, 0)
+              eval(mw, v)
               mw.visitInsn(op.AASTORE)
           }
       }
