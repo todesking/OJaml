@@ -13,18 +13,18 @@ import org.objectweb.asm.ClassVisitor
 object Asm {
   import asm.{ MethodVisitor => MV }
 
-  def autoload(m: MV, i: Int, t: Type): Unit = t match {
-    case Type.Int =>
+  def autoload(m: MV, i: Int, t: JType): Unit = t match {
+    case JType.TInt =>
       m.visitVarInsn(op.ILOAD, i)
     // TODO: Other primitives and array
-    case Type.Reference(_) =>
+    case _: JType.TReference =>
       m.visitVarInsn(op.ALOAD, i)
   }
-  def autostore(m: MV, i: Int, t: Type): Unit = t match {
-    case Type.Int =>
+  def autostore(m: MV, i: Int, t: JType): Unit = t match {
+    case JType.TInt =>
       m.visitVarInsn(op.ISTORE, i)
     // TODO: Other primitives and array
-    case Type.Reference(_) =>
+    case _: JType.TReference =>
       m.visitVarInsn(op.ASTORE, i)
   }
 }
@@ -56,10 +56,7 @@ class Emitter(baseDir: Path) {
   private[this] val objectClass = "java/lang/Object"
   private[this] val objectSig = s"L$objectClass;"
 
-  private[this] def descriptor(tpe: Type): String = Type.toAsm(tpe).getDescriptor
-  private[this] def tname(tpe: Type): ClassRef = tpe match {
-    case Type.Reference(name) => name
-  }
+  private[this] def descriptor(tpe: JType): String = JType.toAsm(tpe).getDescriptor
 
   private[this] def msig(m: ModuleRef) =
     s"${m.pkg.internalName}/${m.name}"
@@ -88,7 +85,7 @@ class Emitter(baseDir: Path) {
       klass.superRef.internalName,
       Array())
 
-    def defineStaticField(cw: asm.ClassWriter, name: String, tpe: Type): Unit = {
+    def defineStaticField(cw: asm.ClassWriter, name: String, tpe: JType): Unit = {
       cw.visitField(
         op.ACC_PUBLIC | op.ACC_STATIC,
         escape(name),
@@ -96,7 +93,7 @@ class Emitter(baseDir: Path) {
         null,
         null)
     }
-    def defineField(cw: asm.ClassWriter, name: String, tpe: Type): Unit = {
+    def defineField(cw: asm.ClassWriter, name: String, tpe: JType): Unit = {
       cw.visitField(
         op.ACC_PUBLIC,
         escape(name),
@@ -105,8 +102,8 @@ class Emitter(baseDir: Path) {
         null)
     }
 
-    def methodDescriptor(ret: Type, params: Seq[Type]): String =
-      asm.Type.getMethodType(Type.toAsm(ret), params.map(Type.toAsm).toArray: _*).getDescriptor
+    def methodDescriptor(ret: JType, params: Seq[JType]): String =
+      asm.Type.getMethodType(JType.toAsm(ret), params.map(JType.toAsm).toArray: _*).getDescriptor
 
     def emitDataType(cw: asm.ClassWriter, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]): Unit = {
       val dataBaseClass = ClassRef.fromInternalName("com/todesking/ojaml/ml0/runtime/Data")
@@ -150,13 +147,13 @@ class Emitter(baseDir: Path) {
             Array())
           params.zipWithIndex.foreach {
             case (t, i) =>
-              defineField(cw, s"v$i", t)
+              defineField(cw, s"v$i", t.jtype)
           }
 
           val init = cw.visitMethod(
             op.ACC_PUBLIC,
             "<init>",
-            asm.Type.getMethodType(asm.Type.VOID_TYPE, params.map(Type.toAsm): _*).getDescriptor,
+            asm.Type.getMethodType(asm.Type.VOID_TYPE, params.map(_.jtype).map(JType.toAsm): _*).getDescriptor,
             null,
             Array())
           init.visitVarInsn(op.ALOAD, 0)
@@ -170,8 +167,8 @@ class Emitter(baseDir: Path) {
           params.zipWithIndex.foreach {
             case (t, i) =>
               init.visitVarInsn(op.ALOAD, 0)
-              A.autoload(init, i + 1, t)
-              init.visitFieldInsn(op.PUTFIELD, subClass.internalName, s"v$i", descriptor(t))
+              A.autoload(init, i + 1, t.jtype)
+              init.visitFieldInsn(op.PUTFIELD, subClass.internalName, s"v$i", descriptor(t.jtype))
           }
           init.visitInsn(op.RETURN)
           methodEnd(init)
@@ -193,8 +190,8 @@ class Emitter(baseDir: Path) {
                 "(Ljava/lang/String;)Ljava/lang/String;",
                 false)
               tosImpl.visitVarInsn(op.ALOAD, 0)
-              tosImpl.visitFieldInsn(op.GETFIELD, subClass.internalName, s"v$i", descriptor(t))
-              autobox(tosImpl, t, t.boxed)
+              tosImpl.visitFieldInsn(op.GETFIELD, subClass.internalName, s"v$i", descriptor(t.jtype))
+              autobox(tosImpl, t.jtype, t.jtype.boxed)
               tosImpl.visitLdcInsn(true)
               tosImpl.visitMethodInsn(
                 op.INVOKESTATIC,
@@ -261,11 +258,11 @@ class Emitter(baseDir: Path) {
         op.INVOKESPECIAL,
         ref.internalName,
         "<init>",
-        asm.Type.getMethodType(asm.Type.VOID_TYPE, args.map(_.tpe).map(Type.toAsm).toArray: _*).getDescriptor,
+        asm.Type.getMethodType(asm.Type.VOID_TYPE, args.map(_.tpe).map(JType.toAsm).toArray: _*).getDescriptor,
         false)
     case J.Upcast(body, tpe) =>
       eval(method, body)
-      method.visitTypeInsn(op.CHECKCAST, tpe.ref.internalName)
+      method.visitTypeInsn(op.CHECKCAST, tpe.jname)
     case J.Box(body) =>
       eval(method, body)
       box(method, body.tpe)
@@ -274,7 +271,7 @@ class Emitter(baseDir: Path) {
       unbox(method, body.tpe)
     case J.Downcast(body, tpe) =>
       eval(method, body)
-      method.visitTypeInsn(op.CHECKCAST, tpe.ref.internalName)
+      method.visitTypeInsn(op.CHECKCAST, tpe.jname)
     case J.Invoke(sig, special, receiver, args) =>
       receiver.foreach(eval(method, _))
       args.foreach(eval(method, _))
@@ -296,14 +293,14 @@ class Emitter(baseDir: Path) {
       method.visitVarInsn(op.ALOAD, index)
     case J.GetObjectFromUncheckedArray(arr, index) =>
       eval(method, arr)
-      method.visitTypeInsn(op.CHECKCAST, s"[L${Type.Object.ref.internalName};")
+      method.visitTypeInsn(op.CHECKCAST, JType.ObjectArray.jname)
       method.visitLdcInsn(index)
       method.visitInsn(op.AALOAD)
     case J.Null(tpe) =>
       method.visitInsn(op.ACONST_NULL)
     case J.NewObjectArray(size) =>
       method.visitLdcInsn(size)
-      method.visitTypeInsn(op.ANEWARRAY, Type.Object.ref.internalName)
+      method.visitTypeInsn(op.ANEWARRAY, JType.TObject.jname)
   }
   private[this] def defineMethod(cw: ClassVisitor, klass: J.ClassDef, m: J.MethodDef) = {
     var flags = op.ACC_PUBLIC
@@ -325,14 +322,14 @@ class Emitter(baseDir: Path) {
       case J.TReturn(expr) =>
         eval(mw, expr)
         expr.tpe match {
-          case Type.Reference(ref) =>
+          case _: JType.TReference =>
             mw.visitInsn(op.ARETURN)
           case tpe =>
             throw new NotImplementedError(s"Not supported yet: $tpe")
         }
       case J.PutValuesToUncheckedObjectArray(arr, values) =>
         eval(mw, arr)
-        mw.visitTypeInsn(op.CHECKCAST, s"[L${Type.Object.ref.internalName};")
+        mw.visitTypeInsn(op.CHECKCAST, JType.ObjectArray.jname)
         values.zipWithIndex.foreach {
           case (v, i) =>
             mw.visitInsn(op.DUP)
@@ -346,14 +343,14 @@ class Emitter(baseDir: Path) {
     methodEnd(mw)
   }
 
-  private[this] def autobox(method: asm.MethodVisitor, from: Option[Type], to: Type): Unit = from match {
+  private[this] def autobox(method: asm.MethodVisitor, from: Option[JType], to: JType): Unit = from match {
     case Some(f) => autobox(method, f, to)
     case None =>
-      if (to != Type.Unit) throw new AssertionError(s"Unit type expected but actual is $to")
+      if (to != JType.TUnit) throw new AssertionError(s"Unit type expected but actual is $to")
       method.visitInsn(op.ACONST_NULL)
-      method.visitTypeInsn(op.CHECKCAST, Type.Unit.ref.internalName)
+      method.visitTypeInsn(op.CHECKCAST, JType.TUnit.jname)
   }
-  private[this] def autobox(method: asm.MethodVisitor, from: Type, to: Type): Unit = {
+  private[this] def autobox(method: asm.MethodVisitor, from: JType, to: JType): Unit = {
     if (from == to) {
       // do nothing
     } else if (from.boxed == to) {
@@ -364,23 +361,21 @@ class Emitter(baseDir: Path) {
       throw new RuntimeException(s"$from and $to is not compatible")
     }
   }
-  private[this] def box(method: asm.MethodVisitor, tpe: Type): Unit = {
-    if (tpe == tpe.boxed) {
-      // do nothing
-    } else {
+  private[this] def box(method: asm.MethodVisitor, tpe: JType): Unit = {
+    if (tpe.isPrimitive) {
       val desc = s"(${descriptor(tpe)})${descriptor(tpe.boxed)}"
-      method.visitMethodInsn(op.INVOKESTATIC, tpe.boxed.ref.internalName, "valueOf", desc, false)
+      method.visitMethodInsn(op.INVOKESTATIC, tpe.boxed.jname, "valueOf", desc, false)
     }
   }
-  private[this] def unbox(method: asm.MethodVisitor, tpe: Type): Unit = {
+  private[this] def unbox(method: asm.MethodVisitor, tpe: JType): Unit = {
     tpe.unboxed.foreach { prim =>
       val name =
         prim match {
-          case Type.Int => "intValue"
-          case Type.Bool => "booleanValue"
+          case JType.TInt => "intValue"
+          case JType.TBool => "booleanValue"
         }
       val desc = s"()${descriptor(prim)}"
-      method.visitMethodInsn(op.INVOKEVIRTUAL, tpe.boxed.ref.internalName, name, desc, false)
+      method.visitMethodInsn(op.INVOKEVIRTUAL, tpe.boxed.jname, name, desc, false)
     }
   }
 }

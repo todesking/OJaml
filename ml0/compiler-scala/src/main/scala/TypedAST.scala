@@ -94,12 +94,12 @@ object TypedAST {
   case class JCallStatic(method: MethodSig, args: Seq[Expr]) extends Expr {
     require(method.isStatic)
     require(method.args.size == args.size)
-    override def tpe: Type = method.ret.getOrElse(Type.Unit)
+    override def tpe: Type = method.ret.map(_.tpe).getOrElse(Type.Unit)
   }
   case class JCallInstance(method: MethodSig, receiver: Expr, args: Seq[Expr]) extends Expr {
     require(!method.isStatic)
     require(method.args.size == args.size)
-    override def tpe: Type = method.ret.getOrElse(Type.Unit)
+    override def tpe: Type = method.ret.map(_.tpe).getOrElse(Type.Unit)
   }
   case class JNew(ref: ClassRef, args: Seq[Expr]) extends Expr {
     override def tpe = Type.Klass(ref)

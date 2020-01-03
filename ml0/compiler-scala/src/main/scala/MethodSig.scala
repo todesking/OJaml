@@ -2,13 +2,13 @@ package com.todesking.ojaml.ml0.compiler.scala
 
 import org.objectweb.asm
 
-case class MethodSig(klass: ClassRef, isStatic: Boolean, isInterface: Boolean, name: String, args: Seq[Type], ret: Option[Type]) {
+case class MethodSig(klass: ClassRef, isStatic: Boolean, isInterface: Boolean, name: String, args: Seq[JType], ret: Option[JType]) {
   require(!(isStatic && isInterface))
 
   def isInstance: Boolean = !isStatic
 
   lazy val descriptor: String =
-    asm.Type.getMethodType(Type.toAsm(ret), args.map(Type.toAsm).toArray: _*).getDescriptor
+    asm.Type.getMethodType(JType.toAsm(ret), args.map(JType.toAsm).toArray: _*).getDescriptor
 
   override def toString = s"${klass.fullName}.$name: $descriptor"
 }

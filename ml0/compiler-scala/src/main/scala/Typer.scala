@@ -264,7 +264,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         klass <- ctx.findClass(klassRef).toResult(expr.pos, s"Class not found: $klassRef")
         targs <- args.map(appExpr(ctx, _)).validated
         s <- (Subst.empty +: targs.map(_._1)).reduce(_ ++ _).unify(expr.pos)
-        method <- klass.findStaticMethod(name.value, targs.map(_._2.tpe))
+        method <- klass.findStaticMethod(name.value, targs.map(_._2.tpe.jtype))
           .toResult(name.pos, s"Can't resolve static method ${Type.prettyMethod(name.value, targs.map(_._2.tpe))} in class ${klass.ref.fullName}")
       } yield (s, TT.JCallStatic(method, targs.map(_._2)))
     case NT.JCallInstance(expr, name, args) =>
@@ -276,7 +276,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
           .toResult(expr.pos, s"Class ${e1.tpe} not found. Check classpath.")
         argTypes = targs.map(_._2.tpe)
         klassName = e1.tpe.boxed.ref.fullName
-        method <- klass.findInstanceMethod(name.value, targs.map(_._2.tpe))
+        method <- klass.findInstanceMethod(name.value, targs.map(_._2.tpe.jtype))
           .toResult(name.pos, s"Can't resolve instance method ${Type.prettyMethod(name.value, argTypes)} in class $klassName")
       } yield (s1, TT.JCallInstance(method, e1, targs.map(_._2)))
   }

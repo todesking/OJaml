@@ -3,12 +3,12 @@ import com.todesking.ojaml.ml0.compiler.scala.util.pretty.PrettyPrinter
 import com.todesking.ojaml.ml0.compiler.scala.util.pretty.Doc
 import com.todesking.ojaml.ml0.compiler.scala.util.pretty.PrettySyntax._
 
-case class FieldRef(klass: ClassRef, name: String, tpe: Type)
+case class FieldRef(klass: ClassRef, name: String, tpe: JType)
 
 sealed abstract class JAST
 object JAST {
-  case class MethodDef(name: String, isStatic: Boolean, params: Seq[Type], ret: Option[Type], body: Seq[Term]) extends JAST
-  case class FieldDef(name: String, tpe: Type) extends JAST
+  case class MethodDef(name: String, isStatic: Boolean, params: Seq[JType], ret: Option[JType], body: Seq[Term]) extends JAST
+  case class FieldDef(name: String, tpe: JType) extends JAST
   case class ClassDef(ref: ClassRef, superRef: ClassRef, fields: Seq[FieldDef], methods: Seq[MethodDef], datas: Seq[Data]) extends JAST {
     def methodSig(md: MethodDef) = MethodSig(ref, md.isStatic, false, md.name, md.params, md.ret)
   }
@@ -64,15 +64,15 @@ object JAST {
         prettyDoc(b, false))
     case Downcast(e, t) =>
       P.group(
-        s"(${t.ref.fullName})",
+        s"(${t})",
         prettyDoc(e, true))
     case b @ Box(e) =>
       P.group(
-        s"(${b.tpe.ref.fullName})",
+        s"(${b.tpe})",
         prettyDoc(e, true))
     case b @ Unbox(e) =>
       P.group(
-        s"(${b.tpe.javaName})",
+        s"(${b.tpe})",
         prettyDoc(e, true))
     case Invoke(sig, special, r, a) =>
       val adoc = P.mks(",".doc)(a.map(prettyDoc(_, false)))
@@ -114,45 +114,45 @@ object JAST {
   case class PutStatic(ref: FieldRef, expr: Expr) extends Term
 
   sealed abstract class Expr extends JAST {
-    def tpe: Type
+    def tpe: JType
   }
-  sealed abstract class Lit(override val tpe: Type) extends Expr {
+  sealed abstract class Lit(override val tpe: JType) extends Expr {
     def value: Any
   }
-  case class LitInt(value: Int) extends Lit(Type.Int)
-  case class LitBool(value: Boolean) extends Lit(Type.Bool)
-  case class LitString(value: String) extends Lit(Type.String)
+  case class LitInt(value: Int) extends Lit(JType.TInt)
+  case class LitBool(value: Boolean) extends Lit(JType.TBool)
+  case class LitString(value: String) extends Lit(JType.TString)
 
-  case class ModuleVarRef(module: ModuleRef, name: String, tpe: Type) extends Expr
-  case class If(cond: Expr, th: Expr, el: Expr, tpe: Type) extends Expr
+  case class ModuleVarRef(module: ModuleRef, name: String, tpe: JType) extends Expr
+  case class If(cond: Expr, th: Expr, el: Expr, tpe: JType) extends Expr
 
   // TODO: test void-method invocation
   case class Invoke(method: MethodSig, special: Boolean, receiver: Option[Expr], args: Seq[Expr]) extends Expr {
     require(method.args.size == args.size)
     require(method.isStatic ^ receiver.nonEmpty)
-    override val tpe: Type = method.ret getOrElse Type.Unit
+    override val tpe: JType = method.ret getOrElse JType.TUnit
   }
   // TODO: term InvokeVoid
 
   case class JNew(ref: ClassRef, args: Seq[Expr]) extends Expr {
-    override def tpe = Type.Klass(ref)
+    override def tpe = JType.TKlass(ref)
   }
-  case class Upcast(body: Expr, tpe: Type.Reference) extends Expr
+  case class Upcast(body: Expr, tpe: JType.TReference) extends Expr
   case class Box(expr: Expr) extends Expr {
-    require(expr.tpe.boxed != expr.tpe)
+    require(expr.tpe.isPrimitive)
     override val tpe = expr.tpe.boxed
   }
   case class Unbox(expr: Expr) extends Expr {
-    require(expr.tpe.unboxed.nonEmpty)
-    override def tpe: Type = expr.tpe.unboxed.get
+    require(expr.tpe.isBoxed)
+    override def tpe: JType = expr.tpe.unboxed.get
   }
-  case class Downcast(body: Expr, tpe: Type.Reference) extends Expr
-  case class GetLocal(index: Int, tpe: Type) extends Expr
+  case class Downcast(body: Expr, tpe: JType.TReference) extends Expr
+  case class GetLocal(index: Int, tpe: JType) extends Expr
   case class GetObjectFromUncheckedArray(expr: Expr, index: Int) extends Expr {
-    override def tpe: Type = Type.Object
+    override def tpe: JType = JType.TObject
   }
-  case class Null(tpe: Type) extends Expr
+  case class Null(tpe: JType) extends Expr
   case class NewObjectArray(size: Int) extends Expr {
-    override def tpe: Type = Type.Object
+    override def tpe: JType = JType.TObject
   }
 }

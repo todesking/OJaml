@@ -1,7 +1,5 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
-import org.objectweb.asm
-
 sealed abstract class Type {
   def boxed: Type.Reference
   def unboxed: Option[Type.Primitive]
@@ -10,6 +8,7 @@ sealed abstract class Type {
   def freeTypeVariables: Set[Type.Var]
   def substitute(a: Type.Var, t: Type): Type
   def javaName: String
+  def jtype: JType
 }
 object Type {
   sealed abstract class Primitive extends Type {
@@ -21,11 +20,13 @@ object Type {
     override def boxed: Klass = BoxedInt
     override def toString(group: Boolean) = "int"
     override def javaName = "int"
+    override def jtype = JType.TInt
   }
   case object Bool extends Primitive {
     override def boxed: Klass = BoxedBool
     override def toString(group: Boolean) = "bool"
     override def javaName = "boolean"
+    override def jtype = JType.TBool
   }
 
   sealed abstract class Reference extends Type {
@@ -34,6 +35,7 @@ object Type {
     override def unboxed: Option[Primitive] = boxMap.get(ref.internalName)
     override def toString(group: Boolean): String = ref.fullName
     override def javaName = ref.fullName
+    override def jtype = JType.TKlass(ref)
   }
   object Reference {
     def unapply(r: Reference): Option[ClassRef] = Some(r.ref)
@@ -91,29 +93,11 @@ object Type {
   val BoxedInt = Klass("java/lang/Integer")
   val BoxedBool = Klass("java/lang/Boolean")
   val String = Klass("java/lang/String")
-  val Unit = Klass("com/todesking/ml0/runtime/Unit")
+  val Unit = Klass("com/todesking/ojaml/ml0/runtime/Unit")
 
   val boxMap: Map[String, Primitive] = Map(
     BoxedInt.ref.internalName -> Int,
     BoxedBool.ref.internalName -> Bool)
-
-  def from(t: asm.Type): Option[Type] = t.getSort match {
-    case asm.Type.VOID => None
-    case asm.Type.INT => Some(Type.Int)
-    case asm.Type.BOOLEAN => Some(Type.Bool)
-    case asm.Type.OBJECT => Some(Type.Klass(t.getInternalName))
-    case _ => Some(Type.Unit) // :(
-  }
-
-  def toAsm(t: Option[Type]): asm.Type = t match {
-    case None => asm.Type.VOID_TYPE
-    case Some(t) => toAsm(t)
-  }
-  def toAsm(t: Type): asm.Type = t match {
-    case Int => asm.Type.INT_TYPE
-    case Bool => asm.Type.BOOLEAN_TYPE
-    case Reference(ref) => asm.Type.getObjectType(ref.internalName)
-  }
 
   def prettyMethod(name: String, args: Seq[Type], ret: Option[Type]): String = {
     s"$name(${args.mkString(", ")}): $ret"

@@ -73,12 +73,12 @@ object ClassRepo {
     override def visitMethod(access: Int, mname: String, descriptor: String, signature: String, exceptions: Array[String]): MethodVisitor = {
       val isStatic = (access & asm.Opcodes.ACC_STATIC) != 0
       val t = asm.Type.getType(descriptor)
-      val m = MethodSig(ref, isStatic, isInterface, mname, t.getArgumentTypes.map(translate(_, mname, signature)), Type.from(t.getReturnType))
+      val m = MethodSig(ref, isStatic, isInterface, mname, t.getArgumentTypes.map(translate(_, mname, signature)), JType.from(t.getReturnType))
       this.methods = this.methods :+ m
       super.visitMethod(access, mname, descriptor, signature, exceptions)
     }
 
-    private[this] def translate(t: asm.Type, mname: String, signature: String): Type = Type.from(t) getOrElse {
+    private[this] def translate(t: asm.Type, mname: String, signature: String): JType = JType.from(t) getOrElse {
       throw new RuntimeException(s"Void argument type not allowed: ${ref.fullName}$signature")
     }
 

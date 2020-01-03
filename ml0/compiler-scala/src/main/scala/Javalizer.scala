@@ -4,6 +4,8 @@ import com.todesking.ojaml.ml0.compiler.scala.{ JAST => J }
 import com.todesking.ojaml.ml0.compiler.scala.{ TypedAST => T }
 import com.todesking.ojaml.ml0.compiler.scala.TypedAST.ModuleVarRef
 
+import JType.TObject
+
 object Javalizer {
   class ClassBuilder(ref: ClassRef, superRef: ClassRef) {
     private[this] var nextFunClassID = 0
@@ -28,7 +30,7 @@ object Javalizer {
         None,
         clinits)
 
-    def addStaticField(name: String, tpe: Type): FieldRef = {
+    def addStaticField(name: String, tpe: JType): FieldRef = {
       val fd = J.FieldDef(name, tpe)
       fieldDefs :+= fd
       FieldRef(ref, name, tpe)
@@ -45,13 +47,13 @@ object Javalizer {
   }
   class Transformer(moduleClass: ClassRef) {
     private[this] var nextFunClassID = 0
-    private[this] val builder = new ClassBuilder(moduleClass, Type.Object.ref)
+    private[this] val builder = new ClassBuilder(moduleClass, TObject.ref)
     private[this] var klasses = Vector.empty[J.ClassDef]
     def build() = builder.build() +: klasses
 
     def appTerm(t: T.Term): Unit = t match {
       case T.TLet(name, tpe, expr) =>
-        val f = builder.addStaticField(name.value, tpe)
+        val f = builder.addStaticField(name.value, tpe.jtype)
         val c = appExpr(expr, 0)
         builder.addClinit(
           J.PutStatic(f, appExpr(expr, 0)))
@@ -62,15 +64,16 @@ object Javalizer {
       case T.LitInt(v) => J.LitInt(v)
       case T.LitBool(v) => J.LitBool(v)
       case T.LitString(v) => J.LitString(v)
-      case T.ModuleVarRef(m, n, t) => J.ModuleVarRef(m, n, t)
-      case T.LocalRef(d, index, t) =>
+      case T.ModuleVarRef(m, n, t) => J.ModuleVarRef(m, n, t.jtype)
+      case T.LocalRef(d, index, tt) =>
+        val t = tt.jtype
         if (depth == d) {
           if (index == 0) {
             unbox(J.Downcast(J.GetLocal(1, t.boxed), t.boxed), t)
           } else {
             unbox(
               J.Downcast(
-                J.GetObjectFromUncheckedArray(J.GetLocal(1, Type.Object), index - 1),
+                J.GetObjectFromUncheckedArray(J.GetLocal(1, TObject), index - 1),
                 t.boxed),
               t)
           }
@@ -80,14 +83,14 @@ object Javalizer {
             false,
             false,
             "getLocal",
-            Seq(Type.Int, Type.Int),
-            Some(Type.Object))
+            Seq(JType.TInt, JType.TInt),
+            Some(TObject))
           unbox(
             J.Downcast(
               J.Invoke(
                 sig,
                 false,
-                Some(J.GetLocal(0, Type.Klass(Type.Fun.ref))),
+                Some(J.GetLocal(0, JType.Fun)),
                 Seq(J.LitInt(d), J.LitInt(index))),
               t.boxed),
             t)
@@ -97,32 +100,32 @@ object Javalizer {
         val body = appExpr(b, depth + 1)
         val funKlass = createFun(body, Some(funs))
         val funNewArgs =
-          if (depth == 0) Seq(J.Null(Type.Object), J.Null(Type.Klass(Type.Fun.ref)))
-          else Seq(J.GetLocal(1, Type.Object), J.GetLocal(0, Type.Klass(Type.Fun.ref)))
+          if (depth == 0) Seq(J.Null(TObject), J.Null(JType.Fun))
+          else Seq(J.GetLocal(1, TObject), J.GetLocal(0, JType.Fun))
         unbox(
           J.Downcast(
             J.Invoke(
-              MethodSig(Type.Fun.ref, false, false, "app", Seq(Type.Object), Some(Type.Object)),
+              MethodSig(Type.Fun.ref, false, false, "app", Seq(TObject), Some(TObject)),
               false,
               Some(J.JNew(funKlass, funNewArgs)),
               Seq(J.NewObjectArray(vs.size))),
-            b.tpe.boxed), b.tpe)
+            body.tpe.boxed), body.tpe)
       case T.If(c, th, el, t) =>
-        J.If(appExpr(c, depth), appExpr(th, depth), appExpr(el, depth), t)
+        J.If(appExpr(c, depth), appExpr(th, depth), appExpr(el, depth), t.jtype)
       case T.App(f, a, t) =>
-        val appSig = MethodSig(Type.Fun.ref, false, false, "app", Seq(Type.Object), Some(Type.Object))
+        val appSig = MethodSig(Type.Fun.ref, false, false, "app", Seq(TObject), Some(TObject))
         val invoke = J.Invoke(
           appSig,
           false,
           Some(box(appExpr(f, depth))),
           Seq(box(appExpr(a, depth))))
-        unbox(J.Downcast(invoke, t.boxed), t)
+        unbox(J.Downcast(invoke, t.jtype.boxed), t.jtype)
       case T.Fun(b, t) =>
         val funKlass = createFun(appExpr(b, depth + 1), None)
         val args =
-          if (depth == 0) Seq(J.Null(Type.Object), J.Null(Type.Klass(Type.Fun.ref)))
-          else Seq(J.GetLocal(1, Type.Object), J.GetLocal(0, Type.Klass(Type.Fun.ref)))
-        J.Upcast(J.JNew(funKlass, args), Type.Klass(Type.Fun.ref))
+          if (depth == 0) Seq(J.Null(TObject), J.Null(JType.Fun))
+          else Seq(J.GetLocal(1, TObject), J.GetLocal(0, JType.Fun))
+        J.Upcast(J.JNew(funKlass, args), JType.Fun)
       case T.TAbs(ps, b, t) => appExpr(b, depth)
       case T.JCallStatic(m, a) =>
         val args = m.args.zip(a).map {
@@ -137,7 +140,7 @@ object Javalizer {
         }
         J.Invoke(m, false, Some(box(appExpr(r, depth))), args)
       case T.JNew(r, a) => J.JNew(r, a.map(appExpr(_, depth)))
-      case T.Upcast(b, t) => J.Upcast(appExpr(b, depth), t)
+      case T.Upcast(b, t) => J.Upcast(appExpr(b, depth), t.jtype)
     }
 
     def createFun(body: J.Expr, recValues: Option[Seq[J.Expr]]) = {
@@ -147,25 +150,25 @@ object Javalizer {
       val initBody = Seq(
         J.TExpr(
           J.Invoke(
-            MethodSig(Type.Fun.ref, false, false, "<init>", Seq(Type.Object, Type.Klass(Type.Fun.ref)), None),
+            MethodSig(Type.Fun.ref, false, false, "<init>", Seq(TObject, JType.Fun), None),
             true,
-            Some(J.GetLocal(0, Type.Klass(Type.Fun.ref))),
-            Seq(J.GetLocal(1, Type.Klass(Type.Fun.ref)), J.GetLocal(2, Type.Object)))))
-      builder.addMethod(J.MethodDef("<init>", false, Seq(Type.Object, Type.Klass(Type.Fun.ref)), None, initBody))
+            Some(J.GetLocal(0, JType.Fun)),
+            Seq(J.GetLocal(1, JType.Fun), J.GetLocal(2, TObject)))))
+      builder.addMethod(J.MethodDef("<init>", false, Seq(TObject, JType.Fun), None, initBody))
       val prepareRec = recValues.fold(Seq.empty[J.Term]) { rvs =>
-        Seq(J.PutValuesToUncheckedObjectArray(J.GetLocal(1, Type.Object), rvs))
+        Seq(J.PutValuesToUncheckedObjectArray(J.GetLocal(1, TObject), rvs))
       }
       builder.addMethod(J.MethodDef(
         "app",
         false,
-        Seq(Type.Object),
-        Some(Type.Object),
+        Seq(TObject),
+        Some(TObject),
         prepareRec ++ Seq(J.TReturn(box(body)))))
       klasses :+= builder.build()
       funKlass
     }
 
-    def autobox(e: J.Expr, to: Type) =
+    def autobox(e: J.Expr, to: JType) =
       if (e.tpe == to) e
       else if (e.tpe.boxed == to) box(e)
       else if (e.tpe == to.boxed) unbox(e, to)
@@ -175,7 +178,7 @@ object Javalizer {
       if (e.tpe == e.tpe.boxed) e
       else J.Box(e)
 
-    def unbox(e: J.Expr, to: Type): J.Expr =
+    def unbox(e: J.Expr, to: JType): J.Expr =
       if (e.tpe == to) e
       else J.Unbox(e)
 
@@ -187,8 +190,8 @@ class Javalizer {
     false,
     false,
     "app",
-    Seq(Type.Object),
-    Some(Type.Object))
+    Seq(TObject),
+    Some(TObject))
 
   def apply(m: T.Module): Seq[J.ClassDef] = {
     val moduleClass = ClassRef(m.pkg.asPackage, m.name.value)
