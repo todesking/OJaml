@@ -7,6 +7,8 @@ import java.nio.file.Files
 import org.objectweb.asm
 
 import asm.{ Opcodes => op }
+import org.objectweb.asm.MethodVisitor
+import org.objectweb.asm.ClassVisitor
 
 object Asm {
   import asm.{ MethodVisitor => MV }
@@ -31,7 +33,7 @@ class Emitter(baseDir: Path) {
   import com.todesking.ojaml.ml0.compiler.scala.{ JAST => J }
   import com.todesking.ojaml.ml0.compiler.scala.{ Asm => A }
 
-  val sym2name: Map[Char, String] = """
+  private[this] val sym2name: Map[Char, String] = """
   |+ plus
   |- minus
   |/ slash
@@ -51,25 +53,25 @@ class Emitter(baseDir: Path) {
     }
   }.mkString("")
 
-  val objectClass = "java/lang/Object"
-  val objectSig = s"L$objectClass;"
+  private[this] val objectClass = "java/lang/Object"
+  private[this] val objectSig = s"L$objectClass;"
 
-  def descriptor(tpe: Type): String = Type.toAsm(tpe).getDescriptor
-  def tname(tpe: Type): ClassRef = tpe match {
+  private[this] def descriptor(tpe: Type): String = Type.toAsm(tpe).getDescriptor
+  private[this] def tname(tpe: Type): ClassRef = tpe match {
     case Type.Reference(name) => name
   }
 
-  def msig(m: ModuleRef) =
+  private[this] def msig(m: ModuleRef) =
     s"${m.pkg.internalName}/${m.name}"
 
-  def write(pkg: String, name: String, data: Array[Byte]): Path = {
+  private[this] def write(pkg: String, name: String, data: Array[Byte]): Path = {
     val packageDir = baseDir.resolve(pkg.replaceAll("\\.", "/"))
     val out = packageDir.resolve(s"$name.class")
     Files.createDirectories(packageDir)
     Files.write(out, data)
   }
 
-  def methodEnd(mw: asm.MethodVisitor): Unit = {
+  private[this] def methodEnd(mw: asm.MethodVisitor): Unit = {
     mw.visitMaxs(0, 0)
     mw.visitEnd()
   }
@@ -85,80 +87,6 @@ class Emitter(baseDir: Path) {
       null,
       klass.superRef.internalName,
       Array())
-
-    def eval(method: asm.MethodVisitor, expr: J.Expr): Unit = expr match {
-      case J.LitInt(v) =>
-        method.visitLdcInsn(v)
-      case J.LitBool(v) =>
-        method.visitLdcInsn(v)
-      case J.LitString(v) =>
-        method.visitLdcInsn(v)
-      case J.ModuleVarRef(module, name, tpe) =>
-        method.visitFieldInsn(op.GETSTATIC, msig(module), escape(name), descriptor(tpe))
-      case J.If(cond, th, el, tpe) =>
-        val lElse = new asm.Label()
-        val lEnd = new asm.Label()
-        eval(method, cond)
-        method.visitJumpInsn(op.IFEQ, lElse)
-        eval(method, th)
-        method.visitJumpInsn(op.GOTO, lEnd)
-        method.visitLabel(lElse)
-        eval(method, el)
-        method.visitLabel(lEnd)
-      case J.JNew(ref, args) =>
-        method.visitTypeInsn(op.NEW, ref.internalName)
-        method.visitInsn(op.DUP)
-        args.foreach { a =>
-          eval(method, a)
-        }
-        method.visitMethodInsn(
-          op.INVOKESPECIAL,
-          ref.internalName,
-          "<init>",
-          asm.Type.getMethodType(asm.Type.VOID_TYPE, args.map(_.tpe).map(Type.toAsm).toArray: _*).getDescriptor,
-          false)
-      case J.Upcast(body, tpe) =>
-        eval(method, body)
-        method.visitTypeInsn(op.CHECKCAST, tpe.ref.internalName)
-      case J.Box(body) =>
-        eval(method, body)
-        box(method, body.tpe)
-      case J.Unbox(body) =>
-        eval(method, body)
-        unbox(method, body.tpe)
-      case J.Downcast(body, tpe) =>
-        eval(method, body)
-        method.visitTypeInsn(op.CHECKCAST, tpe.ref.internalName)
-      case J.Invoke(sig, special, receiver, args) =>
-        receiver.foreach(eval(method, _))
-        args.foreach(eval(method, _))
-        val insn =
-          if (special) op.INVOKESPECIAL
-          else if (sig.isInterface) op.INVOKEINTERFACE
-          else if (sig.isStatic) op.INVOKESTATIC
-          else op.INVOKEVIRTUAL
-        method.visitMethodInsn(
-          insn,
-          sig.klass.internalName,
-          sig.name,
-          sig.descriptor,
-          sig.isInterface)
-        if (sig.ret.isEmpty) {
-          method.visitInsn(op.ACONST_NULL)
-        }
-      case J.GetLocal(index, tpe) =>
-        method.visitVarInsn(op.ALOAD, index)
-      case J.GetObjectFromUncheckedArray(arr, index) =>
-        eval(method, arr)
-        method.visitTypeInsn(op.CHECKCAST, s"[L${Type.Object.ref.internalName};")
-        method.visitLdcInsn(index)
-        method.visitInsn(op.AALOAD)
-      case J.Null(tpe) =>
-        method.visitInsn(op.ACONST_NULL)
-      case J.NewObjectArray(size) =>
-        method.visitLdcInsn(size)
-        method.visitTypeInsn(op.ANEWARRAY, Type.Object.ref.internalName)
-    }
 
     def defineStaticField(cw: asm.ClassWriter, name: String, tpe: Type): Unit = {
       cw.visitField(
@@ -297,50 +225,125 @@ class Emitter(baseDir: Path) {
       defineStaticField(cw, f.name, f.tpe)
     }
 
-    klass.methods.foreach { m =>
-      var flags = op.ACC_PUBLIC
-      if (m.isStatic) flags |= op.ACC_STATIC
-
-      val mw = cw.visitMethod(
-        flags,
-        m.name,
-        klass.methodSig(m).descriptor,
-        null,
-        Array())
-      m.body.foreach {
-        case J.PutStatic(ref, expr) =>
-          eval(mw, expr)
-          mw.visitFieldInsn(op.PUTSTATIC, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
-        case J.TExpr(expr) =>
-          eval(mw, expr)
-          mw.visitInsn(op.POP)
-        case J.TReturn(expr) =>
-          eval(mw, expr)
-          expr.tpe match {
-            case Type.Reference(ref) =>
-              mw.visitInsn(op.ARETURN)
-            case tpe =>
-              throw new NotImplementedError(s"Not supported yet: $tpe")
-          }
-        case J.PutValuesToUncheckedObjectArray(arr, values) =>
-          eval(mw, arr)
-          mw.visitTypeInsn(op.CHECKCAST, s"[L${Type.Object.ref.internalName};")
-          values.zipWithIndex.foreach {
-            case (v, i) =>
-              mw.visitInsn(op.DUP)
-              mw.visitLdcInsn(i)
-              eval(mw, v)
-              mw.visitInsn(op.AASTORE)
-          }
-      }
-      if (m.ret.isEmpty)
-        mw.visitInsn(op.RETURN)
-      methodEnd(mw)
-    }
+    klass.methods.foreach { m => defineMethod(cw, klass, m) }
 
     cw.visitEnd()
 
     write(pkg.fullName, klass.ref.name, cw.toByteArray)
+  }
+
+  private[this] def eval(method: asm.MethodVisitor, expr: J.Expr): Unit = expr match {
+    case J.LitInt(v) =>
+      method.visitLdcInsn(v)
+    case J.LitBool(v) =>
+      method.visitLdcInsn(v)
+    case J.LitString(v) =>
+      method.visitLdcInsn(v)
+    case J.ModuleVarRef(module, name, tpe) =>
+      method.visitFieldInsn(op.GETSTATIC, msig(module), escape(name), descriptor(tpe))
+    case J.If(cond, th, el, tpe) =>
+      val lElse = new asm.Label()
+      val lEnd = new asm.Label()
+      eval(method, cond)
+      method.visitJumpInsn(op.IFEQ, lElse)
+      eval(method, th)
+      method.visitJumpInsn(op.GOTO, lEnd)
+      method.visitLabel(lElse)
+      eval(method, el)
+      method.visitLabel(lEnd)
+    case J.JNew(ref, args) =>
+      method.visitTypeInsn(op.NEW, ref.internalName)
+      method.visitInsn(op.DUP)
+      args.foreach { a =>
+        eval(method, a)
+      }
+      method.visitMethodInsn(
+        op.INVOKESPECIAL,
+        ref.internalName,
+        "<init>",
+        asm.Type.getMethodType(asm.Type.VOID_TYPE, args.map(_.tpe).map(Type.toAsm).toArray: _*).getDescriptor,
+        false)
+    case J.Upcast(body, tpe) =>
+      eval(method, body)
+      method.visitTypeInsn(op.CHECKCAST, tpe.ref.internalName)
+    case J.Box(body) =>
+      eval(method, body)
+      box(method, body.tpe)
+    case J.Unbox(body) =>
+      eval(method, body)
+      unbox(method, body.tpe)
+    case J.Downcast(body, tpe) =>
+      eval(method, body)
+      method.visitTypeInsn(op.CHECKCAST, tpe.ref.internalName)
+    case J.Invoke(sig, special, receiver, args) =>
+      receiver.foreach(eval(method, _))
+      args.foreach(eval(method, _))
+      val insn =
+        if (special) op.INVOKESPECIAL
+        else if (sig.isInterface) op.INVOKEINTERFACE
+        else if (sig.isStatic) op.INVOKESTATIC
+        else op.INVOKEVIRTUAL
+      method.visitMethodInsn(
+        insn,
+        sig.klass.internalName,
+        sig.name,
+        sig.descriptor,
+        sig.isInterface)
+      if (sig.ret.isEmpty) {
+        method.visitInsn(op.ACONST_NULL)
+      }
+    case J.GetLocal(index, tpe) =>
+      method.visitVarInsn(op.ALOAD, index)
+    case J.GetObjectFromUncheckedArray(arr, index) =>
+      eval(method, arr)
+      method.visitTypeInsn(op.CHECKCAST, s"[L${Type.Object.ref.internalName};")
+      method.visitLdcInsn(index)
+      method.visitInsn(op.AALOAD)
+    case J.Null(tpe) =>
+      method.visitInsn(op.ACONST_NULL)
+    case J.NewObjectArray(size) =>
+      method.visitLdcInsn(size)
+      method.visitTypeInsn(op.ANEWARRAY, Type.Object.ref.internalName)
+  }
+  private[this] def defineMethod(cw: ClassVisitor, klass: J.ClassDef, m: J.MethodDef) = {
+    var flags = op.ACC_PUBLIC
+    if (m.isStatic) flags |= op.ACC_STATIC
+
+    val mw = cw.visitMethod(
+      flags,
+      m.name,
+      klass.methodSig(m).descriptor,
+      null,
+      Array())
+    m.body.foreach {
+      case J.PutStatic(ref, expr) =>
+        eval(mw, expr)
+        mw.visitFieldInsn(op.PUTSTATIC, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
+      case J.TExpr(expr) =>
+        eval(mw, expr)
+        mw.visitInsn(op.POP)
+      case J.TReturn(expr) =>
+        eval(mw, expr)
+        expr.tpe match {
+          case Type.Reference(ref) =>
+            mw.visitInsn(op.ARETURN)
+          case tpe =>
+            throw new NotImplementedError(s"Not supported yet: $tpe")
+        }
+      case J.PutValuesToUncheckedObjectArray(arr, values) =>
+        eval(mw, arr)
+        mw.visitTypeInsn(op.CHECKCAST, s"[L${Type.Object.ref.internalName};")
+        values.zipWithIndex.foreach {
+          case (v, i) =>
+            mw.visitInsn(op.DUP)
+            mw.visitLdcInsn(i)
+            eval(mw, v)
+            mw.visitInsn(op.AASTORE)
+        }
+    }
+    if (m.ret.isEmpty)
+      mw.visitInsn(op.RETURN)
+    methodEnd(mw)
   }
 
   private[this] def autobox(method: asm.MethodVisitor, from: Option[Type], to: Type): Unit = from match {
