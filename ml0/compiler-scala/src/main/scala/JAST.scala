@@ -64,8 +64,6 @@ object JAST {
         ")")
     case Upcast(body, tpe) =>
       prettyDoc(body, true) ^^ ": ".doc ^^ tpe.toString().doc
-    case TAbs(params, body, tpe) =>
-      s"[${params.map(_.toString()).mkString(", ")}]".doc ^^ prettyDoc(body, true)
     case PutStatic(f, b) =>
       P.group(
         s"$f = ",
@@ -121,7 +119,6 @@ object JAST {
   }
   case class If(cond: Expr, th: Expr, el: Expr, tpe: Type) extends Expr
   case class Fun(body: Expr, tpe: Type) extends Expr
-  case class TAbs(params: Seq[Type.Var], body: Expr, tpe: Type.Abs) extends Expr
 
   // TODO: test void-method invocation
   case class Invoke(method: MethodSig, receiver: Option[Expr], args: Seq[Expr]) extends Expr {

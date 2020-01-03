@@ -74,7 +74,7 @@ object Javalizer {
           Seq(box(appExpr(a, depth))))
         unbox(J.Downcast(invoke, t.boxed), t)
       case T.Fun(b, t) => J.Fun(appExpr(b, depth), t)
-      case T.TAbs(ps, b, t) => J.TAbs(ps, appExpr(b, depth), t)
+      case T.TAbs(ps, b, t) => appExpr(b, depth)
       case T.JCallStatic(m, a) =>
         val args = m.args.zip(a).map {
           case (t, a) =>

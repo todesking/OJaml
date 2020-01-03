@@ -226,8 +226,6 @@ class Emitter(baseDir: Path) {
           "<init>",
           s"($objectSig$funSig)V", false)
         method.visitTypeInsn(op.CHECKCAST, funClass)
-      case J.TAbs(ps, e, t) =>
-        eval(method, e, depth)
       case J.JNew(ref, args) =>
         method.visitTypeInsn(op.NEW, ref.internalName)
         method.visitInsn(op.DUP)
