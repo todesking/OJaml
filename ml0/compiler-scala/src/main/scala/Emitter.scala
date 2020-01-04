@@ -261,7 +261,7 @@ class Emitter(baseDir: Path) {
         "<init>",
         asm.Type.getMethodType(asm.Type.VOID_TYPE, args.map(_.tpe).map(JType.toAsm).toArray: _*).getDescriptor,
         false)
-    case J.Upcast(body, tpe) =>
+    case J.Cast(body, tpe) =>
       eval(method, body)
       method.visitTypeInsn(op.CHECKCAST, tpe.jname)
     case J.Box(body) =>
@@ -270,9 +270,6 @@ class Emitter(baseDir: Path) {
     case J.Unbox(body) =>
       eval(method, body)
       unbox(method, body.tpe)
-    case J.Downcast(body, tpe) =>
-      eval(method, body)
-      method.visitTypeInsn(op.CHECKCAST, tpe.jname)
     case J.Invoke(sig, special, receiver, args) =>
       receiver.foreach(eval(method, _))
       args.foreach(eval(method, _))

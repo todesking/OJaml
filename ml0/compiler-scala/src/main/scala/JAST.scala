@@ -56,13 +56,11 @@ object JAST {
         s"new ${ref.fullName}(",
         P.mks(", ".doc)(args.map(prettyDoc(_, false))),
         ")")
-    case Upcast(body, tpe) =>
-      prettyDoc(body, true) ^^ ": ".doc ^^ tpe.toString().doc
     case PutStatic(f, b) =>
       P.group(
         s"$f = ",
         prettyDoc(b, false))
-    case Downcast(e, t) =>
+    case Cast(e, t) =>
       P.group(
         s"(${t})",
         prettyDoc(e, true))
@@ -137,7 +135,6 @@ object JAST {
   case class JNew(ref: ClassRef, args: Seq[Expr]) extends Expr {
     override def tpe = JType.TKlass(ref)
   }
-  case class Upcast(body: Expr, tpe: JType.TReference) extends Expr
   case class Box(expr: Expr) extends Expr {
     require(expr.tpe.isPrimitive)
     override val tpe = expr.tpe.boxed
@@ -146,7 +143,7 @@ object JAST {
     require(expr.tpe.isBoxed)
     override def tpe: JType = expr.tpe.unboxed.get
   }
-  case class Downcast(body: Expr, tpe: JType.TReference) extends Expr
+  case class Cast(body: Expr, tpe: JType.TReference) extends Expr
   case class GetLocal(index: Int, tpe: JType) extends Expr
   case class GetObjectFromUncheckedArray(expr: Expr, index: Int) extends Expr {
     override def tpe: JType = JType.TObject

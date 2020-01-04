@@ -69,10 +69,10 @@ object Javalizer {
         val t = tt.jtype
         if (depth == d) {
           if (index == 0) {
-            unbox(J.Downcast(J.GetLocal(1, t.boxed), t.boxed), t)
+            unbox(J.Cast(J.GetLocal(1, t.boxed), t.boxed), t)
           } else {
             unbox(
-              J.Downcast(
+              J.Cast(
                 J.GetObjectFromUncheckedArray(J.GetLocal(1, TObject), index - 1),
                 t.boxed),
               t)
@@ -86,7 +86,7 @@ object Javalizer {
             Seq(JType.TInt, JType.TInt),
             Some(TObject))
           unbox(
-            J.Downcast(
+            J.Cast(
               J.Invoke(
                 sig,
                 false,
@@ -103,7 +103,7 @@ object Javalizer {
           if (depth == 0) Seq(J.Null(TObject), J.Null(JType.Fun))
           else Seq(J.GetLocal(1, TObject), J.GetLocal(0, JType.Fun))
         unbox(
-          J.Downcast(
+          J.Cast(
             J.Invoke(
               MethodSig(Type.Fun.ref, false, false, "app", Seq(TObject), Some(TObject)),
               false,
@@ -119,13 +119,13 @@ object Javalizer {
           false,
           Some(box(appExpr(f, depth))),
           Seq(box(appExpr(a, depth))))
-        unbox(J.Downcast(invoke, t.jtype.boxed), t.jtype)
+        unbox(J.Cast(invoke, t.jtype.boxed), t.jtype)
       case T.Fun(b, t) =>
         val funKlass = createFun(appExpr(b, depth + 1), None)
         val args =
           if (depth == 0) Seq(J.Null(TObject), J.Null(JType.Fun))
           else Seq(J.GetLocal(1, TObject), J.GetLocal(0, JType.Fun))
-        J.Upcast(J.JNew(funKlass, args), JType.Fun)
+        J.Cast(J.JNew(funKlass, args), JType.Fun)
       case T.TAbs(ps, b, t) => appExpr(b, depth)
       case T.JCallStatic(m, a) =>
         val args = m.args.zip(a).map {
@@ -140,7 +140,7 @@ object Javalizer {
         }
         J.Invoke(m, false, Some(box(appExpr(r, depth))), args)
       case T.JNew(r, a) => J.JNew(r, a.map(appExpr(_, depth)))
-      case T.Upcast(b, t) => J.Upcast(appExpr(b, depth), t.jtype)
+      case T.Upcast(b, t) => J.Cast(appExpr(b, depth), t.jtype)
     }
 
     def createFun(body: J.Expr, recValues: Option[Seq[J.Expr]]) = {
