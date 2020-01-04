@@ -91,6 +91,6 @@ object JType {
     case TInt => asm.Type.INT_TYPE
     case TBool => asm.Type.BOOLEAN_TYPE
     case TKlass(ref) => asm.Type.getObjectType(ref.internalName)
-    case TArray(elm) => ???
+    case TArray(elm) => asm.Type.getType(t.jsig)
   }
 }

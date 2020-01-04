@@ -11,6 +11,19 @@ public abstract class Data {
         if(!group || arity == 0) return toString();
         else return "(" + toString() + ")";
     }
+    public abstract Object[] values();
+    public abstract String name();
+
+    public String toString() {
+      StringBuilder sb = new StringBuilder();
+      sb.append(name());
+      Object[] vs = values();
+      for(int i = 0; i < vs.length; i++) {
+        sb.append(" ");
+        sb.append(format(vs[i], true));
+      }
+      return sb.toString();
+    }
 
     public static String format(Object x, boolean group) {
         if(x instanceof Data) {

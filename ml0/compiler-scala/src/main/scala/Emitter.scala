@@ -16,12 +16,16 @@ object Asm {
   def autoload(m: MV, i: Int, t: JType): Unit = t match {
     case JType.TInt =>
       m.visitVarInsn(op.ILOAD, i)
+    case JType.TBool =>
+      m.visitVarInsn(op.ILOAD, i)
     // TODO: Other primitives and array
     case _: JType.TReference =>
       m.visitVarInsn(op.ALOAD, i)
   }
   def autostore(m: MV, i: Int, t: JType): Unit = t match {
     case JType.TInt =>
+      m.visitVarInsn(op.ISTORE, i)
+    case JType.TBool =>
       m.visitVarInsn(op.ISTORE, i)
     // TODO: Other primitives and array
     case _: JType.TReference =>
@@ -73,6 +77,19 @@ class Emitter(baseDir: Path) {
     mw.visitEnd()
   }
 
+  private[this] def defineField(cw: asm.ClassWriter, name: String, tpe: JType, isStatic: Boolean): Unit = {
+    val flags = if (isStatic) op.ACC_PUBLIC | op.ACC_STATIC else op.ACC_PUBLIC
+    cw.visitField(
+      flags,
+      escape(name),
+      descriptor(tpe),
+      null,
+      null)
+  }
+
+  private[this] def methodDescriptor(ret: JType, params: Seq[JType]): String =
+    asm.Type.getMethodType(JType.toAsm(ret), params.map(JType.toAsm).toArray: _*).getDescriptor
+
   def emit(klass: J.ClassDef): Unit = {
     val pkg = klass.ref.pkg
     val className = klass.ref.internalName
@@ -85,142 +102,8 @@ class Emitter(baseDir: Path) {
       klass.superRef.internalName,
       Array())
 
-    def defineStaticField(cw: asm.ClassWriter, name: String, tpe: JType): Unit = {
-      cw.visitField(
-        op.ACC_PUBLIC | op.ACC_STATIC,
-        escape(name),
-        descriptor(tpe),
-        null,
-        null)
-    }
-    def defineField(cw: asm.ClassWriter, name: String, tpe: JType): Unit = {
-      cw.visitField(
-        op.ACC_PUBLIC,
-        escape(name),
-        descriptor(tpe),
-        null,
-        null)
-    }
-
-    def methodDescriptor(ret: JType, params: Seq[JType]): String =
-      asm.Type.getMethodType(JType.toAsm(ret), params.map(JType.toAsm).toArray: _*).getDescriptor
-
-    def emitDataType(cw: asm.ClassWriter, otype: Type.Data, ctors: Seq[(Name, Seq[Type])]): Unit = {
-      val tpe = otype.jtype
-      val dataBaseClass = ClassRef.fromInternalName("com/todesking/ojaml/ml0/runtime/Data")
-      val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)
-      cw.visit(
-        op.V1_8,
-        op.ACC_PUBLIC | op.ACC_ABSTRACT,
-        tpe.ref.internalName,
-        null,
-        dataBaseClass.internalName,
-        Array())
-      val init = cw.visitMethod(
-        op.ACC_PUBLIC,
-        "<init>",
-        "(I)V",
-        null,
-        Array())
-      init.visitVarInsn(op.ALOAD, 0)
-      init.visitVarInsn(op.ILOAD, 1)
-      init.visitMethodInsn(
-        op.INVOKESPECIAL,
-        dataBaseClass.internalName,
-        "<init>",
-        "(I)V",
-        false)
-      init.visitInsn(op.RETURN)
-      methodEnd(init)
-      cw.visitEnd()
-      write(tpe.ref.pkg.internalName, tpe.ref.name, cw.toByteArray)
-
-      ctors.foreach {
-        case (name, params) =>
-          val subClass = ClassRef(tpe.ref.pkg, s"${tpe.ref.name}$$${escape(name.value)}")
-          val cw = new asm.ClassWriter(asm.ClassWriter.COMPUTE_FRAMES)
-          cw.visit(
-            op.V1_8,
-            op.ACC_PUBLIC,
-            subClass.internalName,
-            null,
-            tpe.ref.internalName,
-            Array())
-          params.zipWithIndex.foreach {
-            case (t, i) =>
-              defineField(cw, s"v$i", t.jtype)
-          }
-
-          val init = cw.visitMethod(
-            op.ACC_PUBLIC,
-            "<init>",
-            asm.Type.getMethodType(asm.Type.VOID_TYPE, params.map(_.jtype).map(JType.toAsm): _*).getDescriptor,
-            null,
-            Array())
-          init.visitVarInsn(op.ALOAD, 0)
-          init.visitLdcInsn(params.size)
-          init.visitMethodInsn(
-            op.INVOKESPECIAL,
-            tpe.ref.internalName,
-            "<init>",
-            "(I)V",
-            false)
-          params.zipWithIndex.foreach {
-            case (t, i) =>
-              init.visitVarInsn(op.ALOAD, 0)
-              A.autoload(init, i + 1, t.jtype)
-              init.visitFieldInsn(op.PUTFIELD, subClass.internalName, s"v$i", descriptor(t.jtype))
-          }
-          init.visitInsn(op.RETURN)
-          methodEnd(init)
-
-          val tosImpl = cw.visitMethod(
-            op.ACC_PUBLIC,
-            "toString",
-            "()Ljava/lang/String;",
-            null,
-            Array())
-          tosImpl.visitLdcInsn(name.value)
-          params.zipWithIndex.foreach {
-            case (t, i) =>
-              tosImpl.visitLdcInsn(" ")
-              tosImpl.visitMethodInsn(
-                op.INVOKEVIRTUAL,
-                "java/lang/String",
-                "concat",
-                "(Ljava/lang/String;)Ljava/lang/String;",
-                false)
-              tosImpl.visitVarInsn(op.ALOAD, 0)
-              tosImpl.visitFieldInsn(op.GETFIELD, subClass.internalName, s"v$i", descriptor(t.jtype))
-              autobox(tosImpl, t.jtype, t.jtype.boxed)
-              tosImpl.visitLdcInsn(true)
-              tosImpl.visitMethodInsn(
-                op.INVOKESTATIC,
-                dataBaseClass.internalName,
-                "format",
-                s"(L${objectClass};Z)Ljava/lang/String;",
-                false)
-              tosImpl.visitMethodInsn(
-                op.INVOKEVIRTUAL,
-                "java/lang/String",
-                "concat",
-                "(Ljava/lang/String;)Ljava/lang/String;",
-                false)
-          }
-          tosImpl.visitInsn(op.ARETURN)
-          methodEnd(tosImpl)
-
-          cw.visitEnd()
-          write(subClass.pkg.internalName, subClass.name, cw.toByteArray)
-      }
-    }
-
-    klass.datas.foreach {
-      case J.Data(name, tpe, ctors) =>
-        emitDataType(cw, tpe, ctors)
-    }
     klass.fields.foreach { f =>
-      defineStaticField(cw, f.name, f.tpe)
+      defineField(cw, f.name, f.tpe, f.isStatic)
     }
 
     klass.methods.foreach { m => defineMethod(cw, klass, m) }
@@ -239,6 +122,9 @@ class Emitter(baseDir: Path) {
       method.visitLdcInsn(v)
     case J.ModuleVarRef(module, name, tpe) =>
       method.visitFieldInsn(op.GETSTATIC, msig(module), escape(name), descriptor(tpe))
+    case J.GetField(ref, target) =>
+      eval(method, target)
+      method.visitFieldInsn(op.GETFIELD, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
     case J.If(cond, th, el, tpe) =>
       val lElse = new asm.Label()
       val lEnd = new asm.Label()
@@ -288,7 +174,7 @@ class Emitter(baseDir: Path) {
         method.visitInsn(op.ACONST_NULL)
       }
     case J.GetLocal(index, tpe) =>
-      method.visitVarInsn(op.ALOAD, index)
+      Asm.autoload(method, index, tpe)
     case J.GetObjectFromUncheckedArray(arr, index) =>
       eval(method, arr)
       method.visitTypeInsn(op.CHECKCAST, JType.ObjectArray.jname)
@@ -299,6 +185,16 @@ class Emitter(baseDir: Path) {
     case J.NewObjectArray(size) =>
       method.visitLdcInsn(size)
       method.visitTypeInsn(op.ANEWARRAY, JType.TObject.jname)
+    case J.PutValuesToUncheckedObjectArray(arr, values) =>
+      eval(method, arr)
+      method.visitTypeInsn(op.CHECKCAST, JType.ObjectArray.jname)
+      values.zipWithIndex.foreach {
+        case (v, i) =>
+          method.visitInsn(op.DUP)
+          method.visitLdcInsn(i)
+          eval(method, v)
+          method.visitInsn(op.AASTORE)
+      }
   }
   private[this] def defineMethod(cw: ClassVisitor, klass: J.ClassDef, m: J.MethodDef) = {
     var flags = op.ACC_PUBLIC
@@ -314,6 +210,10 @@ class Emitter(baseDir: Path) {
       case J.PutStatic(ref, expr) =>
         eval(mw, expr)
         mw.visitFieldInsn(op.PUTSTATIC, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
+      case J.PutField(ref, target, expr) =>
+        eval(mw, target)
+        eval(mw, expr)
+        mw.visitFieldInsn(op.PUTFIELD, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
       case J.TExpr(expr) =>
         eval(mw, expr)
         mw.visitInsn(op.POP)
@@ -324,16 +224,6 @@ class Emitter(baseDir: Path) {
             mw.visitInsn(op.ARETURN)
           case tpe =>
             throw new NotImplementedError(s"Not supported yet: $tpe")
-        }
-      case J.PutValuesToUncheckedObjectArray(arr, values) =>
-        eval(mw, arr)
-        mw.visitTypeInsn(op.CHECKCAST, JType.ObjectArray.jname)
-        values.zipWithIndex.foreach {
-          case (v, i) =>
-            mw.visitInsn(op.DUP)
-            mw.visitLdcInsn(i)
-            eval(mw, v)
-            mw.visitInsn(op.AASTORE)
         }
     }
     if (m.ret.isEmpty)

@@ -13,14 +13,12 @@ object Javalizer {
     private[this] var fieldDefs = Vector.empty[J.FieldDef]
     private[this] var clinits = Vector.empty[J.Term]
     private[this] var funClassDefs = Vector.empty[J.ClassDef]
-    private[this] var datas = Vector.empty[J.Data]
 
     def build() = J.ClassDef(
       ref,
       superRef,
       fieldDefs,
-      methodDefs :+ buildClinit(),
-      datas)
+      methodDefs :+ buildClinit())
 
     private[this] def buildClinit() =
       J.MethodDef(
@@ -31,15 +29,15 @@ object Javalizer {
         clinits)
 
     def addStaticField(name: String, tpe: JType): FieldRef = {
-      val fd = J.FieldDef(name, tpe)
-      fieldDefs :+= fd
+      fieldDefs :+= J.FieldDef(name, true, tpe)
+      FieldRef(ref, name, tpe)
+    }
+    def addField(name: String, tpe: JType): FieldRef = {
+      fieldDefs :+= J.FieldDef(name, false, tpe)
       FieldRef(ref, name, tpe)
     }
     def addClinit(insn: J.Term): Unit = {
       clinits :+= insn
-    }
-    def addData(data: J.Data) = {
-      datas :+= data
     }
     def addMethod(m: J.MethodDef) = {
       methodDefs :+= m
@@ -58,7 +56,7 @@ object Javalizer {
         builder.addClinit(
           J.PutStatic(f, appExpr(expr, 0)))
       case T.Data(name, tpe, ctors) =>
-        builder.addData(J.Data(name, tpe, ctors))
+        appData(name.value, tpe, ctors.map { case (k, v) => k.value -> v.map(_.jtype) })
     }
     def appExpr(expr: T.Expr, depth: Int): J.Expr = expr match {
       case T.LitInt(v) => J.LitInt(v)
@@ -143,6 +141,66 @@ object Javalizer {
       case T.Upcast(b, t) => J.Cast(appExpr(b, depth), t.jtype)
     }
 
+    def appData(name: String, dataType: Type, ctors: Seq[(String, Seq[JType])]): Unit = {
+      val tpe = dataType.jtype
+      val dataBaseClass = ClassRef.fromInternalName("com/todesking/ojaml/ml0/runtime/Data")
+
+      val dataKlass = ClassRef.fromInternalName(tpe.jname)
+      val dataBuilder = new ClassBuilder(dataKlass, dataBaseClass)
+
+      val initBody = Seq(
+        J.TExpr(
+          J.Invoke(
+            MethodSig(dataBaseClass, false, false, "<init>", Seq(JType.TInt), None),
+            true,
+            Some(J.GetLocal(0, JType.TKlass(dataBaseClass))),
+            Seq(J.GetLocal(1, JType.TInt)))))
+      dataBuilder.addMethod(J.MethodDef(
+        "<init>",
+        false,
+        Seq(JType.TInt),
+        None,
+        initBody))
+      klasses :+= dataBuilder.build()
+
+      ctors.foreach {
+        case (name, params) =>
+          val ctorKlass = ClassRef(dataKlass.pkg, s"${dataKlass.name}$$${name}")
+          val ctorBuilder = new ClassBuilder(ctorKlass, dataKlass)
+          val paramFields = params.zipWithIndex.map { case (t, i) => FieldRef(ctorKlass, s"v$i", t) }
+          paramFields.foreach { field =>
+            ctorBuilder.addField(field.name, field.tpe)
+          }
+
+          val initBody = Seq(
+            J.TExpr(
+              J.Invoke(
+                MethodSig(dataKlass, false, false, "<init>", Seq(JType.TInt), None),
+                true,
+                Some(J.GetLocal(0, JType.TKlass(ctorKlass))),
+                Seq(J.LitInt(params.size))))) ++ paramFields.zipWithIndex.map {
+              case (field, i) =>
+                J.PutField(field, J.GetLocal(0, JType.TKlass(ctorKlass)), J.GetLocal(i + 1, field.tpe))
+            }
+          ctorBuilder.addMethod(J.MethodDef("<init>", false, params, None, initBody))
+
+          val valuesBody = Seq(
+            J.TReturn(
+              J.PutValuesToUncheckedObjectArray(
+                J.NewObjectArray(params.size),
+                paramFields.map { field =>
+                  box(J.GetField(field, J.GetLocal(0, JType.TKlass(ctorKlass))))
+                })))
+          ctorBuilder.addMethod(J.MethodDef("values", false, Seq(), Some(JType.ObjectArray), valuesBody))
+
+          val nameBody = Seq(
+            J.TReturn(J.LitString(name)))
+          ctorBuilder.addMethod(J.MethodDef("name", false, Seq(), Some(JType.TString), nameBody))
+
+          klasses :+= ctorBuilder.build()
+      }
+    }
+
     def createFun(body: J.Expr, recValues: Option[Seq[J.Expr]]) = {
       val funKlass = ClassRef(moduleClass.pkg, s"${moduleClass.name}$$${nextFunClassID}")
       nextFunClassID += 1
@@ -156,7 +214,7 @@ object Javalizer {
             Seq(J.GetLocal(1, JType.Fun), J.GetLocal(2, TObject)))))
       builder.addMethod(J.MethodDef("<init>", false, Seq(TObject, JType.Fun), None, initBody))
       val prepareRec = recValues.fold(Seq.empty[J.Term]) { rvs =>
-        Seq(J.PutValuesToUncheckedObjectArray(J.GetLocal(1, TObject), rvs))
+        Seq(J.TExpr(J.PutValuesToUncheckedObjectArray(J.GetLocal(1, TObject), rvs)))
       }
       builder.addMethod(J.MethodDef(
         "app",

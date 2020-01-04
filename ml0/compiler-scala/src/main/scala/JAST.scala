@@ -8,23 +8,22 @@ case class FieldRef(klass: ClassRef, name: String, tpe: JType)
 sealed abstract class JAST
 object JAST {
   case class MethodDef(name: String, isStatic: Boolean, params: Seq[JType], ret: Option[JType], body: Seq[Term]) extends JAST
-  case class FieldDef(name: String, tpe: JType) extends JAST
-  case class ClassDef(ref: ClassRef, superRef: ClassRef, fields: Seq[FieldDef], methods: Seq[MethodDef], datas: Seq[Data]) extends JAST {
+  case class FieldDef(name: String, isStatic: Boolean, tpe: JType) extends JAST
+  case class ClassDef(ref: ClassRef, superRef: ClassRef, fields: Seq[FieldDef], methods: Seq[MethodDef]) extends JAST {
     def methodSig(md: MethodDef) = MethodSig(ref, md.isStatic, false, md.name, md.params, md.ret)
   }
 
   def pretty(ast: JAST): String =
     PrettyPrinter.pretty(80, prettyDoc(ast, false))
   def prettyDoc(ast: JAST, paren: Boolean): Doc = ast match {
-    case ClassDef(ref, superRef, fields, methods, datas) =>
+    case ClassDef(ref, superRef, fields, methods) =>
       P.bgroup(
         s"class $ref extends $superRef {",
         P.bgroupi(fields.map(prettyDoc(_, false))),
         P.bgroupi(methods.map(prettyDoc(_, false))),
-        P.bgroupi(datas.map(prettyDoc(_, false))),
         "}")
-    case FieldDef(name, tpe) =>
-      s"field $name: $tpe".doc
+    case FieldDef(name, isStatic, tpe) =>
+      s"${if (isStatic) "static " else ""}field $name: $tpe".doc
     case MethodDef(name, isStatic, params, ret, body) =>
       P.group(
         s"def ${if (isStatic) "static " else ""}$name(${params.mkString(", ")}): ${ret.map(_.toString) getOrElse "void"} {",
@@ -36,8 +35,6 @@ object JAST {
       P.group(
         "return",
         prettyDoc(expr, false))
-    case Data(name, tpe, ctors) =>
-      P.data(name, ctors.map { case (n, ts) => (n.value, ts.map(_.toString)) })
     case LitInt(value) =>
       Doc.Text(value.toString)
     case LitBool(value) =>
@@ -60,6 +57,15 @@ object JAST {
       P.group(
         s"$f = ",
         prettyDoc(b, false))
+    case GetField(ref, target) =>
+      P.group(
+        P.group(prettyDoc(target, true), "."),
+        ref.toString.doc)
+    case PutField(ref, target, expr) =>
+      P.group(
+        P.group(prettyDoc(target, true), "."),
+        s"$ref =",
+        prettyDoc(expr, false))
     case Cast(e, t) =>
       P.group(
         s"(${t})",
@@ -104,12 +110,11 @@ object JAST {
   }
 
   sealed abstract class Term extends JAST
-  case class Data(name: Name, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]) extends JAST
   case class TExpr(expr: Expr) extends Term
   case class TReturn(expr: Expr) extends Term
-  case class PutValuesToUncheckedObjectArray(arr: Expr, values: Seq[Expr]) extends Term
 
   case class PutStatic(ref: FieldRef, expr: Expr) extends Term
+  case class PutField(ref: FieldRef, target: Expr, expr: Expr) extends Term
 
   sealed abstract class Expr extends JAST {
     def tpe: JType
@@ -150,6 +155,12 @@ object JAST {
   }
   case class Null(tpe: JType) extends Expr
   case class NewObjectArray(size: Int) extends Expr {
+    override def tpe: JType = JType.TObject
+  }
+  case class GetField(ref: FieldRef, target: Expr) extends Expr {
+    def tpe: JType = ref.tpe
+  }
+  case class PutValuesToUncheckedObjectArray(arr: Expr, values: Seq[Expr]) extends Expr {
     override def tpe: JType = JType.TObject
   }
 }
