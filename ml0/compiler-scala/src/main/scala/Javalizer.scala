@@ -187,7 +187,7 @@ object Javalizer {
 
           val valuesBody = Seq(
             J.TReturn(
-              J.PutValuesToUncheckedObjectArray(
+              J.PutValuesToArray(
                 J.NewObjectArray(params.size),
                 paramFields.map { field =>
                   box(J.GetField(field, J.GetLocal(0, JType.TKlass(ctorKlass))))
@@ -215,7 +215,7 @@ object Javalizer {
             Seq(J.GetLocal(1, JType.Fun), J.GetLocal(2, TObject)))))
       builder.addMethod(J.MethodDef("<init>", false, Seq(TObject, JType.Fun), None, initBody))
       val prepareRec = recValues.fold(Seq.empty[J.Term]) { rvs =>
-        Seq(J.TExpr(J.PutValuesToUncheckedObjectArray(J.GetLocal(1, TObject), rvs)))
+        Seq(J.TExpr(J.PutValuesToArray(J.Cast(J.GetLocal(1, JType.TObject), JType.ObjectArray), rvs)))
       }
       builder.addMethod(J.MethodDef(
         "app",

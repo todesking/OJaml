@@ -103,7 +103,7 @@ object JAST {
       "null".doc
     case NewObjectArray(size) =>
       s"new Object[$size]".doc
-    case PutValuesToUncheckedObjectArray(arr, vs) =>
+    case PutValuesToArray(arr, vs) =>
       P.group(
         prettyDoc(arr, false),
         "<-",
@@ -155,7 +155,7 @@ object JAST {
   }
   case class Null(tpe: JType) extends Expr
   case class NewObjectArray(size: Int) extends Expr {
-    override def tpe: JType = JType.TObject
+    override def tpe: JType = JType.ObjectArray
   }
   case class GetField(ref: FieldRef, target: Expr) extends Expr {
     def tpe: JType = ref.tpe
@@ -163,7 +163,7 @@ object JAST {
   case class GetStatic(ref: FieldRef) extends Expr {
     def tpe: JType = ref.tpe
   }
-  case class PutValuesToUncheckedObjectArray(arr: Expr, values: Seq[Expr]) extends Expr {
-    override def tpe: JType = JType.TObject
+  case class PutValuesToArray(arr: Expr, values: Seq[Expr]) extends Expr {
+    override def tpe: JType = arr.tpe
   }
 }

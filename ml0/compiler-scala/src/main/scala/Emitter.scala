@@ -182,9 +182,8 @@ class Emitter(baseDir: Path) {
     case J.NewObjectArray(size) =>
       method.visitLdcInsn(size)
       method.visitTypeInsn(op.ANEWARRAY, JType.TObject.jname)
-    case J.PutValuesToUncheckedObjectArray(arr, values) =>
+    case J.PutValuesToArray(arr, values) =>
       eval(method, arr)
-      method.visitTypeInsn(op.CHECKCAST, JType.ObjectArray.jname)
       values.zipWithIndex.foreach {
         case (v, i) =>
           method.visitInsn(op.DUP)
