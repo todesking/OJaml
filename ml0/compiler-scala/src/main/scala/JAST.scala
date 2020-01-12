@@ -41,8 +41,6 @@ object JAST {
       Doc.Text(value.toString)
     case LitString(value) =>
       s""""$value"""".doc
-    case ModuleVarRef(module, name, tpe) =>
-      s"(${module.fullName}.$name: $tpe)".doc
     case If(cond, th, el, tpe) =>
       P.eif(
         prettyDoc(cond, false),
@@ -60,6 +58,9 @@ object JAST {
     case GetField(ref, target) =>
       P.group(
         P.group(prettyDoc(target, true), "."),
+        ref.toString.doc)
+    case GetStatic(ref) =>
+      P.group(
         ref.toString.doc)
     case PutField(ref, target, expr) =>
       P.group(
@@ -126,7 +127,6 @@ object JAST {
   case class LitBool(value: Boolean) extends Lit(JType.TBool)
   case class LitString(value: String) extends Lit(JType.TString)
 
-  case class ModuleVarRef(module: ModuleRef, name: String, tpe: JType) extends Expr
   case class If(cond: Expr, th: Expr, el: Expr, tpe: JType) extends Expr
 
   // TODO: test void-method invocation
@@ -158,6 +158,9 @@ object JAST {
     override def tpe: JType = JType.TObject
   }
   case class GetField(ref: FieldRef, target: Expr) extends Expr {
+    def tpe: JType = ref.tpe
+  }
+  case class GetStatic(ref: FieldRef) extends Expr {
     def tpe: JType = ref.tpe
   }
   case class PutValuesToUncheckedObjectArray(arr: Expr, values: Seq[Expr]) extends Expr {

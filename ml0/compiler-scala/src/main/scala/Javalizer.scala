@@ -62,7 +62,8 @@ object Javalizer {
       case T.LitInt(v) => J.LitInt(v)
       case T.LitBool(v) => J.LitBool(v)
       case T.LitString(v) => J.LitString(v)
-      case T.ModuleVarRef(m, n, t) => J.ModuleVarRef(m, n, t.jtype)
+      case T.ModuleVarRef(m, n, t) =>
+        J.GetStatic(FieldRef(m.classRef, n, t.jtype))
       case T.LocalRef(d, index, tt) =>
         val t = tt.jtype
         if (depth == d) {

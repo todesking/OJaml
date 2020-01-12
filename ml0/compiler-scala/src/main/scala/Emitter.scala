@@ -117,11 +117,11 @@ class Emitter(baseDir: Path) {
       method.visitLdcInsn(v)
     case J.LitString(v) =>
       method.visitLdcInsn(v)
-    case J.ModuleVarRef(module, name, tpe) =>
-      method.visitFieldInsn(op.GETSTATIC, msig(module), escape(name), descriptor(tpe))
     case J.GetField(ref, target) =>
       eval(method, target)
       method.visitFieldInsn(op.GETFIELD, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
+    case J.GetStatic(ref) =>
+      method.visitFieldInsn(op.GETSTATIC, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
     case J.If(cond, th, el, tpe) =>
       val lElse = new asm.Label()
       val lEnd = new asm.Label()
