@@ -57,9 +57,6 @@ class Emitter(baseDir: Path) {
     }
   }.mkString("")
 
-  private[this] val objectClass = "java/lang/Object"
-  private[this] val objectSig = s"L$objectClass;"
-
   private[this] def descriptor(tpe: JType): String = JType.toAsm(tpe).getDescriptor
 
   private[this] def msig(m: ModuleRef) =
@@ -196,6 +193,7 @@ class Emitter(baseDir: Path) {
           method.visitInsn(op.AASTORE)
       }
   }
+
   private[this] def defineMethod(cw: ClassVisitor, klass: J.ClassDef, m: J.MethodDef) = {
     var flags = op.ACC_PUBLIC
     if (m.isStatic) flags |= op.ACC_STATIC
@@ -231,24 +229,6 @@ class Emitter(baseDir: Path) {
     methodEnd(mw)
   }
 
-  private[this] def autobox(method: asm.MethodVisitor, from: Option[JType], to: JType): Unit = from match {
-    case Some(f) => autobox(method, f, to)
-    case None =>
-      if (to != JType.TUnit) throw new AssertionError(s"Unit type expected but actual is $to")
-      method.visitInsn(op.ACONST_NULL)
-      method.visitTypeInsn(op.CHECKCAST, JType.TUnit.jname)
-  }
-  private[this] def autobox(method: asm.MethodVisitor, from: JType, to: JType): Unit = {
-    if (from == to) {
-      // do nothing
-    } else if (from.boxed == to) {
-      box(method, from)
-    } else if (from == to.boxed) {
-      unbox(method, from)
-    } else {
-      throw new RuntimeException(s"$from and $to is not compatible")
-    }
-  }
   private[this] def box(method: asm.MethodVisitor, tpe: JType): Unit = {
     if (tpe.isPrimitive) {
       val desc = s"(${descriptor(tpe)})${descriptor(tpe.boxed)}"
