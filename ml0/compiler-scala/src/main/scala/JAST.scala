@@ -3,8 +3,6 @@ import com.todesking.ojaml.ml0.compiler.scala.util.pretty.PrettyPrinter
 import com.todesking.ojaml.ml0.compiler.scala.util.pretty.Doc
 import com.todesking.ojaml.ml0.compiler.scala.util.pretty.PrettySyntax._
 
-case class FieldRef(klass: ClassRef, name: String, tpe: JType)
-
 sealed abstract class JAST
 object JAST {
   case class MethodDef(name: String, isStatic: Boolean, params: Seq[JType], ret: Option[JType], body: Seq[Term]) extends JAST
