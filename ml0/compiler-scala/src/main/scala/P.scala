@@ -1,49 +1,9 @@
 package com.todesking.ojaml.ml0.compiler.scala
 
-import scala.util.parsing.input.Positional
-import scala.util.parsing.input.Position
-
 import com.todesking.ojaml.ml0.compiler.scala.util.pretty
 import pretty.PrettyPrinter
 import pretty.Doc
 import pretty.PrettySyntax._
-
-case class Pos(location: String, line: Int, col: Int) {
-  override def toString = s"$location:$line:$col"
-}
-object Pos {
-  def fill[A <: HasPos](v: A, p: Pos): A = { v.fillPos(p); v }
-}
-trait HasPos {
-  private[this] var _pos: Pos = null
-  def fillPos(location: String, line: Int, col: Int): Unit =
-    fillPos(Pos(location, line, col))
-  def fillPos(pos: Pos): Unit =
-    if (_pos == null) _pos = pos
-  def pos: Pos = _pos
-}
-
-case class Name(value: String) extends HasPos {
-  override def toString = s"Name($value)"
-}
-case class QName(parts: Seq[Name]) extends HasPos {
-  require(parts.nonEmpty)
-  def value: String = parts.map(_.value).mkString(".")
-  def internalName: String = parts.map(_.value).mkString("/")
-  def asPackage: PackageRef = PackageRef.fromParts(parts.map(_.value))
-  override def toString = s"QName($value)"
-}
-sealed abstract class TypeName extends HasPos
-object TypeName {
-  case class Atom(name: String) extends TypeName {
-    override def toString = name
-  }
-  case class Fun(l: TypeName, r: TypeName) extends TypeName {
-    override def toString = s"$l -> $r"
-  }
-}
-
-case class Import(qname: QName)
 
 object P {
   trait DocLike {
