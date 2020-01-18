@@ -2,7 +2,7 @@ package test.ml0
 
 import java.lang.Integer
 
-module Import {
+module Import_class {
   let a = Integer##parseInt("123") ;;
   (* a: int = 123 *)
 }
