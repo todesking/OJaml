@@ -102,7 +102,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   def datadef = name ~ rep(typename)
 
-  def expr: Parser[T.Expr] = expr1
+  def expr: Parser[T.Expr] = withpos(expr1)
 
   def binop(pat: Parser[String]): Parser[Name] =
     withpos(pat ^^ { p => Name(p) })
@@ -112,7 +112,10 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
       case e ~ es =>
         es.foldLeft(e) {
           case (l, op ~ r) =>
-            T.App(Pos.fill(T.App(Pos.fill(T.Ref(op), op.pos), l), op.pos), r)
+            val refOp = Pos.fill(T.Ref(op), op.pos)
+            val app1 = Pos.fill(T.App(refOp, l), op.pos)
+            val app2 = Pos.fill(T.App(app1, r), op.pos)
+            app2
         }
     })
 
