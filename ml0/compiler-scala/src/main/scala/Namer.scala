@@ -251,10 +251,10 @@ object Namer {
       case (ctx, Import.Single(qname, alias)) =>
         val nameParts = qname.parts
         val aliasName = alias.map(_.value) getOrElse nameParts.last.value
-        ctx.findPackageMember(PackageRef.Root, nameParts.head.value)
-          .toResult(nameParts.last.pos, s"Member not found: ${nameParts.head.value}")
+        ctx.findValue(nameParts.head.value)
+          .toResult(nameParts.head.pos, s"Member not found: ${nameParts.head.value}")
           .flatMap { head =>
-            nameParts.tail.foldLeft[Result[ValueLike]](ok(ValueLike.TopLevel(head))) { (v, n) =>
+            nameParts.tail.foldLeft[Result[ValueLike]](ok(head)) { (v, n) =>
               v.flatMap {
                 case ValueLike.TopLevel(pm) => pm match {
                   case PackageMember.Package(ref) =>

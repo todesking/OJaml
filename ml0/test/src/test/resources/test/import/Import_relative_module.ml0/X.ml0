@@ -1,0 +1,9 @@
+package test.ml0
+
+import test.ml0.A
+import A.a
+
+module X {
+  let x = a ;;
+  (* x: int = 10 *)
+}
