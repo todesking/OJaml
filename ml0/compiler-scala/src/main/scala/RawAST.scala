@@ -58,6 +58,20 @@ object RawAST {
         prettyDoc(body, false))
     case Prop(expr, name) =>
       P.prop(prettyDoc(expr, true), name)
+    case Match(expr, cs) =>
+      P.paren(paren, P.pmatch(
+        prettyDoc(expr, false),
+        cs.map(prettyDoc(_, false))))
+    case Clause(p, b) =>
+      P.group(
+        P.group("|", prettyDoc(p, false), "=>"),
+        prettyDoc(b, false))
+    case Pat.PAny() =>
+      "_".doc
+    case Pat.Ctor(name, args) =>
+      P.paren(paren, P.group(
+        name.value.doc,
+        args.map(prettyDoc(_, true))))
   }
 
   case class Program(pkg: QName, imports: Seq[Import], items: Seq[Module]) extends RawAST
@@ -84,4 +98,12 @@ object RawAST {
   case class ELet(name: Name, value: Expr, body: Expr) extends Expr
   case class ELetRec(bindings: Seq[(Name, Option[TypeName], Fun)], body: Expr) extends Expr
   case class Prop(expr: Expr, name: Name) extends Expr
+
+  case class Match(expr: Expr, clauses: Seq[Clause]) extends Expr
+  case class Clause(pat: Pat, body: Expr) extends RawAST with HasPos
+  sealed abstract class Pat extends RawAST with HasPos
+  object Pat {
+    case class Ctor(name: Name, args: Seq[Pat]) extends Pat
+    case class PAny() extends Pat
+  }
 }

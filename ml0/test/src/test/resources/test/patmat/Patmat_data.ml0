@@ -1,0 +1,17 @@
+package test.ml0
+
+(* debug *)
+
+module Patmat_data {
+  data E = L int , R int ;;
+
+  let x1 = match L 3
+    | L _ => 1
+    | R _ => 2 ;;
+  (* x1: int = 1 *)
+
+  let x2 = match R 3
+    | L _ => 1
+    | R _ => 2 ;;
+  (* x2: int = 2 *)
+}

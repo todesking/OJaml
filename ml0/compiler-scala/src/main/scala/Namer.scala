@@ -51,13 +51,13 @@ class Namer(packageEnv: PackageEnv) {
     case RT.Data(name, ctors) =>
       for {
         x1 <- ctx.addDataType(name)
-        (tpe, ctx) = x1
+        (data, ctx) = x1
         resolved <- ctors.map {
           case (name, params) =>
             params.map { tname => ctx.findType(tname) }.validated.map { ts => (name, ts) }
         }.validated
-        ctx2 = ctors.foldLeft(ctx) { case (c, (n, ns)) => c.addModuleMember(n.value) }
-      } yield (ctx2, NT.Data(name, tpe, resolved))
+        ctx2 <- resolved.foldLeftE(ctx) { case (c, (n, ts)) => c.addCtor(data, n, ts) }
+      } yield (ctx2, NT.Data(name, data, resolved))
   }
 
   def appExpr(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = {
@@ -124,7 +124,7 @@ class Namer(packageEnv: PackageEnv) {
               case PackageMember.Package(ref) =>
                 error(name.pos, "Package is not a class")
             }
-            case ValueLike.Value(ref) =>
+            case ValueLike.Value(ref, _) =>
               error(name.pos, "Value is not a class")
           }
         } else {
@@ -133,6 +133,40 @@ class Namer(packageEnv: PackageEnv) {
           }
         }
       }
+    case RT.Match(expr, clauses) =>
+      for {
+        e <- appExpr(ctx, expr)
+        cs <- clauses.map { c => appClause(ctx, c) }.validated
+      } yield NT.Match(e, cs)
+  }
+
+  private[this] def appClause(ctx: Ctx, c: RT.Clause): Result[NT.Clause] = {
+    for {
+      pat <- appPat(ctx, c.pat)
+      body <- appExpr(ctx, c.body)
+    } yield Pos.fill(NT.Clause(pat, body), c.pos)
+  }
+
+  private[this] def appPat(ctx: Ctx, pat: RT.Pat): Result[NT.Pat] =
+    appPat0(ctx, pat).map(Pos.fill(_, pat.pos))
+  private[this] def appPat0(ctx: Ctx, pat: RT.Pat): Result[NT.Pat] = pat match {
+    case RT.Pat.PAny() => ok(NT.Pat.PAny())
+    case RT.Pat.Ctor(name, args) =>
+      val notfound = s"Constructor ${name.value} is not found"
+      for {
+        as <- args.map(appPat(ctx, _)).validated
+        x <- ctx.findValue(name.value)
+          .toResult(name.pos, notfound)
+          .flatMap {
+            case ValueLike.Value(ref, Some((data, cname, cargs))) =>
+              if (args.size != cargs.size) error(name.pos, "Constructor argument size mismatch")
+              else ok(
+                (data, cargs))
+            case _ =>
+              error(name.pos, notfound)
+          }
+        (data, cargs) = x
+      } yield NT.Pat.Ctor(data, name, cargs.zip(as))
   }
 
   private[this] def valueLike(ctx: Ctx, expr: RT.Expr): Result[ValueLike] = expr match {
@@ -149,9 +183,9 @@ class Namer(packageEnv: PackageEnv) {
               .map(ValueLike.TopLevel)
               .toResult(n.pos, s"Member ${n.value} is not found in package ${p.fullName}")
           case PackageMember.Module(m) =>
-            ctx.findModuleMember(m, n).map(ValueLike.Value)
+            ctx.findModuleMember(m, n).map(ValueLike.Value(_, None))
         }
-        case ValueLike.Value(ref) =>
+        case ValueLike.Value(ref, _) =>
           error(n.pos, s"Property of value is not supported")
       }
     case expr =>
@@ -167,7 +201,7 @@ object Namer {
     case class TopLevel(ref: PackageMember) extends ValueLike {
       override def toValue(pos: Pos, msg: String) = error(pos, msg)
     }
-    case class Value(ref: VarRef) extends ValueLike {
+    case class Value(ref: VarRef, ctor: Option[(Type.Data, String, Seq[Type])]) extends ValueLike {
       override def toValue(pos: Pos, msg: String) = ok(ref)
     }
   }
@@ -186,13 +220,13 @@ object Namer {
       if (venv.contains(name.value))
         error(name.pos, s"""Name "${name.value}" is already defined in ${currentModule.name}""")
       else
-        ok(copy(venv = venv + (varRef.name -> ValueLike.Value(varRef))))
+        ok(copy(venv = venv + (varRef.name -> ValueLike.Value(varRef, None))))
     }
 
     def findValue(name: String): Option[ValueLike] =
       venv.get(name) orElse {
         if (penv.moduleMemberExists(currentModule, name)) {
-          Some(ValueLike.Value(VarRef.ModuleMember(currentModule, name)))
+          Some(ValueLike.Value(VarRef.ModuleMember(currentModule, name), None))
         } else {
           penv.findMember(currentModule.pkg, name)
             .orElse(penv.findMember(PackageRef.Root, name))
@@ -221,7 +255,7 @@ object Namer {
     def bindLocal(name: String): (VarRef.Local, Ctx) = {
       val ref = VarRef.Local(depth + 1, 0)
       (ref, copy(
-        venv = venv + (name -> ValueLike.Value(ref)),
+        venv = venv + (name -> ValueLike.Value(ref, None)),
         stack = this :: stack))
     }
 
@@ -234,7 +268,7 @@ object Namer {
       }.map { ns =>
         val refs = ns.zipWithIndex.map { case (_, i) => VarRef.Local(depth + 1, i + 1) }
         val c = copy(
-          venv = venv ++ ns.zip(refs.map(ValueLike.Value)),
+          venv = venv ++ ns.zip(refs.map(ValueLike.Value(_, None))),
           stack = this :: stack)
         (refs, c)
       }
@@ -262,11 +296,11 @@ object Namer {
                       .toResult(n.pos, s"Package member not found: ${n.value}")
                       .map(ValueLike.TopLevel)
                   case PackageMember.Module(m) =>
-                    ctx.findModuleMember(m, n).map(ValueLike.Value)
+                    ctx.findModuleMember(m, n).map(ValueLike.Value(_, None))
                   case PackageMember.Class(ref) =>
                     error(n.pos, s"${ref.fullName} is class and field reference not supported")
                 }
-                case ValueLike.Value(ref) =>
+                case ValueLike.Value(ref, _) =>
                   error(n.pos, "Property of value is not importable")
               }
             }.map { v =>
@@ -285,6 +319,11 @@ object Namer {
           penv = penv.addModuleTypeMember(currentModule, name.value))
         ok((tpe, c))
       }
+    }
+    def addCtor(data: Type.Data, name: Name, ts: Seq[Type]): Result[Ctx] = {
+      // TODO: check duplicate
+      val v = ValueLike.Value(VarRef.ModuleMember(currentModule, name.value), Some((data, name.value, ts)))
+      ok(copy(venv = venv + (name.value -> v)))
     }
   }
 }

@@ -97,5 +97,9 @@ object P {
       groupi(body))
   def prop(expr: Doc, name: Name) =
     group(expr ^^ ".".doc, name.value)
-
+  def pmatch(expr: Doc, cs: Seq[Doc]) =
+    group(
+      "match",
+      expr,
+      bgroup(cs))
 }

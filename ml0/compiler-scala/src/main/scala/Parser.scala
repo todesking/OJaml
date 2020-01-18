@@ -27,7 +27,10 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     "fun",
     "if", "then", "else",
     "=>",
-    "data")
+    "data",
+    "match",
+    "|",
+    "_")
   private[this] def kwd(a: String): Parser[Unit] = {
     require(keywords contains a)
     regex(s"${java.util.regex.Pattern.quote(a)}\\s+".r) ^^ { _ => () }
@@ -59,10 +62,17 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     }
   }
 
-  val normalName: Parser[Name] = withpos("""[a-zA-Z][a-zA-Z0-9_]*""".r ^? ({ case s if !keywords(s) => Name(s) }, { s => s"Invalid name: $s" }))
-  val opName: Parser[Name] = withpos("""==|<=|>=|[-+*/%<>]|&&|\|\|""".r ^? ({ case s if !keywords(s) => Name(s) }, { s => s"Invalid op name: $s" }))
-  val name: Parser[Name] = normalName | opName
+  private[this] def asName(p: Parser[String]) =
+    withpos(p ^? ({ case s if !keywords(s) => Name(s) }, { s => s"Invalid name: $s" }))
+
+  val small_name: Parser[Name] = asName("""[a-z][a-zA-Z0-9_]*""".r)
+  val capital_name: Parser[Name] = asName("""[A-Z][a-zA-Z0-9_]*""".r)
+  val normal_name = small_name | capital_name
+  val opName: Parser[Name] = asName("""==|<=|>=|[-+*/%<>]|&&|\|\|""".r)
+  val name: Parser[Name] = normal_name | opName
   val qname: Parser[QName] = withpos(rep1sep(name, ".") ^^ { xs => QName(xs) })
+
+  val ctor_name = capital_name
 
   // TODO: Support parenthesis
   def typename: Parser[TypeName] = withpos(rep1sep(typename1, kwd("=>")) ^^ { ts =>
@@ -76,7 +86,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   lazy val import_body: Parser[Import] = import_group | import_single
   lazy val import_single: Parser[Import] = qname ~ (kwd("=>") ~> name).? ^^ { case qn ~ n => Import.Single(qn, n) }
   lazy val import_group: Parser[Import] = (qname <~ ("." ~ "{")) ~ (rep1sep(import_body, ",") <~ "}") ^^ { case qn ~ xs => Import.Group(qn, xs) }
-  lazy val module: Parser[RawAST.Module] = withpos(kwd("module") ~> (normalName <~ "{") ~ rep(term) <~ "}" ^^ {
+  lazy val module: Parser[RawAST.Module] = withpos(kwd("module") ~> (normal_name <~ "{") ~ rep(term) <~ "}" ^^ {
     case n ~ ts => T.Module(n, ts)
   })
 
@@ -128,7 +138,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
         bin_expr(e, op)
       }
 
-  def expr3: Parser[RawAST.Expr] = eif | fun | eletr | elet | app
+  def expr3: Parser[RawAST.Expr] = ematch | eif | fun | eletr | elet | app
 
   lazy val expr4: Parser[RawAST.Expr] = withpos(expr5 ~ jcall.? ^^ {
     case e ~ None => e
@@ -168,14 +178,14 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case params ~ expr =>
       mkLetBody(params, expr).asInstanceOf[RawAST.Fun]
   })
-  def fun_params1 = rep1(normalName ~ (":" ~> typename1).?)
-  def fun_params = rep(normalName ~ (":" ~> typename1).?)
-  val var_ref: Parser[RawAST.Ref] = withpos(normalName ^^ { n => T.Ref(n) })
+  def fun_params1 = rep1(normal_name ~ (":" ~> typename1).?)
+  def fun_params = rep(normal_name ~ (":" ~> typename1).?)
+  val var_ref: Parser[RawAST.Ref] = withpos(normal_name ^^ { n => T.Ref(n) })
   val eletr: Parser[RawAST.ELetRec] = withpos((kwd("let") ~> kwd("rec")) ~> rep1sep(letrec_binding, ";") ~ (kwd("in") ~> expr) ^^ {
     case bs ~ body =>
       T.ELetRec(bs, body)
   })
-  def letrec_binding = (normalName ~ (":" ~> typename).? ~ fun_params ~ ("=" ~> expr)).flatMap {
+  def letrec_binding = (normal_name ~ (":" ~> typename).? ~ fun_params ~ ("=" ~> expr)).flatMap {
     case n ~ t ~ ps ~ e =>
       val expr = mkLetBody(ps, e)
       expr match {
@@ -187,5 +197,21 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case name ~ params ~ e1 ~ e2 =>
       T.ELet(name, mkLetBody(params, e1), e2)
   })
+  lazy val ematch = withpos((kwd("match") ~> expr) ~ rep(ematch_clause) ^^ {
+    case e ~ cs =>
+      T.Match(e, cs)
+  })
+  lazy val ematch_clause = withpos((kwd("|") ~> ematch_pat) ~ (kwd("=>") ~> expr) ^^ {
+    case p ~ e =>
+      T.Clause(p, e)
+  })
+  lazy val ematch_pat = ematch_ctor | ematch_any
+  lazy val ematch_ctor: Parser[T.Pat] = withpos(
+    ctor_name ~ rep(ematch_pat) ^^ {
+      case n ~ ps =>
+        T.Pat.Ctor(n, ps)
+    })
+  lazy val ematch_any = withpos(
+    kwd("_") ^^ { case _ => T.Pat.PAny() })
 }
 
