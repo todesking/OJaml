@@ -251,7 +251,7 @@ object Namer {
     // TODO: Support relative
     def addImport(i: Import): Result[Ctx] = {
       val nameParts = i.qname.parts
-      val aliasName = i.qname.parts.last.value
+      val aliasName = i.alias.map(_.value) getOrElse i.qname.parts.last.value
       findPackageMember(PackageRef.Root, nameParts.head.value)
         .toResult(i.qname.pos, s"Member not found: ${nameParts.head.value}")
         .flatMap { head =>
