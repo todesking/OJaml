@@ -25,7 +25,7 @@ class Repl {
   private[this] val predefImports =
     Seq("+", "-", "*", "/", "%", "==", "<=", ">=", ">", "<", "&", "|")
       .map { name => mkQName(s"com.todesking.ojaml.ml0.lib.Predef.$name") }
-      .map(ojaml.Import.apply)
+      .map(ojaml.Import.Single.apply(_, None))
 
   private[this] var imports: Seq[ojaml.Import] = Seq()
   private[this] var nextIndex = 0
@@ -163,7 +163,7 @@ class Repl {
           this.packageEnv = newPEnv
           this.moduleEnv = newMEnv
           this.imports = this.imports ++ names.map { name =>
-            ojaml.Import(mkQName(s"${tree.moduleRef.fullName}.$name"))
+            ojaml.Import.Single(mkQName(s"${tree.moduleRef.fullName}.$name"), None)
           }
           nextIndex += 1
           evalRuntime(in, tree)

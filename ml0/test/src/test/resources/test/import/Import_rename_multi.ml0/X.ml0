@@ -1,0 +1,18 @@
+(* using: Predef *)
+
+package test.ml0
+
+import com.todesking.ojaml.ml0.lib.Predef.+
+
+import test.ml0.{
+  A.x => ax,
+  B.{
+    y => by,
+    z
+  }
+}
+
+module X {
+  let a = ax + by + z ;;
+  (* a: int = 310 *)
+}

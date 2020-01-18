@@ -247,34 +247,34 @@ object Namer {
       else
         error(name.pos, s"Member ${name.value} is not found in module ${m.fullName}")
 
-    // TODO: Support type names
-    // TODO: Support relative
-    def addImport(i: Import): Result[Ctx] = {
-      val nameParts = i.qname.parts
-      val aliasName = i.alias.map(_.value) getOrElse i.qname.parts.last.value
-      findPackageMember(PackageRef.Root, nameParts.head.value)
-        .toResult(i.qname.pos, s"Member not found: ${nameParts.head.value}")
-        .flatMap { head =>
-          nameParts.tail.foldLeft[Result[ValueLike]](ok(ValueLike.TopLevel(head))) { (v, n) =>
-            v.flatMap {
-              case ValueLike.TopLevel(pm) => pm match {
-                case PackageMember.Package(ref) =>
-                  findPackageMember(ref, n.value)
-                    .toResult(n.pos, s"Package member not found: ${n.value}")
-                    .map(ValueLike.TopLevel)
-                case PackageMember.Module(m) =>
-                  findModuleMember(m, n).map(ValueLike.Value)
-                case PackageMember.Class(ref) =>
-                  error(n.pos, s"${ref.fullName} is class and field reference not supported")
+    def addImport(i: Import): Result[Ctx] = i.flatten.foldLeftE(this) {
+      case (ctx, Import.Single(qname, alias)) =>
+        val nameParts = qname.parts
+        val aliasName = alias.map(_.value) getOrElse nameParts.last.value
+        ctx.findPackageMember(PackageRef.Root, nameParts.head.value)
+          .toResult(nameParts.last.pos, s"Member not found: ${nameParts.head.value}")
+          .flatMap { head =>
+            nameParts.tail.foldLeft[Result[ValueLike]](ok(ValueLike.TopLevel(head))) { (v, n) =>
+              v.flatMap {
+                case ValueLike.TopLevel(pm) => pm match {
+                  case PackageMember.Package(ref) =>
+                    ctx.findPackageMember(ref, n.value)
+                      .toResult(n.pos, s"Package member not found: ${n.value}")
+                      .map(ValueLike.TopLevel)
+                  case PackageMember.Module(m) =>
+                    ctx.findModuleMember(m, n).map(ValueLike.Value)
+                  case PackageMember.Class(ref) =>
+                    error(n.pos, s"${ref.fullName} is class and field reference not supported")
+                }
+                case ValueLike.Value(ref) =>
+                  error(n.pos, "Property of value is not importable")
               }
-              case ValueLike.Value(ref) =>
-                error(n.pos, "Property of value is not importable")
+            }.map { v =>
+              ctx.copy(venv = ctx.venv + (aliasName -> v))
             }
-          }.map { v =>
-            copy(venv = venv + (aliasName -> v))
           }
-        }
     }
+
     def addDataType(name: Name): Result[(Type.Data, Ctx)] = {
       if (localTypes.contains(name.value)) {
         error(name.pos, s"Type ${name.value} is already defined")

@@ -72,7 +72,10 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   lazy val program: Parser[RawAST.Program] = withpos(pkg ~ rep(`import`) ~ rep1(module) ^^ { case p ~ is ~ ss => T.Program(p, is, ss) })
   lazy val pkg: Parser[QName] = kwd("package") ~> qname
-  lazy val `import`: Parser[Import] = (kwd("import") ~> qname) ~ (kwd("=>") ~> name).? ^^ { case qn ~ n => Import(qn, n) }
+  lazy val `import`: Parser[Import] = kwd("import") ~> import_body
+  lazy val import_body: Parser[Import] = import_group | import_single
+  lazy val import_single: Parser[Import] = qname ~ (kwd("=>") ~> name).? ^^ { case qn ~ n => Import.Single(qn, n) }
+  lazy val import_group: Parser[Import] = (qname <~ ("." ~ "{")) ~ (rep1sep(import_body, ",") <~ "}") ^^ { case qn ~ xs => Import.Group(qn, xs) }
   lazy val module: Parser[RawAST.Module] = withpos(kwd("module") ~> (normalName <~ "{") ~ rep(term) <~ "}" ^^ {
     case n ~ ts => T.Module(n, ts)
   })

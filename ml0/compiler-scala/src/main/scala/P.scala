@@ -36,7 +36,7 @@ object P {
   def pkg(name: QName): Doc =
     Doc.Text(s"package ${name.value}")
   def imports(items: Seq[Import]): Doc =
-    bgroup(items.map { x =>
+    bgroup(items.flatMap(_.flatten).map { x =>
       Doc.Text(s"import ${x.qname.value}")
     })
   def module(name: String, body: Seq[Doc]) =

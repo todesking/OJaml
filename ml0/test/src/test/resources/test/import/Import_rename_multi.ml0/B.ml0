@@ -1,0 +1,6 @@
+package test.ml0
+
+module B {
+  let y = 100 ;;
+  let z = 200 ;;
+}
