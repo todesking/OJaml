@@ -89,10 +89,16 @@ class Repl {
 
   private[this] def parse(code: String): Either[Result, Input] = {
     val parser = new ojaml.Parser(replFileName)
+    val exprName = s"res$nextIndex"
     parser.parseTerm(code).toEither match {
-      case Left(msgs) =>
-        Left(Result.CompileError(msgs.head.message))
-      case Right(rawTree) => Right(input(rawTree))
+      case Left(_) =>
+        parser.parseExpr(code).toEither match {
+          case Left(msgs) =>
+            Left(Result.CompileError(msgs.head.message))
+          case Right(expr) =>
+            Right(Input.Expr(exprName, expr))
+        }
+      case Right(term) => Right(input(term))
     }
   }
 

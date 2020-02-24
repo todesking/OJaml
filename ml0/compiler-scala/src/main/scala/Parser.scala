@@ -9,6 +9,9 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   def parseTerm(s: String): Result[T.Term] =
     translate(parseAll(term, s))
 
+  def parseExpr(s: String): Result[T.Expr] =
+    translate(parseAll(expr, s))
+
   private[this] def translate[A](a: ParseResult[A]): Result[A] = a match {
     case Success(value, _) => Result.ok(value)
     case NoSuccess(msg, next) =>
