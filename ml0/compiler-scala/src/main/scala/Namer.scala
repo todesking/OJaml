@@ -136,37 +136,75 @@ class Namer(packageEnv: PackageEnv) {
     case RT.Match(expr, clauses) =>
       for {
         e <- appExpr(ctx, expr)
-        cs <- clauses.map { c => appClause(ctx, c) }.validated
-      } yield NT.Match(e, cs)
+        (eVar, c) = ctx.bindLocal(s"$$it")
+        body <- appClauses(c, eVar, clauses)
+      } yield NT.ELet(eVar, e, body)
   }
 
-  private[this] def appClause(ctx: Ctx, c: RT.Clause): Result[NT.Clause] = {
-    for {
-      pat <- appPat(ctx, c.pat)
-      body <- appExpr(ctx, c.body)
-    } yield Pos.fill(NT.Clause(pat, body), c.pos)
+  private[this] def appClauses(ctx: Ctx, eVar: VarRef, clauses: Seq[RT.Clause]): Result[NT.Expr] = {
+    clauses.map {
+      case RT.Clause(pat, body) =>
+        for {
+          x <- appPat(ctx, pat, NT.Ref(eVar))
+          (checker, extractors) = x
+          body <- appClauseBody(ctx, extractors, body)
+        } yield (checker, body)
+    }.validated.map {
+      _.foldRight(NT.MatchError(): NT.Expr) {
+        case ((checker, body), next) =>
+          NT.If(checker, body, next)
+      }
+    }
   }
 
-  private[this] def appPat(ctx: Ctx, pat: RT.Pat): Result[NT.Pat] =
-    appPat0(ctx, pat).map(Pos.fill(_, pat.pos))
-  private[this] def appPat0(ctx: Ctx, pat: RT.Pat): Result[NT.Pat] = pat match {
-    case RT.Pat.PAny() => ok(NT.Pat.PAny())
+  private[this] def appClauseBody(ctx: Ctx, extractors: Seq[(String, NT.Expr)], body: RT.Expr): Result[NT.Expr] = {
+    val (c2, refs) = extractors.mapWithContextC(ctx) {
+      case (c, (name, _)) =>
+        val (c2, r) = c.bindLocal(name)
+        (r, c2)
+    }
+    appExpr(c2, body).map { b =>
+      val fun = refs.foldRight(b) { case (ref, e) => NT.Fun(ref, None, b) }
+      val app = extractors.foldLeft(fun) { case (f, (_, e)) => NT.App(f, e) }
+      app
+    }
+  }
+
+  private[this] def appPat(ctx: Ctx, pat: RT.Pat, target: NT.Expr): Result[(NT.Expr, Seq[(String, NT.Expr)])] = pat match {
+    case RT.Pat.PAny() =>
+      ok((NT.LitBool(true), Nil))
+    case RT.Pat.Capture(name) =>
+      ok((NT.LitBool(true), Seq(name.value -> target)))
     case RT.Pat.Ctor(name, args) =>
-      val notfound = s"Constructor ${name.value} is not found"
-      for {
-        as <- args.map(appPat(ctx, _)).validated
-        x <- ctx.findValue(name.value)
-          .toResult(name.pos, notfound)
-          .flatMap {
-            case ValueLike.Value(ref, Some((data, cname, cargs))) =>
-              if (args.size != cargs.size) error(name.pos, "Constructor argument size mismatch")
-              else ok(
-                (data, cargs))
-            case _ =>
-              error(name.pos, notfound)
+      def findFunction(name: String): Result[VarRef] = ctx
+        .findValue(name)
+        .toResult(pat.pos, s"function not found: $name")
+        .flatMap {
+          case ValueLike.TopLevel(_) =>
+            error(pat.pos, s"$name is not a data constructor")
+          case ValueLike.Value(ref, ctor) =>
+            ok(ref)
+        }
+      findFunction(ctx.patCheckerName(name.value))
+        .flatMap { checkerRef =>
+          args.zipWithIndex.map {
+            case (_, i) =>
+              findFunction(ctx.patExtractorName(name.value, i))
+          }.validated.flatMap { extractors =>
+            val rootChecker = NT.App(NT.Ref(checkerRef), target)
+            extractors.zip(args).map {
+              case (extractor, arg) =>
+                appPat(ctx, arg, NT.App(NT.Ref(extractor), target))
+            }.validated.map { subPatterns =>
+              val checker = subPatterns.map(_._1).foldLeft(rootChecker: NT.Expr) {
+                case (l, r) =>
+                  NT.If(l, r, NT.LitBool(false))
+              }
+              val extractor = subPatterns.flatMap(_._2)
+              (checker, extractor)
+            }
           }
-        (data, cargs) = x
-      } yield NT.Pat.Ctor(data, name, cargs.zip(as))
+        }
   }
 
   private[this] def valueLike(ctx: Ctx, expr: RT.Expr): Result[ValueLike] = expr match {
@@ -320,10 +358,19 @@ object Namer {
         ok((tpe, c))
       }
     }
+    def patCheckerName(name: String) = s"${name}$$check"
+    def patExtractorName(name: String, i: Int) = s"$name$$get$i"
     def addCtor(data: Type.Data, name: Name, ts: Seq[Type]): Result[Ctx] = {
       // TODO: check duplicate
-      val v = ValueLike.Value(VarRef.ModuleMember(currentModule, name.value), Some((data, name.value, ts)))
-      ok(copy(venv = venv + (name.value -> v)))
+      val ctor = name.value -> ValueLike.Value(VarRef.ModuleMember(currentModule, name.value), Some((data, name.value, ts)))
+      val extractors = ts.zipWithIndex.map {
+        case (t, i) =>
+          val n = patExtractorName(name.value, i)
+          n -> ValueLike.Value(VarRef.ModuleMember(currentModule, n), None)
+      }
+      val checkerName = patCheckerName(name.value)
+      val checker = checkerName -> ValueLike.Value(VarRef.ModuleMember(currentModule, checkerName), None)
+      ok(copy(venv = venv + ctor ++ extractors + checker))
     }
   }
 }

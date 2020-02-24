@@ -7,6 +7,7 @@ sealed abstract class Result[+A] {
   def fold[B](left: Seq[Result.Message] => B, right: A => B): B
   def foreach(f: A => Unit): Unit
   def toEither: Either[Seq[Result.Message], A]
+  def tapFail(f: Seq[Result.Message] => Unit): Result[A]
 }
 object Result {
   case class Message(pos: Pos, message: String)
@@ -17,6 +18,7 @@ object Result {
       right(value)
     override def foreach(f: A => Unit): Unit = f(value)
     override def toEither: Either[Seq[Result.Message], A] = Right(value)
+    override def tapFail(f: Seq[Message] => Unit): Result[A] = this
   }
   case class Failure(messages: Seq[Message]) extends Result[Nothing] {
     override def flatMap[B](f: Nothing => Result[B]): Result[B] =
@@ -25,6 +27,10 @@ object Result {
       left(messages)
     override def foreach(f: Nothing => Unit): Unit = {}
     override def toEither: Either[Seq[Result.Message], Nothing] = Left(messages)
+    def tapFail(f: Seq[Message] => Unit): Result[Nothing] = {
+      f(messages)
+      this
+    }
   }
 
   implicit class MergeOps(val self: Result[Seq[Message]]) extends AnyVal {

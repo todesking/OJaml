@@ -63,7 +63,14 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
               params.foldRight(tpe: Type) { (from, to) =>
                 Type.Fun(from, to)
               }
-            c.bindModuleValue(name, ctorType)
+            c.bindModuleValue(name, ctorType).flatMap { c =>
+              c.bindModuleValue(Name(s"$name$$check"), Type.Fun(tpe, Type.Bool)).flatMap { c =>
+                params.zipWithIndex.foldLeftE(c) {
+                  case (c, (t, i)) =>
+                    c.bindModuleValue(Name(s"$name$$get$i"), Type.Fun(tpe, t))
+                }
+              }
+            }
         }
       } yield {
         val ctorDefs = ctors.map {

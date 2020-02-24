@@ -73,6 +73,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   val qname: Parser[QName] = withpos(rep1sep(name, ".") ^^ { xs => QName(xs) })
 
   val ctor_name = capital_name
+  val var_name = small_name
 
   // TODO: Support parenthesis
   def typename: Parser[TypeName] = withpos(rep1sep(typename1, kwd("=>")) ^^ { ts =>
@@ -205,7 +206,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case p ~ e =>
       T.Clause(p, e)
   })
-  lazy val ematch_pat = ematch_ctor | ematch_any
+  lazy val ematch_pat = ematch_ctor | ematch_any | ematch_capture
   lazy val ematch_ctor: Parser[T.Pat] = withpos(
     ctor_name ~ rep(ematch_pat) ^^ {
       case n ~ ps =>
@@ -213,5 +214,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     })
   lazy val ematch_any = withpos(
     kwd("_") ^^ { case _ => T.Pat.PAny() })
+  lazy val ematch_capture = withpos(
+    var_name ^^ { case n => T.Pat.Capture(n) })
 }
 

@@ -37,14 +37,16 @@ object NamedAST {
         args.map(prettyDoc(_, false)),
         false)
     case If(cond, th, el) =>
-      P.eif(
-        prettyDoc(cond, false),
-        prettyDoc(th, false),
-        prettyDoc(el, false))
+      P.paren(
+        paren,
+        P.eif(
+          prettyDoc(cond, false),
+          prettyDoc(th, false),
+          prettyDoc(el, false)))
     case Fun(param, tpe, body) =>
       P.fun(param.toString, tpe.map(_.toString), prettyDoc(body, false))
     case App(fun, arg) =>
-      P.app(paren, prettyDoc(fun, false), prettyDoc(arg, true))
+      P.app(paren, prettyDoc(fun, true), prettyDoc(arg, true))
     case ELet(ref, value, body) =>
       P.elet(ref.toString, prettyDoc(value, false), prettyDoc(body, false))
     case ELetRec(bindings, body) =>
@@ -58,6 +60,8 @@ object NamedAST {
       P.paren(paren, P.pmatch(
         prettyDoc(expr, false),
         cs.map(prettyDoc(_, false))))
+    case MatchError() =>
+      "<matcherror>".doc
     case Clause(p, b) =>
       P.group(
         P.group("|", prettyDoc(p, false), "=>"),
@@ -68,6 +72,8 @@ object NamedAST {
       P.paren(paren, P.group(
         s"${name.value}[${args.map(_._1).mkString(", ")}]",
         args.map(_._2).map(prettyDoc(_, true))))
+    case Pat.Capture(name) =>
+      name.value.doc
   }
 
   case class Module(pkg: QName, name: Name, body: Seq[Term]) extends NamedAST {
@@ -95,11 +101,14 @@ object NamedAST {
   case class JCallInstance(receiver: Expr, methodName: Name, args: Seq[Expr]) extends Expr
   case class JCallStatic(target: ClassRef, methodName: Name, args: Seq[Expr]) extends Expr
 
+  case class MatchError() extends Expr
+
   case class Match(expr: Expr, clauses: Seq[Clause]) extends Expr
   case class Clause(pat: Pat, body: Expr) extends NamedAST with HasPos
   sealed abstract class Pat extends NamedAST with HasPos
   object Pat {
     case class Ctor(dataType: Type.Data, name: Name, args: Seq[(Type, Pat)]) extends Pat
     case class PAny() extends Pat
+    case class Capture(name: Name) extends Pat
   }
 }

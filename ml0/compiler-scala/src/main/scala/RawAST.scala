@@ -72,6 +72,8 @@ object RawAST {
       P.paren(paren, P.group(
         name.value.doc,
         args.map(prettyDoc(_, true))))
+    case Pat.Capture(name) =>
+      name.value.doc
   }
 
   case class Program(pkg: QName, imports: Seq[Import], items: Seq[Module]) extends RawAST
@@ -105,5 +107,6 @@ object RawAST {
   object Pat {
     case class Ctor(name: Name, args: Seq[Pat]) extends Pat
     case class PAny() extends Pat
+    case class Capture(name: Name) extends Pat
   }
 }

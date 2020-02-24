@@ -105,4 +105,12 @@ object TypedAST {
     override def tpe = Type.Klass(ref)
   }
   case class Upcast(body: Expr, tpe: Type.Reference) extends Expr
+
+  case class Match(expr: Expr, clauses: Seq[Clause], tpe: Type) extends Expr
+  case class Clause(pat: Pat, body: Expr) extends TypedAST with HasPos
+  sealed abstract class Pat extends TypedAST with HasPos
+  object Pat {
+    case class Ctor(dataType: Type.Data, name: Name, args: Seq[(Type, Pat)]) extends Pat
+    case class PAny() extends Pat
+  }
 }
