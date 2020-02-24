@@ -111,7 +111,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
       body
   }
 
-  def data = withpos((kwd("data") ~> name) ~ ("=" ~> rep1sep(datadef, ",")) <~ eot ^^ {
+  def data = withpos((kwd("data") ~> name) ~ ("=" ~> rep1sep(datadef, "|")) <~ eot ^^ {
     case name ~ ddefs =>
       T.Data(name, ddefs.map { case n ~ ns => (n, ns) })
   })

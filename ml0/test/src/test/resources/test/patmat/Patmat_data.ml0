@@ -4,7 +4,7 @@ package test.ml0
 import com.todesking.ojaml.ml0.lib.Predef.+
 
 module Patmat_data {
-  data E = L int , R int ;;
+  data E = L int | R int ;;
 
   let x1 = match L 3
     | L _ => 1

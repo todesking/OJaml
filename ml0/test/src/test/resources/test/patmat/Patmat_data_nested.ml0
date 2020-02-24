@@ -4,7 +4,7 @@ package test.ml0
 import com.todesking.ojaml.ml0.lib.Predef.+
 
 module Patmat_data_nested {
-  data IList = ICons int IList, INil ;;
+  data IList = ICons int IList | INil ;;
 
   let list = ICons 1 (ICons 2 INil) ;;
   (* list: * = ICons 1 (ICons 2 INil) *)
