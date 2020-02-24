@@ -31,24 +31,27 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       .map(TT.Module(s.pkg, s.name, _))
   }
 
+  private[this] def eval(ctx: Ctx, expr: NT.Expr): Result[TT.Expr] = {
+    appExpr(ctx, expr).map {
+      case (s, tree) =>
+        def tabs(e: TT.Expr) = {
+          val tvs = e.tpe.freeTypeVariables.toSeq.sortBy(_.id)
+          if (tvs.isEmpty) e
+          else TT.TAbs(tvs, e, Type.Abs(tvs, e.tpe))
+        }
+        subst(s, tree) match {
+          case expr @ (TT.Fun(_, _) | TT.ModuleVarRef(_, _, _)) =>
+            tabs(expr)
+          case x =>
+            // TODO: Is this really safe??
+            tabs(x)
+        }
+    }
+  }
   def appTerm(ctx: Ctx, t: NT.Term): Result[(Ctx, Seq[TT.Term])] = t match {
     case NT.TLet(name, expr) =>
       for {
-        e <- appExpr(ctx, expr).map {
-          case (s, tree) =>
-            def tabs(e: TT.Expr) = {
-              val tvs = e.tpe.freeTypeVariables.toSeq.sortBy(_.id)
-              if (tvs.isEmpty) e
-              else TT.TAbs(tvs, e, Type.Abs(tvs, e.tpe))
-            }
-            subst(s, tree) match {
-              case expr @ (TT.Fun(_, _) | TT.ModuleVarRef(_, _, _)) =>
-                tabs(expr)
-              case x =>
-                // TODO: Is this really safe??
-                tabs(x)
-            }
-        }
+        e <- eval(ctx, expr)
         c <- ctx.bindModuleValue(name, e.tpe)
       } yield {
         assertNoFVs(e, Set())
@@ -88,12 +91,8 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         }
         (bound, TT.Data(name, tpe, ctors) +: ctorDefs)
       }
-    /*
-    case e: NT.Expr =>
-      val te = appExpr(ctx, e).map { case (s, tree) => (ctx, Seq(reindex(Subst.empty, 1, subst(s, tree)))) }
-      te.map(_._2).foreach(_.foreach(assertNoFVs(_, Set())))
-      te
-      */
+    case NT.TExpr(e) =>
+      eval(ctx, e).map { e => (ctx, Seq(TT.TExpr(e))) }
   }
 
   private[this] def ok(s: Subst, e: TT.Expr): Result[(Subst, TT.Expr)] =

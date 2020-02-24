@@ -75,6 +75,8 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   val ctor_name = capital_name
   val var_name = small_name
 
+  val eot = ";;"
+
   // TODO: Support parenthesis
   def typename: Parser[TypeName] = withpos(rep1sep(typename1, kwd("=>")) ^^ { ts =>
     ts.tail.foldLeft(ts.head) { (l, r) => TypeName.Fun(l, r) }
@@ -91,8 +93,8 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case n ~ ts => T.Module(n, ts)
   })
 
-  def term: Parser[T.Term] = tlet | data
-  def tlet: Parser[RawAST.TLet] = withpos((kwd("let") ~> name) ~ (fun_params.? <~ "=") ~ expr <~ ";;" ^^ {
+  def term: Parser[T.Term] = tlet | data | texpr
+  def tlet: Parser[RawAST.TLet] = withpos((kwd("let") ~> name) ~ (fun_params.? <~ "=") ~ expr <~ eot ^^ {
     case n ~ None ~ e =>
       T.TLet(n, e)
     case name ~ Some(params) ~ expr =>
@@ -106,10 +108,12 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
       body
   }
 
-  def data = withpos((kwd("data") ~> name) ~ ("=" ~> rep1sep(datadef, ",")) <~ ";;" ^^ {
+  def data = withpos((kwd("data") ~> name) ~ ("=" ~> rep1sep(datadef, ",")) <~ eot ^^ {
     case name ~ ddefs =>
       T.Data(name, ddefs.map { case n ~ ns => (n, ns) })
   })
+
+  def texpr = withpos(expr <~ eot ^^ { e => T.TExpr(e) })
 
   def datadef = name ~ rep(typename)
 

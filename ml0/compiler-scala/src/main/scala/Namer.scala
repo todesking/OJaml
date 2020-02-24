@@ -58,6 +58,10 @@ class Namer(packageEnv: PackageEnv) {
         }.validated
         ctx2 <- resolved.foldLeftE(ctx) { case (c, (n, ts)) => c.addCtor(data, n, ts) }
       } yield (ctx2, NT.Data(name, data, resolved))
+    case RT.TExpr(expr) =>
+      for {
+        e <- appExpr(ctx, expr)
+      } yield (ctx, NT.TExpr(e))
   }
 
   def appExpr(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = {

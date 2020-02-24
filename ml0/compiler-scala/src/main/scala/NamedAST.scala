@@ -16,6 +16,8 @@ object NamedAST {
       P.tlet(name, None, prettyDoc(expr, false))
     case Data(name, tpe, ctors) =>
       P.data(name, ctors.map { case (n, ts) => (n.value, ts.map(_.toString)) })
+    case TExpr(e) =>
+      P.group(prettyDoc(e, false), ";;")
     case LitInt(value) =>
       Doc.Text(value.toString)
     case LitBool(value) =>
@@ -66,8 +68,8 @@ object NamedAST {
 
   sealed abstract class Term extends NamedAST
   case class TLet(name: Name, expr: Expr) extends Term
-
   case class Data(name: Name, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]) extends Term
+  case class TExpr(expr: Expr) extends Term
 
   sealed abstract class Expr extends NamedAST
 

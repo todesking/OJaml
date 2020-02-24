@@ -23,7 +23,7 @@ class Repl {
   private[this] var moduleEnv = Map.empty[ojaml.VarRef.ModuleMember, ojaml.Type]
 
   private[this] val predefImports =
-    Seq("+", "-", "*", "/", "%", "==", "<=", ">=", ">", "<", "&", "|")
+    Seq("+", "-", "*", "/", "%", "==", "<=", ">=", ">", "<")
       .map { name => mkQName(s"com.todesking.ojaml.ml0.lib.Predef.$name") }
       .map(ojaml.Import.Single.apply(_, None))
 
@@ -83,14 +83,15 @@ class Repl {
     tree match {
       case tree @ RT.TLet(name, expr) => Input.Let(name.value, tree)
       case tree @ RT.Data(name, ctors) => Input.Data(name.value, ctors.map(_._1.value), tree)
-      // TODO: Support expr
+      case tree @ RT.TExpr(expr) => Input.Expr(s"res$nextIndex", expr)
     }
   }
 
   private[this] def parse(code: String): Either[Result, Input] = {
     val parser = new ojaml.Parser(replFileName)
     parser.parseTerm(code).toEither match {
-      case Left(msgs) => Left(Result.CompileError(msgs.head.message))
+      case Left(msgs) =>
+        Left(Result.CompileError(msgs.head.message))
       case Right(rawTree) => Right(input(rawTree))
     }
   }

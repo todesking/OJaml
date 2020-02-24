@@ -24,6 +24,8 @@ object RawAST {
       P.data(name, ctors.map {
         case (n, ts) => (n.value, ts.map(_.toString))
       })
+    case TExpr(expr) =>
+      P.group(prettyDoc(expr, false), ";;")
     case LitInt(value) =>
       Doc.Text(value.toString)
     case LitBool(value) =>
@@ -83,6 +85,7 @@ object RawAST {
   sealed abstract class Term extends RawAST
   case class TLet(name: Name, expr: Expr) extends Term
   case class Data(name: Name, ctors: Seq[(Name, Seq[TypeName])]) extends Term
+  case class TExpr(expr: Expr) extends Term
 
   sealed abstract class Expr extends RawAST
 

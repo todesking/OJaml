@@ -74,6 +74,7 @@ object TypedAST {
   sealed abstract class Term extends TypedAST
   case class TLet(name: Name, tpe: Type, expr: Expr) extends Term
   case class Data(name: Name, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]) extends Term
+  case class TExpr(expr: Expr) extends Term
 
   sealed abstract class Expr extends TypedAST {
     def tpe: Type

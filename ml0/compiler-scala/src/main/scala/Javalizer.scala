@@ -57,6 +57,8 @@ object Javalizer {
           J.PutStatic(f, appExpr(expr, 0)))
       case T.Data(name, tpe, ctors) =>
         appData(name.value, tpe, ctors.map { case (k, v) => k.value -> v.map(_.jtype) })
+      case T.TExpr(expr) =>
+        builder.addClinit(J.TExpr(appExpr(expr, 0)))
     }
     def appExpr(expr: T.Expr, depth: Int): J.Expr = expr match {
       case T.LitInt(v) => J.LitInt(v)
