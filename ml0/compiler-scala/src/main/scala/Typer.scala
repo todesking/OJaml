@@ -64,10 +64,10 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
                 Type.Fun(from, to)
               }
             c.bindModuleValue(name, ctorType).flatMap { c =>
-              c.bindModuleValue(Name(s"$name$$check"), Type.Fun(tpe, Type.Bool)).flatMap { c =>
+              c.bindModuleValue(Name(s"${name.value}$$check"), Type.Fun(tpe, Type.Bool)).flatMap { c =>
                 params.zipWithIndex.foldLeftE(c) {
                   case (c, (t, i)) =>
-                    c.bindModuleValue(Name(s"$name$$get$i"), Type.Fun(tpe, t))
+                    c.bindModuleValue(Name(s"${name.value}$$get$i"), Type.Fun(tpe, t))
                 }
               }
             }
@@ -120,6 +120,8 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       TT.JCallStatic(m, a.map(subst(s, _)))
     case TT.JCallInstance(m, r, a) =>
       TT.JCallInstance(m, subst(s, r), a.map(subst(s, _)))
+    case TT.MatchError(tpe) =>
+      TT.MatchError(s.app(tpe))
   }
 
   private[this] def reindex(s: Subst, nextIndex: Int, tree: TT.Expr): TT.Expr = tree match {
@@ -142,6 +144,8 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       TT.JCallStatic(m, a.map(reindex(s, nextIndex, _)))
     case TT.JCallInstance(m, r, a) =>
       TT.JCallInstance(m, reindex(s, nextIndex, r), a.map(reindex(s, nextIndex, _)))
+    case TT.MatchError(t) =>
+      TT.MatchError(s.app(t))
   }
 
   private[this] def assertNoFVs1(tree: TT.Expr, nonFrees: Set[Type.Var]) =
@@ -173,6 +177,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       case TT.JCallInstance(m, r, a) =>
         a.foreach(assertNoFVs(_, nonFrees))
         assertNoFVs(r, nonFrees)
+      case TT.MatchError(t) =>
     }
   }
 
@@ -286,6 +291,8 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         method <- klass.findInstanceMethod(name.value, targs.map(_._2.tpe.jtype))
           .toResult(name.pos, s"Can't resolve instance method ${Type.prettyMethod(name.value, argTypes)} in class $klassName")
       } yield (s1, TT.JCallInstance(method, e1, targs.map(_._2)))
+    case NT.MatchError() =>
+      ok0(TT.MatchError(freshVar()))
   }
 }
 

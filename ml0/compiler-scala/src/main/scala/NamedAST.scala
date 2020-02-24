@@ -56,24 +56,8 @@ object NamedAST {
             (n.toString, tn.map(_.toString), prettyDoc(f, false))
         },
         prettyDoc(body, false))
-    case Match(expr, cs) =>
-      P.paren(paren, P.pmatch(
-        prettyDoc(expr, false),
-        cs.map(prettyDoc(_, false))))
     case MatchError() =>
       "<matcherror>".doc
-    case Clause(p, b) =>
-      P.group(
-        P.group("|", prettyDoc(p, false), "=>"),
-        prettyDoc(b, false))
-    case Pat.PAny() =>
-      "_".doc
-    case Pat.Ctor(data, name, args) =>
-      P.paren(paren, P.group(
-        s"${name.value}[${args.map(_._1).mkString(", ")}]",
-        args.map(_._2).map(prettyDoc(_, true))))
-    case Pat.Capture(name) =>
-      name.value.doc
   }
 
   case class Module(pkg: QName, name: Name, body: Seq[Term]) extends NamedAST {
@@ -102,13 +86,4 @@ object NamedAST {
   case class JCallStatic(target: ClassRef, methodName: Name, args: Seq[Expr]) extends Expr
 
   case class MatchError() extends Expr
-
-  case class Match(expr: Expr, clauses: Seq[Clause]) extends Expr
-  case class Clause(pat: Pat, body: Expr) extends NamedAST with HasPos
-  sealed abstract class Pat extends NamedAST with HasPos
-  object Pat {
-    case class Ctor(dataType: Type.Data, name: Name, args: Seq[(Type, Pat)]) extends Pat
-    case class PAny() extends Pat
-    case class Capture(name: Name) extends Pat
-  }
 }

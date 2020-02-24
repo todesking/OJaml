@@ -62,6 +62,10 @@ object TypedAST {
       prettyDoc(body, true) ^^ ": ".doc ^^ tpe.toString().doc
     case TAbs(params, body, tpe) =>
       s"[${params.map(_.toString()).mkString(", ")}]".doc ^^ prettyDoc(body, true)
+    case MatchError(tpe) =>
+      s"<matcherror>: $tpe".doc
+    case unk =>
+      unk.toString.doc
   }
   case class Module(pkg: QName, name: Name, body: Seq[Term]) extends TypedAST {
     def moduleRef = ModuleRef(pkg.asPackage, name.value)
@@ -105,6 +109,8 @@ object TypedAST {
     override def tpe = Type.Klass(ref)
   }
   case class Upcast(body: Expr, tpe: Type.Reference) extends Expr
+
+  case class MatchError(tpe: Type) extends Expr
 
   case class Match(expr: Expr, clauses: Seq[Clause], tpe: Type) extends Expr
   case class Clause(pat: Pat, body: Expr) extends TypedAST with HasPos

@@ -16,7 +16,7 @@ object JAST {
   def prettyDoc(ast: JAST, paren: Boolean): Doc = ast match {
     case ClassDef(ref, superRef, fields, methods) =>
       P.bgroup(
-        s"class $ref extends $superRef {",
+        s"class ${ref.fullName} extends ${superRef.fullName} {",
         P.bgroupi(fields.map(prettyDoc(_, false))),
         P.bgroupi(methods.map(prettyDoc(_, false))),
         "}")
@@ -24,7 +24,7 @@ object JAST {
       s"${if (isStatic) "static " else ""}field $name: $tpe".doc
     case MethodDef(name, isStatic, params, ret, body) =>
       P.group(
-        s"def ${if (isStatic) "static " else ""}$name(${params.mkString(", ")}): ${ret.map(_.toString) getOrElse "void"} {",
+        s"def ${if (isStatic) "static " else ""}$name(${params.map(_.hname).mkString(", ")}): ${ret.map(_.hname) getOrElse "void"} {",
         P.groupi(body.map(prettyDoc(_, false))),
         "}")
     case TExpr(expr) =>
@@ -106,6 +106,15 @@ object JAST {
         prettyDoc(arr, false),
         "<-",
         P.group("[", P.mks(", ".doc)(vs.map(prettyDoc(_, false))), "]"))
+    case Throw(e, t) =>
+      P.group(
+        "throw",
+        prettyDoc(e, true))
+    case InstanceOf(e, ref) =>
+      P.group(
+        s"<instanceof>[${ref.fullName}](",
+        P.groupi(prettyDoc(e, false)),
+        ")")
   }
 
   sealed abstract class Term extends JAST
@@ -163,5 +172,9 @@ object JAST {
   }
   case class PutValuesToArray(arr: Expr, values: Seq[Expr]) extends Expr {
     override def tpe: JType = arr.tpe
+  }
+  case class Throw(expr: Expr, tpe: JType) extends Expr
+  case class InstanceOf(expr: Expr, ref: ClassRef) extends Expr {
+    def tpe: JType = JType.TBool
   }
 }

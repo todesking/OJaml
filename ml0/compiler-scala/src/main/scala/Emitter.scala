@@ -191,6 +191,12 @@ class Emitter(baseDir: Path) {
           eval(method, v)
           method.visitInsn(op.AASTORE)
       }
+    case J.Throw(e, t) =>
+      eval(method, e)
+      method.visitInsn(op.ATHROW)
+    case J.InstanceOf(e, ref) =>
+      eval(method, e)
+      method.visitTypeInsn(op.INSTANCEOF, ref.internalName)
   }
 
   private[this] def defineMethod(cw: ClassVisitor, klass: J.ClassDef, m: J.MethodDef) = {

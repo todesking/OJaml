@@ -140,6 +140,10 @@ object Javalizer {
         J.Invoke(m, false, Some(box(appExpr(r, depth))), args)
       case T.JNew(r, a) => J.JNew(r, a.map(appExpr(_, depth)))
       case T.Upcast(b, t) => J.Cast(appExpr(b, depth), t.jtype)
+      case T.MatchError(t) =>
+        J.Throw(
+          J.JNew(ClassRef.fromInternalName("java/lang/RuntimeException"), Seq(J.LitString("match error"))),
+          t.jtype)
     }
 
     def appData(name: String, dataType: Type, ctors: Seq[(String, Seq[JType])]): Unit = {
@@ -199,6 +203,18 @@ object Javalizer {
           ctorBuilder.addMethod(J.MethodDef("name", false, Seq(), Some(JType.TString), nameBody))
 
           klasses :+= ctorBuilder.build()
+
+          val fieldCheck = builder.addStaticField(s"$name$$check", JType.Fun)
+          val funCheck = createFun(J.InstanceOf(J.GetLocal(1, JType.TObject), ctorKlass), None)
+          builder.addClinit(
+            J.PutStatic(fieldCheck, J.JNew(funCheck, Seq(J.Null(JType.TObject), J.Null(JType.Fun)))))
+          paramFields.zipWithIndex.foreach {
+            case (field, i) =>
+              val fieldGet = builder.addStaticField(s"$name$$get$i", JType.Fun)
+              val funGet = createFun(J.GetField(field, J.Cast(J.GetLocal(1, JType.TObject), JType.TKlass(ctorKlass))), None)
+              builder.addClinit(
+                J.PutStatic(fieldGet, J.JNew(funGet, Seq(J.Null(JType.TObject), J.Null(JType.Fun)))))
+          }
       }
     }
 

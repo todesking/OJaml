@@ -11,6 +11,7 @@ sealed abstract class JType {
   def jsig: String
   def hname: String // for human
   def tpe: Type
+  override def toString = hname
 }
 object JType {
   sealed abstract class TReference extends JType {
