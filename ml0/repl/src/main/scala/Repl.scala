@@ -82,7 +82,7 @@ class Repl {
     import ojaml.{ RawAST => RT }
     tree match {
       case tree @ RT.TLet(name, expr) => Input.Let(name.value, tree)
-      case tree @ RT.Data(name, ctors) => Input.Data(name.value, ctors.map(_._1.value), tree)
+      case tree @ RT.Data(name, ctors) => Input.Data(ctors.map(_._1.value), tree)
       case tree @ RT.TExpr(expr) => Input.Expr(s"res$nextIndex", expr)
     }
   }
@@ -149,7 +149,7 @@ class Repl {
   private[this] def evalRuntime(in: Input, tree: TT.Module): Either[Result, Result] = {
     evalClass(tree.moduleRef.fullName).map { klass =>
       in match {
-        case Input.Data(_, _, _) => Result.Empty
+        case Input.Data(_, _) => Result.Empty
         case Input.Let(name, _) => readValue(klass, tree)
         case Input.Expr(name, _) => readValue(klass, tree)
       }
@@ -159,7 +159,7 @@ class Repl {
   def eval(code: String): Result = {
     parse(code).flatMap { in =>
       val (statement, names) = in match {
-        case Input.Data(name, cnames, tree) => (tree, name +: cnames)
+        case Input.Data(cnames, tree) => (tree, cnames)
         case Input.Expr(name, tree) => (RT.TLet(mkName(name), tree), Seq(name))
         case Input.Let(name, tree) => (tree, Seq(name))
       }
@@ -206,7 +206,7 @@ object Repl {
   object Input {
     case class Expr(name: String, tree: ojaml.RawAST.Expr) extends Input
     case class Let(name: String, tree: ojaml.RawAST.TLet) extends Input
-    case class Data(name: String, ctors: Seq[String], tree: ojaml.RawAST.Data) extends Input
+    case class Data(ctors: Seq[String], tree: ojaml.RawAST.Data) extends Input
   }
 
   @scala.annotation.tailrec
