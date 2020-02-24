@@ -13,6 +13,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
 
   val classRepo = new ClassRepo(cl)
   val emitter = new Emitter(baseDir)
+  val namer = new Namer()
 
   /*
   def compileFiles(files: Seq[Path]): Seq[Result.Message] =
@@ -44,8 +45,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   }
 
   def namePhase(penv: PackageEnv, tree: RawAST.Program): Result[(PackageEnv, Seq[NamedAST.Module])] = {
-    val namer = new Namer(penv)
-    namer.appProgram(tree).map {
+    namer.appProgram(tree, penv).map {
       case (pe, namedTrees) =>
         if (debugPrint) {
           println("Phase: Namer")

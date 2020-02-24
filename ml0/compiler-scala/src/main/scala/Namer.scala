@@ -9,9 +9,9 @@ import Namer.ValueLike
 
 import util.Syntax._
 
-class Namer(packageEnv: PackageEnv) {
+class Namer() {
 
-  def appProgram(p: RT.Program): Result[(PackageEnv, Seq[NT.Module])] =
+  def appProgram(p: RT.Program, packageEnv: PackageEnv): Result[(PackageEnv, Seq[NT.Module])] =
     p.items.mapWithContextEC(packageEnv) { (penv, x) =>
       appModule(p.pkg, p.imports, penv, x).map {
         case (pe, named) =>
@@ -374,7 +374,8 @@ object Namer {
       }
       val checkerName = patCheckerName(name.value)
       val checker = checkerName -> ValueLike.Value(VarRef.ModuleMember(currentModule, checkerName), None)
-      ok(copy(venv = venv + ctor ++ extractors + checker))
+      val newPenv = (ctor +: extractors :+ checker).map(_._1).foldLeft(penv) { case (e, n) => e.addModuleMember(currentModule, n) }
+      ok(copy(venv = venv + ctor ++ extractors + checker, penv = newPenv))
     }
   }
 }
