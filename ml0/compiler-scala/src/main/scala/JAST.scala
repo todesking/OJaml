@@ -78,7 +78,7 @@ object JAST {
         s"(${b.tpe})",
         prettyDoc(e, true))
     case Invoke(sig, special, r, a) =>
-      val adoc = P.mks(",".doc)(a.map(prettyDoc(_, false)))
+      val adoc = P.groupi(P.mks(",".doc)(a.map(prettyDoc(_, false))))
       if (sig.isStatic) {
         P.group(
           s"[${sig.klass.fullName}].${sig.name}(",

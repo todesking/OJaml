@@ -133,15 +133,15 @@ class Namer(packageEnv: PackageEnv) {
           }
         }
       }
-    case RT.Match(expr, clauses) =>
+    case root @ RT.Match(expr, clauses) =>
       for {
         e <- appExpr(ctx, expr)
         (eVar, c) = ctx.bindLocal(s"$$it")
-        body <- appClauses(c, eVar, clauses)
+        body <- appClauses(c, root.pos, eVar, clauses)
       } yield NT.ELet(eVar, e, body)
   }
 
-  private[this] def appClauses(ctx: Ctx, eVar: VarRef, clauses: Seq[RT.Clause]): Result[NT.Expr] = {
+  private[this] def appClauses(ctx: Ctx, pos: Pos, eVar: VarRef, clauses: Seq[RT.Clause]): Result[NT.Expr] = {
     clauses.map {
       case RT.Clause(pat, body) =>
         for {
@@ -150,9 +150,9 @@ class Namer(packageEnv: PackageEnv) {
           body <- appClauseBody(ctx, extractors, body)
         } yield (checker, body)
     }.validated.map {
-      _.foldRight(NT.MatchError(): NT.Expr) {
+      _.foldRight(Pos.fill(NT.MatchError(), pos): NT.Expr) {
         case ((checker, body), next) =>
-          NT.If(checker, body, next)
+          Pos.fill(NT.If(checker, body, next), checker.pos)
       }
     }
   }
@@ -164,17 +164,17 @@ class Namer(packageEnv: PackageEnv) {
         (r, c2)
     }
     appExpr(c2, body).map { b =>
-      val fun = refs.foldRight(b) { case (ref, e) => NT.Fun(ref, None, b) }
-      val app = extractors.foldLeft(fun) { case (f, (_, e)) => NT.App(f, e) }
+      val fun = refs.foldRight(b) { case (ref, e) => Pos.fill(NT.Fun(ref, None, e), e.pos) }
+      val app = extractors.foldLeft(fun) { case (f, (_, e)) => Pos.fill(NT.App(f, e), e.pos) }
       app
     }
   }
 
   private[this] def appPat(ctx: Ctx, pat: RT.Pat, target: NT.Expr): Result[(NT.Expr, Seq[(String, NT.Expr)])] = pat match {
     case RT.Pat.PAny() =>
-      ok((NT.LitBool(true), Nil))
+      ok((Pos.fill(NT.LitBool(true), pat.pos), Nil))
     case RT.Pat.Capture(name) =>
-      ok((NT.LitBool(true), Seq(name.value -> target)))
+      ok((Pos.fill(NT.LitBool(true), pat.pos), Seq(name.value -> target)))
     case RT.Pat.Ctor(name, args) =>
       def findFunction(name: String): Result[VarRef] = ctx
         .findValue(name)
@@ -191,14 +191,14 @@ class Namer(packageEnv: PackageEnv) {
             case (_, i) =>
               findFunction(ctx.patExtractorName(name.value, i))
           }.validated.flatMap { extractors =>
-            val rootChecker = NT.App(NT.Ref(checkerRef), target)
+            val rootChecker = Pos.fill(NT.App(Pos.fill(NT.Ref(checkerRef), pat.pos), target), pat.pos)
             extractors.zip(args).map {
               case (extractor, arg) =>
-                appPat(ctx, arg, NT.App(NT.Ref(extractor), target))
+                appPat(ctx, arg, Pos.fill(NT.App(Pos.fill(NT.Ref(extractor), arg.pos), target), arg.pos))
             }.validated.map { subPatterns =>
               val checker = subPatterns.map(_._1).foldLeft(rootChecker: NT.Expr) {
                 case (l, r) =>
-                  NT.If(l, r, NT.LitBool(false))
+                  Pos.fill(NT.If(l, r, Pos.fill(NT.LitBool(false), r.pos)), r.pos)
               }
               val extractor = subPatterns.flatMap(_._2)
               (checker, extractor)

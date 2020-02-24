@@ -1,0 +1,20 @@
+(* debug *)
+(* using: Predef *)
+package test.ml0
+
+import com.todesking.ojaml.ml0.lib.Predef.+
+
+module Patmat_data_nested {
+  data IList = ICons int IList, INil ;;
+
+  let list = ICons 1 (ICons 2 INil) ;;
+  (* list: * = ICons 1 (ICons 2 INil) *)
+
+  let x0 = match list
+    | ICons car cdr => car ;;
+  (* x0: int = 1 *)
+
+  let x1 = match list
+    | ICons x (ICons y INil) => x + y ;;
+  (* x1: int = 3 *)
+}

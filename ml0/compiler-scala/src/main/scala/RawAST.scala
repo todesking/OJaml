@@ -44,7 +44,7 @@ object RawAST {
         prettyDoc(th, false),
         prettyDoc(el, false))
     case Fun(name, tpeName, body) =>
-      P.fun(name.value, tpeName.map(_.toString), prettyDoc(body, false))
+      P.fun(name.value, tpeName.map(_.toString), prettyDoc(body, false), paren)
     case App(fun, arg) =>
       P.app(paren, prettyDoc(fun, false), prettyDoc(arg, true))
     case ELet(name, value, body) =>

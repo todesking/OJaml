@@ -62,13 +62,15 @@ object P {
   def eif(cond: Doc, th: Doc, el: Doc) =
     group(
       "if", groupi(cond),
-      "then", groupi(th),
-      "else", groupi(el))
-  def fun(name: String, tpeName: Option[String], body: Doc) =
-    group(
-      ("fun".doc ^^ name.doc
-        ^^ tpeName.fold[Doc](Doc.Nil) { t => ": ".doc ^| t.toString.doc } ^^ " =>".doc),
-      groupi(body))
+      group("then", groupi(th)),
+      group("else", groupi(el)))
+  def fun(name: String, tpeName: Option[String], body: Doc, par: Boolean) =
+    paren(
+      par,
+      group(
+        ("fun ".doc ^^ name.doc
+          ^^ tpeName.fold[Doc](Doc.Nil) { t => ": ".doc ^| t.toString.doc } ^^ " =>".doc),
+        groupi(body)))
   def funT(tpe: String, body: Doc) =
     group(
       s"(fun: $tpe) ? =>",

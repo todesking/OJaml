@@ -44,7 +44,7 @@ object NamedAST {
           prettyDoc(th, false),
           prettyDoc(el, false)))
     case Fun(param, tpe, body) =>
-      P.fun(param.toString, tpe.map(_.toString), prettyDoc(body, false))
+      P.fun(param.toString, tpe.map(_.toString), prettyDoc(body, false), paren)
     case App(fun, arg) =>
       P.app(paren, prettyDoc(fun, true), prettyDoc(arg, true))
     case ELet(ref, value, body) =>

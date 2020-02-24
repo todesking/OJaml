@@ -33,7 +33,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     "_")
   private[this] def kwd(a: String): Parser[Unit] = {
     require(keywords contains a)
-    regex(s"${java.util.regex.Pattern.quote(a)}\\s+".r) ^^ { _ => () }
+    (regex(s"${java.util.regex.Pattern.quote(a)}\\s+".r) ^^ { _ => () }).named(s"keyword($a)")
   }
 
   private[this] var _skipWS = true
@@ -206,15 +206,15 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case p ~ e =>
       T.Clause(p, e)
   })
-  lazy val ematch_pat = ematch_ctor | ematch_any | ematch_capture
+  lazy val ematch_pat: Parser[T.Pat] = (ematch_ctor | ematch_any | ematch_capture | (("(" ~> ematch_pat) <~ ")")).named("ematch_pat")
   lazy val ematch_ctor: Parser[T.Pat] = withpos(
     ctor_name ~ rep(ematch_pat) ^^ {
       case n ~ ps =>
         T.Pat.Ctor(n, ps)
-    })
+    }).named("ematch_ctor")
   lazy val ematch_any = withpos(
-    kwd("_") ^^ { case _ => T.Pat.PAny() })
+    kwd("_") ^^ { case _ => T.Pat.PAny() }).named("ematch_any")
   lazy val ematch_capture = withpos(
-    var_name ^^ { case n => T.Pat.Capture(n) })
+    var_name ^^ { case n => T.Pat.Capture(n) }).named("ematch_capture")
 }
 
