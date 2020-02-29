@@ -180,23 +180,17 @@ class Namer() {
     case RT.Pat.Capture(name) =>
       ok((Pos.fill(NT.LitBool(true), pat.pos), Seq(name.value -> target)))
     case RT.Pat.Ctor(name, args) =>
-      def findFunction(name: String): Result[VarRef] = ctx
-        .findValue(name)
-        .toResult(pat.pos, s"function not found: $name")
+      ctx.locateCtor(name)
         .flatMap {
-          case ValueLike.TopLevel(_) =>
-            error(pat.pos, s"$name is not a data constructor")
-          case ValueLike.Value(ref, ctor) =>
-            ok(ref)
-        }
-      findFunction(ctx.patCheckerName(name.value))
-        .flatMap { checkerRef =>
-          args.zipWithIndex.map {
-            case (_, i) =>
-              findFunction(ctx.patExtractorName(name.value, i))
-          }.validated.flatMap { extractors =>
+          case (module, ctorName) =>
+            val checkerRef = VarRef.ModuleMember(module, ctx.patCheckerName(ctorName))
+            val extractorRefs = args.zipWithIndex.map {
+              case (_, i) =>
+                VarRef.ModuleMember(module, ctx.patExtractorName(ctorName, i))
+            }
+
             val rootChecker = Pos.fill(NT.App(Pos.fill(NT.Ref(checkerRef), pat.pos), target), pat.pos)
-            extractors.zip(args).map {
+            extractorRefs.zip(args).map {
               case (extractor, arg) =>
                 appPat(ctx, arg, Pos.fill(NT.App(Pos.fill(NT.Ref(extractor), arg.pos), target), arg.pos))
             }.validated.map { subPatterns =>
@@ -207,7 +201,6 @@ class Namer() {
               val extractor = subPatterns.flatMap(_._2)
               (checker, extractor)
             }
-          }
         }
   }
 
@@ -243,7 +236,7 @@ object Namer {
     case class TopLevel(ref: PackageMember) extends ValueLike {
       override def toValue(pos: Pos, msg: String) = error(pos, msg)
     }
-    case class Value(ref: VarRef, ctor: Option[(Type.Data, String, Seq[Type])]) extends ValueLike {
+    case class Value(ref: VarRef, ctor: Option[(ModuleRef, String, Seq[Type])]) extends ValueLike {
       override def toValue(pos: Pos, msg: String) = ok(ref)
     }
   }
@@ -266,14 +259,14 @@ object Namer {
     }
 
     def findValue(name: String): Option[ValueLike] =
-      venv.get(name) orElse {
-        if (penv.moduleMemberExists(currentModule, name)) {
-          Some(ValueLike.Value(VarRef.ModuleMember(currentModule, name), None))
-        } else {
-          penv.findMember(currentModule.pkg, name)
-            .orElse(penv.findMember(PackageRef.Root, name))
-            .map(ValueLike.TopLevel.apply)
-        }
+      venv.get(name) orElse penv.findModuleMember(currentModule, name).map {
+        case PackageEnv.ModuleMember(name, ctorInfo) =>
+          val info = ctorInfo.map { args => (currentModule, name, args) }
+          ValueLike.Value(VarRef.ModuleMember(currentModule, name), info)
+      } orElse {
+        penv.findMember(currentModule.pkg, name)
+          .orElse(penv.findMember(PackageRef.Root, name))
+          .map(ValueLike.TopLevel.apply)
       }
 
     def findPackageMember(pkg: PackageRef, name: String): Option[PackageMember] =
@@ -316,7 +309,7 @@ object Namer {
       }
     }
 
-    def addModuleMember(name: String): Ctx = copy(penv = penv.addModuleMember(currentModule, name))
+    def addModuleMember(name: String): Ctx = copy(penv = penv.addModuleMember(currentModule, name, None))
     def findModuleMember(m: ModuleRef, name: Name): Result[VarRef.ModuleMember] =
       if (penv.moduleMemberExists(m, name.value))
         ok(VarRef.ModuleMember(m, name.value))
@@ -338,7 +331,11 @@ object Namer {
                       .toResult(n.pos, s"Package member not found: ${n.value}")
                       .map(ValueLike.TopLevel)
                   case PackageMember.Module(m) =>
-                    ctx.findModuleMember(m, n).map(ValueLike.Value(_, None))
+                    penv.findModuleMember(m, n.value).map {
+                      case PackageEnv.ModuleMember(name, ctorInfo) =>
+                        val info = ctorInfo.map { args => (m, name, args) }
+                        ValueLike.Value(VarRef.ModuleMember(m, name), info)
+                    }.toResult(n.pos, s"Member ${n.value} is not found in module $m")
                   case PackageMember.Class(ref) =>
                     error(n.pos, s"${ref.fullName} is class and field reference not supported")
                 }
@@ -366,16 +363,20 @@ object Namer {
     def patExtractorName(name: String, i: Int) = s"$name$$get$i"
     def addCtor(data: Type.Data, name: Name, ts: Seq[Type]): Result[Ctx] = {
       // TODO: check duplicate
-      val ctor = name.value -> ValueLike.Value(VarRef.ModuleMember(currentModule, name.value), Some((data, name.value, ts)))
-      val extractors = ts.zipWithIndex.map {
-        case (t, i) =>
-          val n = patExtractorName(name.value, i)
-          n -> ValueLike.Value(VarRef.ModuleMember(currentModule, n), None)
-      }
-      val checkerName = patCheckerName(name.value)
-      val checker = checkerName -> ValueLike.Value(VarRef.ModuleMember(currentModule, checkerName), None)
-      val newPenv = (ctor +: extractors :+ checker).map(_._1).foldLeft(penv) { case (e, n) => e.addModuleMember(currentModule, n) }
-      ok(copy(venv = venv + ctor ++ extractors + checker, penv = newPenv))
+      val ctorRef = ValueLike.Value(VarRef.ModuleMember(currentModule, name.value), Some((data.module, name.value, ts)))
+      val newPenv = penv.addModuleMember(currentModule, name.value, Some(ts))
+      ok(copy(venv = venv + (name.value -> ctorRef), penv = newPenv))
     }
+    def locateCtor(name: Name): Result[(ModuleRef, String)] = findValue(name.value)
+      .toResult(name.pos, s"Data constructor not found: ${name.value}")
+      .flatMap {
+        case ValueLike.TopLevel(_) =>
+          error(name.pos, s"${name.value} is toplevel value, not a data constructor")
+        case ValueLike.Value(ref, None) =>
+          println(venv)
+          error(name.pos, s"$ref is not a data constructor")
+        case ValueLike.Value(ref, Some((module, ctorName, args))) =>
+          ok((module, ctorName))
+      }
   }
 }

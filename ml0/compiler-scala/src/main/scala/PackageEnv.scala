@@ -2,9 +2,10 @@ package com.todesking.ojaml.ml0.compiler.scala
 
 import util.Syntax._
 
+import PackageEnv._
 case class PackageEnv(
   cr: ClassRepo,
-  moduleMembers: Map[ModuleRef, Set[String]] = Map(),
+  moduleMembers: Map[ModuleRef, Map[String, ModuleMember]] = Map(),
   moduleTypeMembers: Map[ModuleRef, Set[String]] = Map()) {
   def findMember(pkg: PackageRef, name: String): Option[PackageMember] = {
     if (modules.get(pkg).exists(_.contains(name)))
@@ -16,6 +17,11 @@ case class PackageEnv(
     else
       None
   }
+  def findModuleMember(module: ModuleRef, name: String): Option[ModuleMember] =
+    for {
+      m <- moduleMembers.get(module)
+      mm <- m.get(name)
+    } yield mm
 
   lazy val modulePackages: Set[PackageRef] = moduleMembers.keys.flatMap { m =>
     m.pkg.parts.inits.map(PackageRef.fromParts)
@@ -33,14 +39,15 @@ case class PackageEnv(
 
   def addModule(m: ModuleRef): PackageEnv =
     if (moduleMembers.contains(m)) this
-    else copy(moduleMembers = moduleMembers + (m -> Set.empty[String]))
+    else copy(moduleMembers = moduleMembers + (m -> Map()))
 
-  def addModuleMember(m: ModuleRef, name: String): PackageEnv = {
+  def addModuleMember(m: ModuleRef, name: String, ctorInfo: Option[Seq[Type]]): PackageEnv = {
     require(modules.get(m.pkg).exists(_.contains(m.name)), s"Module ${m.fullName} not found")
+    val mm = ModuleMember(name, ctorInfo)
     moduleMembers.get(m).fold {
-      copy(moduleMembers = moduleMembers + (m -> Set(name)))
+      copy(moduleMembers = moduleMembers + (m -> Map(mm.name -> mm)))
     } { ms =>
-      copy(moduleMembers = moduleMembers + (m -> (ms + name)))
+      copy(moduleMembers = moduleMembers + (m -> (ms + (mm.name -> mm))))
     }
   }
   def addModuleTypeMember(m: ModuleRef, name: String): PackageEnv = {
@@ -62,7 +69,16 @@ case class PackageEnv(
         (
           Seq(s"  - module $v") ++
           moduleTypeMembers.getOrElse(m, Set()).toSeq.sorted.map { name => s"    t: $name" } ++
-          moduleMembers.getOrElse(m, Set()).toSeq.sorted.map { name => s"    v: $name" })
+          moduleMembers.getOrElse(m, Map()).values.toSeq.sortBy(_.name).map {
+            case PackageEnv.ModuleMember(name, None) =>
+              s"    v: ${name}"
+            case PackageEnv.ModuleMember(name, Some(ts)) =>
+              s"    v: ${name} ${ts.mkString(", ")}"
+          })
       }.mkString("\n")
   }.mkString("\n")
+}
+
+object PackageEnv {
+  case class ModuleMember(name: String, ctorInfo: Option[Seq[Type]])
 }

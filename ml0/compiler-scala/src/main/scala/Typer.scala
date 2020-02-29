@@ -298,8 +298,20 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
 object Typer {
   def moduleVarsOf(s: TypedAST.Module): Map[VarRef.ModuleMember, Type] = s.body.collect {
     case TypedAST.TLet(name, tpe, _) =>
-      VarRef.ModuleMember(s.moduleRef, name.value) -> tpe
-  }.toMap
+      Seq(VarRef.ModuleMember(s.moduleRef, name.value) -> tpe)
+    case TypedAST.Data(name, tpe, ctors) =>
+      ctors.flatMap {
+        case (name, args) =>
+          val ctorType = args.foldRight(tpe: Type) { case (l, r) => Type.Fun(l, r) }
+          val ctor = VarRef.ModuleMember(tpe.module, name.value) -> ctorType
+          val checker = VarRef.ModuleMember(tpe.module, s"${name.value}$$check") -> Type.Fun(tpe, Type.Bool)
+          val extractors = args.zipWithIndex.map {
+            case (arg, i) =>
+              VarRef.ModuleMember(tpe.module, s"${name.value}$$get$i") -> Type.Fun(tpe, arg)
+          }
+          Seq(ctor, checker) ++ extractors
+      }
+  }.flatten.toMap
 
   // TODO: add unified flag
   class Subst(val items: List[(Type, Type)]) {
