@@ -67,10 +67,11 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
                 Type.Fun(from, to)
               }
             c.bindModuleValue(name, ctorType).flatMap { c =>
-              c.bindModuleValue(Name(s"${name.value}$$check"), Type.Fun(tpe, Type.Bool)).flatMap { c =>
+              // TODO: change to bindModuleValue(str, ...)
+              c.bindModuleValue(Name(null, s"${name.value}$$check"), Type.Fun(tpe, Type.Bool)).flatMap { c =>
                 params.zipWithIndex.foldLeftE(c) {
                   case (c, (t, i)) =>
-                    c.bindModuleValue(Name(s"${name.value}$$get$i"), Type.Fun(tpe, t))
+                    c.bindModuleValue(Name(null, s"${name.value}$$get$i"), Type.Fun(tpe, t))
                 }
               }
             }

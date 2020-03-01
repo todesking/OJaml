@@ -41,14 +41,14 @@ class Namer() {
     appTerm0(ctx, t).map { case (ctx, tt) => (ctx, Pos.fill(tt, t.pos)) }
   }
   private[this] def appTerm0(ctx: Ctx, t: RT.Term): Result[(Ctx, NT.Term)] = t match {
-    case RT.TLet(name, expr) =>
+    case RT.TLet(pos, name, expr) =>
       for {
         e <- appExpr(ctx, expr)
         c <- ctx.tlet(name)
       } yield {
         (c.addModuleMember(name.value), NT.TLet(name, e))
       }
-    case RT.Data(name, ctors) =>
+    case RT.Data(pos, name, ctors) =>
       for {
         x1 <- ctx.addDataType(name)
         (data, ctx) = x1
@@ -58,7 +58,7 @@ class Namer() {
         }.validated
         ctx2 <- resolved.foldLeftE(ctx) { case (c, (n, ts)) => c.addCtor(data, n, ts) }
       } yield (ctx2, NT.Data(name, data, resolved))
-    case RT.TExpr(expr) =>
+    case RT.TExpr(pos, expr) =>
       for {
         e <- appExpr(ctx, expr)
       } yield (ctx, NT.TExpr(e))
@@ -70,24 +70,24 @@ class Namer() {
   }
 
   private[this] def appExpr0(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = expr match {
-    case RT.Ref(name) =>
+    case RT.Ref(pos, name) =>
       valueLike(ctx, expr)
         .flatMap(_.toValue(name.pos, s"${name.value} is not a value"))
         .map(NT.Ref)
-    case RT.Prop(e, n) =>
+    case RT.Prop(pos, e, n) =>
       valueLike(ctx, expr)
         .flatMap(_.toValue(n.pos, s"${n.value} is not a value"))
         .map(NT.Ref)
-    case RT.LitInt(v) => ok(NT.LitInt(v))
-    case RT.LitBool(v) => ok(NT.LitBool(v))
-    case RT.LitString(v) => ok(NT.LitString(v))
-    case RT.If(cond, th, el) =>
+    case RT.LitInt(pos, v) => ok(NT.LitInt(v))
+    case RT.LitBool(pos, v) => ok(NT.LitBool(v))
+    case RT.LitString(pos, v) => ok(NT.LitString(v))
+    case RT.If(pos, cond, th, el) =>
       for {
         e0 <- appExpr(ctx, cond)
         e1 <- appExpr(ctx, th)
         e2 <- appExpr(ctx, el)
       } yield NT.If(e0, e1, e2)
-    case RT.Fun(name, tpeName, body) =>
+    case RT.Fun(pos, name, tpeName, body) =>
       for {
         tpe <- tpeName.mapResult(ctx.findType)
         (ref, c) = ctx.bindLocal(name.value)
@@ -95,7 +95,7 @@ class Namer() {
       } yield {
         NT.Fun(ref, tpe, tbody)
       }
-    case RT.ELetRec(bs, body) =>
+    case RT.ELetRec(pos, bs, body) =>
       for {
         x <- ctx.bindLocals(bs.map(_._1))
         (refs, c) = x
@@ -103,7 +103,7 @@ class Namer() {
         vs <- validate(bs.map(_._3).map(appExpr(c, _))).map(_.map(_.asInstanceOf[NT.Fun]))
         b <- appExpr(c, body)
       } yield NT.ELetRec(refs.zip(ts).zip(vs).map { case ((r, t), v) => (r, t, v) }, b)
-    case RT.ELet(name, value, body) =>
+    case RT.ELet(pos, name, value, body) =>
       for {
         v <- appExpr(ctx, value)
         (ref, c) = ctx.bindLocal(name.value)
@@ -111,12 +111,12 @@ class Namer() {
       } yield {
         NT.ELet(ref, v, b)
       }
-    case RT.App(f, x) =>
+    case RT.App(pos, f, x) =>
       for {
         e0 <- appExpr(ctx, f)
         e1 <- appExpr(ctx, x)
       } yield NT.App(e0, e1)
-    case RT.JCall(expr, name, args, isStatic) =>
+    case RT.JCall(pos, expr, name, args, isStatic) =>
       validate(args.map(appExpr(ctx, _))).flatMap { targs =>
         if (isStatic) {
           valueLike(ctx, expr).flatMap {
@@ -137,7 +137,7 @@ class Namer() {
           }
         }
       }
-    case root @ RT.Match(expr, clauses) =>
+    case root @ RT.Match(pos, expr, clauses) =>
       for {
         e <- appExpr(ctx, expr)
         (eVar, c) = ctx.bindLocal(s"$$it")
@@ -147,7 +147,7 @@ class Namer() {
 
   private[this] def appClauses(ctx: Ctx, pos: Pos, eVar: VarRef, clauses: Seq[RT.Clause]): Result[NT.Expr] = {
     clauses.map {
-      case RT.Clause(pat, body) =>
+      case RT.Clause(pos, pat, body) =>
         for {
           x <- appPat(ctx, pat, NT.Ref(eVar))
           (checker, extractors) = x
@@ -175,12 +175,12 @@ class Namer() {
   }
 
   private[this] def appPat(ctx: Ctx, pat: RT.Pat, target: NT.Expr): Result[(NT.Expr, Seq[(String, NT.Expr)])] = pat match {
-    case RT.Pat.PAny() =>
+    case RT.Pat.PAny(pos) =>
       ok((Pos.fill(NT.LitBool(true), pat.pos), Nil))
-    case RT.Pat.Capture(name) =>
-      ok((Pos.fill(NT.LitBool(true), pat.pos), Seq(name.value -> target)))
-    case RT.Pat.Ctor(name, args) =>
-      ctx.locateCtor(name)
+    case RT.Pat.Capture(pos, name) =>
+      ok((Pos.fill(NT.LitBool(true), pat.pos), Seq(name -> target)))
+    case RT.Pat.Ctor(pos, name, args) =>
+      ctx.locateCtor(Name(pos, name))
         .flatMap {
           case (module, ctorName) =>
             val checkerRef = VarRef.ModuleMember(module, ctx.patCheckerName(ctorName))
@@ -205,10 +205,10 @@ class Namer() {
   }
 
   private[this] def valueLike(ctx: Ctx, expr: RT.Expr): Result[ValueLike] = expr match {
-    case RT.Ref(name) =>
+    case RT.Ref(pos, name) =>
       ctx.findValue(name.value)
         .toResult(name.pos, s"Value ${name.value} is not found")
-    case RT.Prop(e, n) =>
+    case RT.Prop(pos, e, n) =>
       valueLike(ctx, e).flatMap {
         case ValueLike.TopLevel(ref) => ref match {
           case PackageMember.Class(c) =>
@@ -273,7 +273,7 @@ object Namer {
       penv.findMember(pkg, name)
 
     def findType(tname: TypeName): Result[Type] = tname match {
-      case TypeName.Atom(n) => n match {
+      case TypeName.Atom(pos, n) => n match {
         case n if localTypes.contains(n) => // TODO: Support qualified type name
           ok(localTypes(n))
         case "int" => ok(Type.Int)

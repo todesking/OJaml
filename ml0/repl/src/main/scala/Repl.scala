@@ -10,6 +10,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.stream.Collectors
 import scala.collection.JavaConverters._
+import com.todesking.ojaml.ml0.compiler.scala.Pos
 
 class Repl extends Closeable {
   import ojaml.{ RawAST => RT, TypedAST => TT }
@@ -17,6 +18,7 @@ class Repl extends Closeable {
   import Repl.Result
 
   val replFileName = "<REPL>"
+  val fakePos = Pos(replFileName, 1, 1)
   lazy val tmpDir = Files.createTempDirectory("ojaml-repl")
   lazy val targetClassLoader = new java.net.URLClassLoader(Array(tmpDir.toUri.toURL), this.getClass.getClassLoader)
 
@@ -35,18 +37,10 @@ class Repl extends Closeable {
   private[this] var imports: Seq[ojaml.Import] = Seq()
   private[this] var nextIndex = 0
 
-  private[this] def mkName(s: String) = {
-    val name = ojaml.Name(s)
-    fakePos(name)
-  }
+  private[this] def mkName(s: String) = ojaml.Name(fakePos, s)
 
   private[this] def mkQName(s: String) = {
-    fakePos(ojaml.QName(s.split("\\.", -1).map(mkName)))
-  }
-
-  private[this] def fakePos[A <: ojaml.HasPos](a: A): A = {
-    a.fillPos(replFileName, 1, 1)
-    a
+    ojaml.QName(s.split("\\.", -1).map(mkName))
   }
 
   def evalPredef(): Unit = {
@@ -86,9 +80,9 @@ class Repl extends Closeable {
   private[this] def input(tree: ojaml.RawAST.Term): Input = {
     import ojaml.{ RawAST => RT }
     tree match {
-      case tree @ RT.TLet(name, expr) => Input.Let(name.value, tree)
-      case tree @ RT.Data(name, ctors) => Input.Data(ctors.map(_._1.value), tree)
-      case tree @ RT.TExpr(expr) => Input.Expr(s"res$nextIndex", expr)
+      case tree @ RT.TLet(_, name, expr) => Input.Let(name.value, tree)
+      case tree @ RT.Data(_, name, ctors) => Input.Data(ctors.map(_._1.value), tree)
+      case tree @ RT.TExpr(_, expr) => Input.Expr(s"res$nextIndex", expr)
     }
   }
 
@@ -109,10 +103,12 @@ class Repl extends Closeable {
 
   private[this] def compile(statement: RT.Term): Either[Result, (PackageEnv, ojaml.Compiler.ModuleEnv, TT.Module)] = {
     val program = RT.Program(
+      fakePos,
       mkQName("ojaml.repl"),
       imports,
       Seq(
         RT.Module(
+          fakePos,
           mkName(s"Repl_$nextIndex"),
           Seq(statement))))
     val result =
@@ -165,7 +161,7 @@ class Repl extends Closeable {
     parse(code).flatMap { in =>
       val (statement, names) = in match {
         case Input.Data(cnames, tree) => (tree, cnames)
-        case Input.Expr(name, tree) => (RT.TLet(mkName(name), tree), Seq(name))
+        case Input.Expr(name, tree) => (RT.TLet(fakePos, mkName(name), tree), Seq(name))
         case Input.Let(name, tree) => (tree, Seq(name))
       }
       compile(statement).flatMap {
