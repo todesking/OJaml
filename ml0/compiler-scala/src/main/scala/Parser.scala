@@ -129,6 +129,10 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     expr ~ rep(pat ~ expr) ^^ {
       case e ~ es =>
         es.foldLeft(e) {
+          case (l, (op @ Name("&&")) ~ r) =>
+            Pos.fill(T.If(l, r, Pos.fill(T.LitBool(false), op.pos)), op.pos)
+          case (l, (op @ Name("||")) ~ r) =>
+            Pos.fill(T.If(l, Pos.fill(T.LitBool(true), op.pos), r), op.pos)
           case (l, op ~ r) =>
             val refOp = Pos.fill(T.Ref(op), op.pos)
             val app1 = Pos.fill(T.App(refOp, l), op.pos)

@@ -1,0 +1,21 @@
+package test.ml0
+
+module Bool_shorthand {
+  let x0 = true && false ;;
+  (* x0: bool = false *)
+
+  let x1 = true && true ;;
+  (* x1: bool = true *)
+
+  let x2 = true && false && true ;;
+  (* x2: bool = false *)
+
+  let y0 = false || false ;;
+  (* y0: bool = false *)
+
+  let y1 = false || true ;;
+  (* y1: bool = true *)
+
+  let y2 = false || false || true ;;
+  (* y2: bool = true *)
+}
