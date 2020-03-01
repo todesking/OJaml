@@ -11,6 +11,7 @@ import com.todesking.ojaml.ml0.compiler.scala.VarRef
 
 import scala.collection.JavaConverters._
 import com.todesking.ojaml.ml0.compiler.scala.Javalizer
+import java.util.stream.Collectors
 
 class E2ETest extends FunSpec {
   private[this] val classLoader = getClass.getClassLoader
@@ -139,6 +140,18 @@ class E2ETest extends FunSpec {
         trees.flatMap(compiler.javalizePhase).foreach(compiler.emit)
         validateRuntime(env)
     })
+
+    rmr(outDir) // skipped if test failed
+  }
+
+  private[this] def rmr(path: Path): Unit = {
+    if (Files.isDirectory(path)) {
+      Files.list(path)
+        .collect(Collectors.toList())
+        .asScala
+        .foreach { sub => rmr(sub) }
+    }
+    Files.delete(path)
   }
 }
 
