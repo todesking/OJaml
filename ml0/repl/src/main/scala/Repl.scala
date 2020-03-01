@@ -5,14 +5,16 @@ import com.todesking.ojaml.ml0.compiler.{ scala => ojaml }
 import ojaml.util.Syntax._
 import com.todesking.ojaml.ml0.compiler.scala.PackageEnv
 import com.todesking.ojaml.ml0.compiler.scala.Javalizer
+import java.io.Closeable
+import java.nio.file.Files
 
-class Repl {
+class Repl extends Closeable {
   import ojaml.{ RawAST => RT, TypedAST => TT }
   import Repl.Input
   import Repl.Result
 
   val replFileName = "<REPL>"
-  lazy val tmpDir = java.nio.file.Files.createTempDirectory("ojaml-repl")
+  lazy val tmpDir = Files.createTempDirectory("ojaml-repl")
   lazy val targetClassLoader = new java.net.URLClassLoader(Array(tmpDir.toUri.toURL), this.getClass.getClassLoader)
 
   private[this] def newCompiler(debugPrint: Boolean) =
@@ -181,6 +183,9 @@ class Repl {
   def setDebugPrint(x: Boolean): Unit = {
     compiler = newCompiler(x)
   }
+
+  override def close(): Unit = {
+  }
 }
 
 object Repl {
@@ -190,8 +195,12 @@ object Repl {
     println("OJaml REPL")
     println(s"tmp dir = ${repl.tmpDir}")
 
-    repl.evalPredef()
-    loop(repl)
+    try {
+      repl.evalPredef()
+      loop(repl)
+    } finally {
+      repl.close()
+    }
   }
 
   sealed abstract class Result
