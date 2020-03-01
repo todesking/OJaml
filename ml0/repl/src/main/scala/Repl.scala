@@ -7,6 +7,9 @@ import com.todesking.ojaml.ml0.compiler.scala.PackageEnv
 import com.todesking.ojaml.ml0.compiler.scala.Javalizer
 import java.io.Closeable
 import java.nio.file.Files
+import java.nio.file.Path
+import java.util.stream.Collectors
+import scala.collection.JavaConverters._
 
 class Repl extends Closeable {
   import ojaml.{ RawAST => RT, TypedAST => TT }
@@ -185,6 +188,17 @@ class Repl extends Closeable {
   }
 
   override def close(): Unit = {
+    rmr(tmpDir)
+  }
+
+  private[this] def rmr(path: Path): Unit = {
+    if (Files.isDirectory(path)) {
+      Files.list(path)
+        .collect(Collectors.toList())
+        .asScala
+        .foreach { sub => rmr(sub) }
+    }
+    Files.delete(path)
   }
 }
 
