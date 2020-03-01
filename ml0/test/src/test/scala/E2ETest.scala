@@ -12,7 +12,7 @@ import com.todesking.ojaml.ml0.compiler.scala.VarRef
 import scala.collection.JavaConverters._
 import com.todesking.ojaml.ml0.compiler.scala.Javalizer
 
-class Main extends FunSpec {
+class E2ETest extends FunSpec {
   private[this] val classLoader = getClass.getClassLoader
   init()
 
@@ -48,8 +48,8 @@ class Main extends FunSpec {
   }
 
   private[this] def test(testName: String, paths: Seq[Path]): Unit = {
-    import TestMain.Target
-    import TestMain.Assertion
+    import E2ETest.Target
+    import E2ETest.Assertion
     import com.todesking.ojaml.ml0.compiler.{ scala => scala_compiler }
 
     lazy val predefPath = new java.io.File(classLoader.getResource("lib/Predef.ml0").toURI).toPath
@@ -142,7 +142,7 @@ class Main extends FunSpec {
   }
 }
 
-object TestMain {
+object E2ETest {
   case class Assertion(
     ref: ModuleRef,
     klass: String,
