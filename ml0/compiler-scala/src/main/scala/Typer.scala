@@ -28,7 +28,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       }
       .validated
       .map(_.flatten)
-      .map(TT.Module(s.pkg, s.name, _))
+      .map(TT.Module(s.pos, s.pkg, s.name, _))
   }
 
   private[this] def eval(ctx: Ctx, expr: NT.Expr): Result[TT.Expr] = {
@@ -37,10 +37,10 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         def tabs(e: TT.Expr) = {
           val tvs = e.tpe.freeTypeVariables.toSeq.sortBy(_.id)
           if (tvs.isEmpty) e
-          else TT.TAbs(tvs, e, Type.Abs(tvs, e.tpe))
+          else TT.TAbs(expr.pos, tvs, e, Type.Abs(tvs, e.tpe))
         }
         subst(s, tree) match {
-          case expr @ (TT.Fun(_, _) | TT.ModuleVarRef(_, _, _)) =>
+          case expr @ (TT.Fun(_, _, _) | TT.ModuleVarRef(_, _, _, _)) =>
             tabs(expr)
           case x =>
             // TODO: Is this really safe??
@@ -56,7 +56,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       } yield {
         assertNoFVs(e, Set())
         val e2 = reindex(Subst.empty, 1, e)
-        (c, Seq(TT.TLet(name, e2.tpe, e2)))
+        (c, Seq(TT.TLet(pos, name, e2.tpe, e2)))
       }
     case NT.Data(pos, name, tpe, ctors) =>
       for {
@@ -79,21 +79,22 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       } yield {
         val ctorDefs = ctors.map {
           case (name, params) =>
+            val ctorPos = name.pos
             val ctorType = params.foldRight(tpe: Type)(Type.Fun.apply)
             // TODO: Duplicate in Emitter
             val dataClass = ClassRef(tpe.jtype.ref.pkg, s"${tpe.jtype.ref.name}$$${name.value}")
             val ctorArgs = params.zipWithIndex.map {
               case (t, i) =>
-                TT.LocalRef(i + 1, 0, t)
+                TT.LocalRef(ctorPos, i + 1, 0, t)
             }
-            val newExpr = TT.Upcast(TT.JNew(dataClass, ctorArgs), tpe)
-            val body = params.foldRight(newExpr: TT.Expr) { (t, e) => TT.Fun(e, Type.Fun(t, e.tpe)) }
-            TT.TLet(name, ctorType, body)
+            val newExpr = TT.Upcast(ctorPos, TT.JNew(ctorPos, dataClass, ctorArgs), tpe)
+            val body = params.foldRight(newExpr: TT.Expr) { (t, e) => TT.Fun(ctorPos, e, Type.Fun(t, e.tpe)) }
+            TT.TLet(ctorPos, name, ctorType, body)
         }
-        (bound, TT.Data(name, tpe, ctors) +: ctorDefs)
+        (bound, TT.Data(pos, name, tpe, ctors) +: ctorDefs)
       }
     case NT.TExpr(pos, e) =>
-      eval(ctx, e).map { e => (ctx, Seq(TT.TExpr(e))) }
+      eval(ctx, e).map { e => (ctx, Seq(TT.TExpr(pos, e))) }
   }
 
   private[this] def ok(s: Subst, e: TT.Expr): Result[(Subst, TT.Expr)] =
@@ -103,49 +104,51 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
 
   private[this] def subst(s: Subst, tree: TT.Expr): TT.Expr = tree match {
     case _: TT.Lit => tree
-    case TT.ModuleVarRef(m, n, t) => TT.ModuleVarRef(m, n, s.app(t))
-    case TT.LocalRef(d, i, t) => TT.LocalRef(d, i, s.app(t))
-    case TT.LetRec(vs, b) => TT.LetRec(
+    case TT.ModuleVarRef(pos, m, n, t) => TT.ModuleVarRef(pos, m, n, s.app(t))
+    case TT.LocalRef(pos, d, i, t) => TT.LocalRef(pos, d, i, s.app(t))
+    case TT.LetRec(pos, vs, b) => TT.LetRec(
+      pos,
       vs.map(subst(s, _)).map { case f: TT.Fun => f case _ => throw new AssertionError() },
       subst(s, b))
-    case TT.If(c, th, el, t) =>
-      TT.If(subst(s, c), subst(s, th), subst(s, el), s.app(t))
-    case TT.App(f, x, t) =>
-      TT.App(subst(s, f), subst(s, x), s.app(t))
-    case TT.Fun(b, t) =>
-      TT.Fun(subst(s, b), s.app(t))
-    case TT.TAbs(ps, e, t) =>
-      TT.TAbs(ps, subst(s -- ps, e), s.app(t).asInstanceOf[Type.Abs])
-    case TT.JCallStatic(m, a) =>
-      TT.JCallStatic(m, a.map(subst(s, _)))
-    case TT.JCallInstance(m, r, a) =>
-      TT.JCallInstance(m, subst(s, r), a.map(subst(s, _)))
-    case TT.MatchError(tpe) =>
-      TT.MatchError(s.app(tpe))
+    case TT.If(pos, c, th, el, t) =>
+      TT.If(pos, subst(s, c), subst(s, th), subst(s, el), s.app(t))
+    case TT.App(pos, f, x, t) =>
+      TT.App(pos, subst(s, f), subst(s, x), s.app(t))
+    case TT.Fun(pos, b, t) =>
+      TT.Fun(pos, subst(s, b), s.app(t))
+    case TT.TAbs(pos, ps, e, t) =>
+      TT.TAbs(pos, ps, subst(s -- ps, e), s.app(t).asInstanceOf[Type.Abs])
+    case TT.JCallStatic(pos, m, a) =>
+      TT.JCallStatic(pos, m, a.map(subst(s, _)))
+    case TT.JCallInstance(pos, m, r, a) =>
+      TT.JCallInstance(pos, m, subst(s, r), a.map(subst(s, _)))
+    case TT.MatchError(pos, tpe) =>
+      TT.MatchError(pos, s.app(tpe))
   }
 
   private[this] def reindex(s: Subst, nextIndex: Int, tree: TT.Expr): TT.Expr = tree match {
     case _: TT.Lit => tree
-    case TT.ModuleVarRef(m, n, t) => TT.ModuleVarRef(m, n, s.app(t))
-    case TT.LocalRef(d, i, t) => TT.LocalRef(d, i, s.app(t))
-    case TT.LetRec(vs, b) => TT.LetRec(
+    case TT.ModuleVarRef(pos, m, n, t) => TT.ModuleVarRef(pos, m, n, s.app(t))
+    case TT.LocalRef(pos, d, i, t) => TT.LocalRef(pos, d, i, s.app(t))
+    case TT.LetRec(pos, vs, b) => TT.LetRec(
+      pos,
       vs.map(reindex(s, nextIndex, _)).map { case f: TT.Fun => f case _ => throw new AssertionError() },
       reindex(s, nextIndex, b))
-    case TT.If(c, th, el, t) =>
-      TT.If(reindex(s, nextIndex, c), reindex(s, nextIndex, th), reindex(s, nextIndex, el), s.app(t))
-    case TT.App(f, x, t) =>
-      TT.App(reindex(s, nextIndex, f), reindex(s, nextIndex, x), s.app(t))
-    case TT.Fun(b, t) =>
-      TT.Fun(reindex(s, nextIndex, b), s.app(t))
-    case TT.TAbs(ps, e, t) =>
+    case TT.If(pos, c, th, el, t) =>
+      TT.If(pos, reindex(s, nextIndex, c), reindex(s, nextIndex, th), reindex(s, nextIndex, el), s.app(t))
+    case TT.App(pos, f, x, t) =>
+      TT.App(pos, reindex(s, nextIndex, f), reindex(s, nextIndex, x), s.app(t))
+    case TT.Fun(pos, b, t) =>
+      TT.Fun(pos, reindex(s, nextIndex, b), s.app(t))
+    case TT.TAbs(pos, ps, e, t) =>
       val s2 = s -- ps ++ Subst(ps.sortBy(_.id).zipWithIndex.map { case (v, i) => (v, Type.Var(nextIndex + i)) }: _*)
-      TT.TAbs(ps, reindex(s2, nextIndex + ps.size, e), t match { case Type.Abs(xs, b) => Type.Abs(xs.map(s2.app(_).asInstanceOf[Type.Var]), s2.app(b)) })
-    case TT.JCallStatic(m, a) =>
-      TT.JCallStatic(m, a.map(reindex(s, nextIndex, _)))
-    case TT.JCallInstance(m, r, a) =>
-      TT.JCallInstance(m, reindex(s, nextIndex, r), a.map(reindex(s, nextIndex, _)))
-    case TT.MatchError(t) =>
-      TT.MatchError(s.app(t))
+      TT.TAbs(pos, ps, reindex(s2, nextIndex + ps.size, e), t match { case Type.Abs(xs, b) => Type.Abs(xs.map(s2.app(_).asInstanceOf[Type.Var]), s2.app(b)) })
+    case TT.JCallStatic(pos, m, a) =>
+      TT.JCallStatic(pos, m, a.map(reindex(s, nextIndex, _)))
+    case TT.JCallInstance(pos, m, r, a) =>
+      TT.JCallInstance(pos, m, reindex(s, nextIndex, r), a.map(reindex(s, nextIndex, _)))
+    case TT.MatchError(pos, t) =>
+      TT.MatchError(pos, s.app(t))
   }
 
   private[this] def assertNoFVs1(tree: TT.Expr, nonFrees: Set[Type.Var]) =
@@ -157,27 +160,27 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
     assertNoFVs1(tree, nonFrees)
     tree match {
       case _: TT.Lit =>
-      case TT.ModuleVarRef(m, n, t) =>
-      case TT.LocalRef(d, i, t) =>
-      case TT.LetRec(vs, b) =>
+      case TT.ModuleVarRef(pos, m, n, t) =>
+      case TT.LocalRef(pos, d, i, t) =>
+      case TT.LetRec(pos, vs, b) =>
         vs.foreach(assertNoFVs(_, nonFrees)); assertNoFVs(b, nonFrees)
-      case TT.If(c, th, el, t) =>
+      case TT.If(pos, c, th, el, t) =>
         assertNoFVs(c, nonFrees)
         assertNoFVs(th, nonFrees)
         assertNoFVs(el, nonFrees)
-      case TT.App(f, x, t) =>
+      case TT.App(pos, f, x, t) =>
         assertNoFVs(f, nonFrees)
         assertNoFVs(x, nonFrees)
-      case TT.Fun(b, t) =>
+      case TT.Fun(pos, b, t) =>
         assertNoFVs(b, nonFrees)
-      case TT.TAbs(ps, e, t) =>
+      case TT.TAbs(pos, ps, e, t) =>
         assertNoFVs(e, nonFrees ++ ps)
-      case TT.JCallStatic(m, a) =>
+      case TT.JCallStatic(pos, m, a) =>
         a.foreach(assertNoFVs(_, nonFrees))
-      case TT.JCallInstance(m, r, a) =>
+      case TT.JCallInstance(pos, m, r, a) =>
         a.foreach(assertNoFVs(_, nonFrees))
         assertNoFVs(r, nonFrees)
-      case TT.MatchError(t) =>
+      case TT.MatchError(pos, t) =>
     }
   }
 
@@ -190,13 +193,13 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
   def appExpr(ctx: Ctx, expr: NT.Expr): Result[(Subst, TT.Expr)] = expr match {
     case NT.Ref(pos, ref) => ref match {
       case ref @ VarRef.ModuleMember(m, name) =>
-        ok0(TT.ModuleVarRef(m, name, tappFresh(ctx.typeOf(ref))))
+        ok0(TT.ModuleVarRef(pos, m, name, tappFresh(ctx.typeOf(ref))))
       case ref @ VarRef.Local(depth, index) =>
-        ok0(TT.LocalRef(depth, index, tappFresh(ctx.typeOf(ref))))
+        ok0(TT.LocalRef(pos, depth, index, tappFresh(ctx.typeOf(ref))))
     }
-    case NT.LitInt(pos, v) => ok0(TT.LitInt(v))
-    case NT.LitBool(pos, v) => ok0(TT.LitBool(v))
-    case NT.LitString(pos, v) => ok0(TT.LitString(v))
+    case NT.LitInt(pos, v) => ok0(TT.LitInt(pos, v))
+    case NT.LitBool(pos, v) => ok0(TT.LitBool(pos, v))
+    case NT.LitString(pos, v) => ok0(TT.LitString(pos, v))
     case NT.If(pos, cond, th, el) =>
       for {
         x0 <- appExpr(ctx, cond)
@@ -208,33 +211,33 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         (s20, e2) = x2
         s2 <- (s20 + (e2.tpe -> e1.tpe)).unify(el.pos)
         s <- (s0 ++ s1 ++ s2).unify(expr.pos)
-      } yield (s, TT.If(e0, e1, e2, s.app(e1.tpe)))
+      } yield (s, TT.If(pos, e0, e1, e2, s.app(e1.tpe)))
     case NT.Fun(pos, param, tpe, body) =>
       val t = tpe getOrElse freshVar()
       for {
         x <- appExpr(ctx.bindLocal(param, t), body)
         (s1, b) = x
         s = s1
-      } yield (s, TT.Fun(b, Type.Fun(s.app(t), b.tpe)))
+      } yield (s, TT.Fun(pos, b, Type.Fun(s.app(t), b.tpe)))
     case NT.ELet(pos, ref, value, body) =>
       val varIdStart = nextVarId
       for {
         x0 <- appExpr(ctx, value)
         (s0, e00) = x0
         e0 = e00 match {
-          case TT.Fun(body, funType) =>
+          case TT.Fun(pos, body, funType) =>
             val params = funType.freeTypeVariables
               .filter(_.id >= varIdStart)
               .toSeq
               .sortBy(_.id)
             val tpe = Type.Abs(params, funType)
-            TT.TAbs(params, TT.Fun(body, funType), tpe)
+            TT.TAbs(pos, params, TT.Fun(pos, body, funType), tpe)
           case x => x
         }
         x1 <- appExpr(ctx.bindLocal(ref, e0.tpe), body)
         (s1, e1) = x1
         s <- (s0 ++ s1).unify(body.pos)
-      } yield (s, TT.App(TT.Fun(e1, Type.Fun(e0.tpe, e1.tpe)), e0, e1.tpe))
+      } yield (s, TT.App(pos, TT.Fun(pos, e1, Type.Fun(e0.tpe, e1.tpe)), e0, e1.tpe))
     case NT.ELetRec(pos, bindings, body) =>
       val bs = bindings.map {
         case (ref, tpe, fun) =>
@@ -259,7 +262,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         x <- appExpr(c, body)
         (sb, b) = x
         s <- (ts.map(_._1) :+ sb).reduce(_ ++ _).unify(expr.pos)
-      } yield (s, TT.LetRec(ts.map(_._2), b))
+      } yield (s, TT.LetRec(pos, ts.map(_._2), b))
     case NT.App(pos, f, x) =>
       val a1 = freshVar()
       val a2 = freshVar()
@@ -270,7 +273,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         xx <- appExpr(ctx, x)
         (sx, tx) = xx
         s <- (sf ++ sx + (a1 -> tx.tpe)).unify(x.pos)
-      } yield (s, TT.App(tf, tx, s.app(a2)))
+      } yield (s, TT.App(pos, tf, tx, s.app(a2)))
     case NT.JCallStatic(pos, klassRef, name, args) =>
       for {
         klass <- ctx.findClass(klassRef).toResult(expr.pos, s"Class not found: $klassRef")
@@ -278,7 +281,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         s <- (Subst.empty +: targs.map(_._1)).reduce(_ ++ _).unify(expr.pos)
         method <- klass.findStaticMethod(name.value, targs.map(_._2.tpe.jtype))
           .toResult(name.pos, s"Can't resolve static method ${Type.prettyMethod(name.value, targs.map(_._2.tpe))} in class ${klass.ref.fullName}")
-      } yield (s, TT.JCallStatic(method, targs.map(_._2)))
+      } yield (s, TT.JCallStatic(pos, method, targs.map(_._2)))
     case NT.JCallInstance(pos, expr, name, args) =>
       for {
         targs <- args.map(appExpr(ctx, _)).validated
@@ -290,17 +293,17 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         klassName = e1.tpe.jtype.boxed.jname
         method <- klass.findInstanceMethod(name.value, targs.map(_._2.tpe.jtype))
           .toResult(name.pos, s"Can't resolve instance method ${Type.prettyMethod(name.value, argTypes)} in class $klassName")
-      } yield (s1, TT.JCallInstance(method, e1, targs.map(_._2)))
+      } yield (s1, TT.JCallInstance(pos, method, e1, targs.map(_._2)))
     case NT.MatchError(pos) =>
-      ok0(TT.MatchError(freshVar()))
+      ok0(TT.MatchError(pos, freshVar()))
   }
 }
 
 object Typer {
   def moduleVarsOf(s: TypedAST.Module): Map[VarRef.ModuleMember, Type] = s.body.collect {
-    case TypedAST.TLet(name, tpe, _) =>
+    case TypedAST.TLet(pos, name, tpe, _) =>
       Seq(VarRef.ModuleMember(s.moduleRef, name.value) -> tpe)
-    case TypedAST.Data(name, tpe, ctors) =>
+    case TypedAST.Data(pos, name, tpe, ctors) =>
       ctors.flatMap {
         case (name, args) =>
           val ctorType = args.foldRight(tpe: Type) { case (l, r) => Type.Fun(l, r) }

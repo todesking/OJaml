@@ -133,7 +133,7 @@ class Repl extends Closeable {
   private[this] def readValue(klass: Class[_], tree: TT.Module): Result = {
     val (name, tpe) =
       tree match {
-        case ojaml.TypedAST.Module(_, _, Seq(ojaml.TypedAST.TLet(n, t, _))) =>
+        case ojaml.TypedAST.Module(_, _, _, Seq(ojaml.TypedAST.TLet(_, n, t, _))) =>
           (n, t)
         case unk => throw new AssertionError(s"TLet expected: $unk")
       }
