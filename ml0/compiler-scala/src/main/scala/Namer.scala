@@ -19,7 +19,7 @@ class Namer() {
       }
     }
 
-  def appModule(pkg: QName, imports: Seq[Import], penv: PackageEnv, s: RT.Module): Result[(PackageEnv, NT.Module)] = {
+  private[this] def appModule(pkg: QName, imports: Seq[Import], penv: PackageEnv, s: RT.Module): Result[(PackageEnv, NT.Module)] = {
     val currentModule = ModuleRef(PackageRef.fromInternalName(pkg.internalName), s.name.value)
     if (penv.memberExists(currentModule.pkg, currentModule.name))
       return error(s.name.pos, s"${currentModule.fullName} already defined")
@@ -32,21 +32,18 @@ class Namer() {
           appTerm(c, t)
       }.map {
         case (c, ts) =>
-          (c.penv, Pos.fill(NT.Module(pkg, s.name, ts), s.pos))
+          (c.penv, NT.Module(s.pos, pkg, s.name, ts))
       }
     }
   }
 
-  def appTerm(ctx: Ctx, t: RT.Term): Result[(Ctx, NT.Term)] = {
-    appTerm0(ctx, t).map { case (ctx, tt) => (ctx, Pos.fill(tt, t.pos)) }
-  }
-  private[this] def appTerm0(ctx: Ctx, t: RT.Term): Result[(Ctx, NT.Term)] = t match {
+  private[this] def appTerm(ctx: Ctx, t: RT.Term): Result[(Ctx, NT.Term)] = t match {
     case RT.TLet(pos, name, expr) =>
       for {
         e <- appExpr(ctx, expr)
         c <- ctx.tlet(name)
       } yield {
-        (c.addModuleMember(name.value), NT.TLet(name, e))
+        (c.addModuleMember(name.value), NT.TLet(pos, name, e))
       }
     case RT.Data(pos, name, ctors) =>
       for {
@@ -57,43 +54,38 @@ class Namer() {
             params.map { tname => ctx.findType(tname) }.validated.map { ts => (name, ts) }
         }.validated
         ctx2 <- resolved.foldLeftE(ctx) { case (c, (n, ts)) => c.addCtor(data, n, ts) }
-      } yield (ctx2, NT.Data(name, data, resolved))
+      } yield (ctx2, NT.Data(pos, name, data, resolved))
     case RT.TExpr(pos, expr) =>
       for {
         e <- appExpr(ctx, expr)
-      } yield (ctx, NT.TExpr(e))
+      } yield (ctx, NT.TExpr(pos, e))
   }
 
-  def appExpr(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = {
-    if (expr.pos == null) println(s"[WARN] NOPOS: $expr")
-    appExpr0(ctx, expr).map(Pos.fill(_, expr.pos))
-  }
-
-  private[this] def appExpr0(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = expr match {
+  private[this] def appExpr(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = expr match {
     case RT.Ref(pos, name) =>
       valueLike(ctx, expr)
         .flatMap(_.toValue(name.pos, s"${name.value} is not a value"))
-        .map(NT.Ref)
+        .map(NT.Ref(pos, _))
     case RT.Prop(pos, e, n) =>
       valueLike(ctx, expr)
         .flatMap(_.toValue(n.pos, s"${n.value} is not a value"))
-        .map(NT.Ref)
-    case RT.LitInt(pos, v) => ok(NT.LitInt(v))
-    case RT.LitBool(pos, v) => ok(NT.LitBool(v))
-    case RT.LitString(pos, v) => ok(NT.LitString(v))
+        .map(NT.Ref(pos, _))
+    case RT.LitInt(pos, v) => ok(NT.LitInt(pos, v))
+    case RT.LitBool(pos, v) => ok(NT.LitBool(pos, v))
+    case RT.LitString(pos, v) => ok(NT.LitString(pos, v))
     case RT.If(pos, cond, th, el) =>
       for {
         e0 <- appExpr(ctx, cond)
         e1 <- appExpr(ctx, th)
         e2 <- appExpr(ctx, el)
-      } yield NT.If(e0, e1, e2)
+      } yield NT.If(pos, e0, e1, e2)
     case RT.Fun(pos, name, tpeName, body) =>
       for {
         tpe <- tpeName.mapResult(ctx.findType)
         (ref, c) = ctx.bindLocal(name.value)
         tbody <- appExpr(c, body)
       } yield {
-        NT.Fun(ref, tpe, tbody)
+        NT.Fun(pos, ref, tpe, tbody)
       }
     case RT.ELetRec(pos, bs, body) =>
       for {
@@ -102,27 +94,27 @@ class Namer() {
         ts <- validate(bs.map(_._2).map(_.mapResult(c.findType)))
         vs <- validate(bs.map(_._3).map(appExpr(c, _))).map(_.map(_.asInstanceOf[NT.Fun]))
         b <- appExpr(c, body)
-      } yield NT.ELetRec(refs.zip(ts).zip(vs).map { case ((r, t), v) => (r, t, v) }, b)
+      } yield NT.ELetRec(pos, refs.zip(ts).zip(vs).map { case ((r, t), v) => (r, t, v) }, b)
     case RT.ELet(pos, name, value, body) =>
       for {
         v <- appExpr(ctx, value)
         (ref, c) = ctx.bindLocal(name.value)
         b <- appExpr(c, body)
       } yield {
-        NT.ELet(ref, v, b)
+        NT.ELet(pos, ref, v, b)
       }
     case RT.App(pos, f, x) =>
       for {
         e0 <- appExpr(ctx, f)
         e1 <- appExpr(ctx, x)
-      } yield NT.App(e0, e1)
+      } yield NT.App(pos, e0, e1)
     case RT.JCall(pos, expr, name, args, isStatic) =>
       validate(args.map(appExpr(ctx, _))).flatMap { targs =>
         if (isStatic) {
           valueLike(ctx, expr).flatMap {
             case ValueLike.TopLevel(ref) => ref match {
               case PackageMember.Class(ref) =>
-                ok(NT.JCallStatic(ref, name, targs))
+                ok(NT.JCallStatic(pos, ref, name, targs))
               case PackageMember.Module(ref) =>
                 error(name.pos, "Module is not a class")
               case PackageMember.Package(ref) =>
@@ -133,7 +125,7 @@ class Namer() {
           }
         } else {
           appExpr(ctx, expr).map { receiver =>
-            NT.JCallInstance(receiver, name, targs)
+            NT.JCallInstance(pos, receiver, name, targs)
           }
         }
       }
@@ -142,21 +134,21 @@ class Namer() {
         e <- appExpr(ctx, expr)
         (eVar, c) = ctx.bindLocal(s"$$it")
         body <- appClauses(c, root.pos, eVar, clauses)
-      } yield NT.ELet(eVar, e, body)
+      } yield NT.ELet(pos, eVar, e, body)
   }
 
   private[this] def appClauses(ctx: Ctx, pos: Pos, eVar: VarRef, clauses: Seq[RT.Clause]): Result[NT.Expr] = {
     clauses.map {
       case RT.Clause(pos, pat, body) =>
         for {
-          x <- appPat(ctx, pat, NT.Ref(eVar))
+          x <- appPat(ctx, pat, NT.Ref(pos, eVar))
           (checker, extractors) = x
           body <- appClauseBody(ctx, extractors, body)
         } yield (checker, body)
     }.validated.map {
-      _.foldRight(Pos.fill(NT.MatchError(), pos): NT.Expr) {
+      _.foldRight(NT.MatchError(pos): NT.Expr) {
         case ((checker, body), next) =>
-          Pos.fill(NT.If(checker, body, next), checker.pos)
+          NT.If(checker.pos, checker, body, next)
       }
     }
   }
@@ -168,17 +160,17 @@ class Namer() {
         (r, c2)
     }
     appExpr(c2, body).map { b =>
-      val fun = refs.foldRight(b) { case (ref, e) => Pos.fill(NT.Fun(ref, None, e), e.pos) }
-      val app = extractors.foldLeft(fun) { case (f, (_, e)) => Pos.fill(NT.App(f, e), e.pos) }
+      val fun = refs.foldRight(b) { case (ref, e) => NT.Fun(e.pos, ref, None, e) }
+      val app = extractors.foldLeft(fun) { case (f, (_, e)) => NT.App(e.pos, f, e) }
       app
     }
   }
 
   private[this] def appPat(ctx: Ctx, pat: RT.Pat, target: NT.Expr): Result[(NT.Expr, Seq[(String, NT.Expr)])] = pat match {
     case RT.Pat.PAny(pos) =>
-      ok((Pos.fill(NT.LitBool(true), pat.pos), Nil))
+      ok((NT.LitBool(pat.pos, true), Nil))
     case RT.Pat.Capture(pos, name) =>
-      ok((Pos.fill(NT.LitBool(true), pat.pos), Seq(name -> target)))
+      ok((NT.LitBool(pat.pos, true), Seq(name -> target)))
     case RT.Pat.Ctor(pos, name, args) =>
       ctx.locateCtor(Name(pos, name))
         .flatMap {
@@ -189,14 +181,14 @@ class Namer() {
                 VarRef.ModuleMember(module, ctx.patExtractorName(ctorName, i))
             }
 
-            val rootChecker = Pos.fill(NT.App(Pos.fill(NT.Ref(checkerRef), pat.pos), target), pat.pos)
+            val rootChecker = NT.App(pat.pos, NT.Ref(pat.pos, checkerRef), target)
             extractorRefs.zip(args).map {
               case (extractor, arg) =>
-                appPat(ctx, arg, Pos.fill(NT.App(Pos.fill(NT.Ref(extractor), arg.pos), target), arg.pos))
+                appPat(ctx, arg, NT.App(arg.pos, NT.Ref(arg.pos, extractor), target))
             }.validated.map { subPatterns =>
               val checker = subPatterns.map(_._1).foldLeft(rootChecker: NT.Expr) {
                 case (l, r) =>
-                  Pos.fill(NT.If(l, r, Pos.fill(NT.LitBool(false), r.pos)), r.pos)
+                  NT.If(r.pos, l, r, NT.LitBool(r.pos, false))
               }
               val extractor = subPatterns.flatMap(_._2)
               (checker, extractor)

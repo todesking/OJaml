@@ -49,7 +49,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
     }
   }
   def appTerm(ctx: Ctx, t: NT.Term): Result[(Ctx, Seq[TT.Term])] = t match {
-    case NT.TLet(name, expr) =>
+    case NT.TLet(pos, name, expr) =>
       for {
         e <- eval(ctx, expr)
         c <- ctx.bindModuleValue(name, e.tpe)
@@ -58,7 +58,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         val e2 = reindex(Subst.empty, 1, e)
         (c, Seq(TT.TLet(name, e2.tpe, e2)))
       }
-    case NT.Data(name, tpe, ctors) =>
+    case NT.Data(pos, name, tpe, ctors) =>
       for {
         bound <- ctors.foldLeftE(ctx) {
           case (c, (name, params)) =>
@@ -92,7 +92,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         }
         (bound, TT.Data(name, tpe, ctors) +: ctorDefs)
       }
-    case NT.TExpr(e) =>
+    case NT.TExpr(pos, e) =>
       eval(ctx, e).map { e => (ctx, Seq(TT.TExpr(e))) }
   }
 
@@ -188,16 +188,16 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
     case t => t
   }
   def appExpr(ctx: Ctx, expr: NT.Expr): Result[(Subst, TT.Expr)] = expr match {
-    case NT.Ref(ref) => ref match {
+    case NT.Ref(pos, ref) => ref match {
       case ref @ VarRef.ModuleMember(m, name) =>
         ok0(TT.ModuleVarRef(m, name, tappFresh(ctx.typeOf(ref))))
       case ref @ VarRef.Local(depth, index) =>
         ok0(TT.LocalRef(depth, index, tappFresh(ctx.typeOf(ref))))
     }
-    case NT.LitInt(v) => ok0(TT.LitInt(v))
-    case NT.LitBool(v) => ok0(TT.LitBool(v))
-    case NT.LitString(v) => ok0(TT.LitString(v))
-    case NT.If(cond, th, el) =>
+    case NT.LitInt(pos, v) => ok0(TT.LitInt(v))
+    case NT.LitBool(pos, v) => ok0(TT.LitBool(v))
+    case NT.LitString(pos, v) => ok0(TT.LitString(v))
+    case NT.If(pos, cond, th, el) =>
       for {
         x0 <- appExpr(ctx, cond)
         (s00, e0) = x0
@@ -209,14 +209,14 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         s2 <- (s20 + (e2.tpe -> e1.tpe)).unify(el.pos)
         s <- (s0 ++ s1 ++ s2).unify(expr.pos)
       } yield (s, TT.If(e0, e1, e2, s.app(e1.tpe)))
-    case NT.Fun(param, tpe, body) =>
+    case NT.Fun(pos, param, tpe, body) =>
       val t = tpe getOrElse freshVar()
       for {
         x <- appExpr(ctx.bindLocal(param, t), body)
         (s1, b) = x
         s = s1
       } yield (s, TT.Fun(b, Type.Fun(s.app(t), b.tpe)))
-    case NT.ELet(ref, value, body) =>
+    case NT.ELet(pos, ref, value, body) =>
       val varIdStart = nextVarId
       for {
         x0 <- appExpr(ctx, value)
@@ -235,7 +235,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         (s1, e1) = x1
         s <- (s0 ++ s1).unify(body.pos)
       } yield (s, TT.App(TT.Fun(e1, Type.Fun(e0.tpe, e1.tpe)), e0, e1.tpe))
-    case NT.ELetRec(bindings, body) =>
+    case NT.ELetRec(pos, bindings, body) =>
       val bs = bindings.map {
         case (ref, tpe, fun) =>
           (ref, tpe getOrElse freshVar(), fun)
@@ -260,7 +260,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         (sb, b) = x
         s <- (ts.map(_._1) :+ sb).reduce(_ ++ _).unify(expr.pos)
       } yield (s, TT.LetRec(ts.map(_._2), b))
-    case NT.App(f, x) =>
+    case NT.App(pos, f, x) =>
       val a1 = freshVar()
       val a2 = freshVar()
       for {
@@ -271,7 +271,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         (sx, tx) = xx
         s <- (sf ++ sx + (a1 -> tx.tpe)).unify(x.pos)
       } yield (s, TT.App(tf, tx, s.app(a2)))
-    case NT.JCallStatic(klassRef, name, args) =>
+    case NT.JCallStatic(pos, klassRef, name, args) =>
       for {
         klass <- ctx.findClass(klassRef).toResult(expr.pos, s"Class not found: $klassRef")
         targs <- args.map(appExpr(ctx, _)).validated
@@ -279,7 +279,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         method <- klass.findStaticMethod(name.value, targs.map(_._2.tpe.jtype))
           .toResult(name.pos, s"Can't resolve static method ${Type.prettyMethod(name.value, targs.map(_._2.tpe))} in class ${klass.ref.fullName}")
       } yield (s, TT.JCallStatic(method, targs.map(_._2)))
-    case NT.JCallInstance(expr, name, args) =>
+    case NT.JCallInstance(pos, expr, name, args) =>
       for {
         targs <- args.map(appExpr(ctx, _)).validated
         x <- appExpr(ctx, expr)
@@ -291,7 +291,7 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
         method <- klass.findInstanceMethod(name.value, targs.map(_._2.tpe.jtype))
           .toResult(name.pos, s"Can't resolve instance method ${Type.prettyMethod(name.value, argTypes)} in class $klassName")
       } yield (s1, TT.JCallInstance(method, e1, targs.map(_._2)))
-    case NT.MatchError() =>
+    case NT.MatchError(pos) =>
       ok0(TT.MatchError(freshVar()))
   }
 }
