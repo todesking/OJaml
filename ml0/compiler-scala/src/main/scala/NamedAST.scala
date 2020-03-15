@@ -17,7 +17,7 @@ object NamedAST {
     case TLet(pos, name, expr) =>
       P.tlet(name, None, prettyDoc(expr, false))
     case Data(pos, name, tpe, ctors) =>
-      P.data(name, ctors.map { case (n, ts) => (n.value, ts.map(_.toString)) })
+      P.data(name, Seq(), ctors.map { case (n, ts) => (n.value, ts.map(_.toString)) })
     case TExpr(pos, e) =>
       P.group(prettyDoc(e, false), ";;")
     case LitInt(pos, value) =>

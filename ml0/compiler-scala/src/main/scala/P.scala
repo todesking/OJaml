@@ -48,9 +48,9 @@ object P {
     group(
       s"let ${name.value} =",
       groupi(body))
-  def data(name: Name, ctors: Seq[(String, Seq[String])]) =
+  def data(name: Name, tvars: Seq[Name], ctors: Seq[(String, Seq[String])]) =
     group(
-      s"data ${name.value} =",
+      s"data ${name.value} ${tvars.map(_.value).mkString(" ")} =",
       groupi(
         mks(Doc.Text(","))(ctors.map { case (n, ns) => Doc.Text((n +: ns).mkString(" ")) })))
   def jcall(receiver: Doc, name: String, args: Seq[Doc], isStatic: Boolean) =

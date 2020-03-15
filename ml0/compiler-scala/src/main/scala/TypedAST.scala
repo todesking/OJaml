@@ -17,7 +17,7 @@ object TypedAST {
     case TLet(pos, name, tpe, expr) =>
       P.tlet(name, Some(tpe.toString), prettyDoc(expr, false))
     case Data(pos, name, tpe, ctors) =>
-      P.data(name, ctors.map { case (n, ts) => (n.value, ts.map(_.toString)) })
+      P.data(name, Seq(), ctors.map { case (n, ts) => (n.value, ts.map(_.toString)) })
     case LitInt(pos, value) =>
       Doc.Text(value.toString)
     case LitBool(pos, value) =>

@@ -81,7 +81,7 @@ class Repl extends Closeable {
     import ojaml.{ RawAST => RT }
     tree match {
       case tree @ RT.TLet(_, name, expr) => Input.Let(name.value, tree)
-      case tree @ RT.Data(_, name, ctors) => Input.Data(ctors.map(_._1.value), tree)
+      case tree @ RT.Data(_, name, tvars, ctors) => Input.Data(ctors.map(_._1.value), tree)
       case tree @ RT.TExpr(_, expr) => Input.Expr(s"res$nextIndex", expr)
     }
   }

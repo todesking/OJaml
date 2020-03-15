@@ -77,6 +77,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   val ctor_name = capital_name
   val var_name = small_name
+  val tvar_name = small_name
 
   val eot = ";;"
 
@@ -112,9 +113,9 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
       body
   }
 
-  def data = withpos((kwd("data") ~> name) ~ ("=" ~> rep1sep(datadef, "|")) <~ eot) {
-    case (pos, name ~ ddefs) =>
-      T.Data(pos, name, ddefs.map { case n ~ ns => (n, ns) })
+  def data = withpos((kwd("data") ~> name) ~ rep(tvar_name) ~ ("=" ~> rep1sep(datadef, "|")) <~ eot) {
+    case (pos, name ~ vars ~ ddefs) =>
+      T.Data(pos, name, vars, ddefs.map { case n ~ ns => (n, ns) })
   }
 
   def texpr = withpos(expr <~ eot) { case (pos, e) => T.TExpr(pos, e) }

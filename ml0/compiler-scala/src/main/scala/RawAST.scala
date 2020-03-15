@@ -22,8 +22,8 @@ object RawAST {
       P.module(name.value, body.map(prettyDoc(_, false)))
     case TLet(_, name, expr) =>
       P.tlet(name, None, prettyDoc(expr, false))
-    case Data(_, name, ctors) =>
-      P.data(name, ctors.map {
+    case Data(_, name, tvars, ctors) =>
+      P.data(name, tvars, ctors.map {
         case (n, ts) => (n.value, ts.map(_.toString))
       })
     case TExpr(_, expr) =>
@@ -86,7 +86,7 @@ object RawAST {
 
   sealed abstract class Term extends RawAST
   case class TLet(pos: Pos, name: Name, expr: Expr) extends Term
-  case class Data(pos: Pos, name: Name, ctors: Seq[(Name, Seq[TypeName])]) extends Term
+  case class Data(pos: Pos, name: Name, tvars: Seq[Name], ctors: Seq[(Name, Seq[TypeName])]) extends Term
   case class TExpr(pos: Pos, expr: Expr) extends Term
 
   sealed abstract class Expr extends RawAST

@@ -45,7 +45,7 @@ class Namer() {
       } yield {
         (c.addModuleMember(name.value), NT.TLet(pos, name, e))
       }
-    case RT.Data(pos, name, ctors) =>
+    case RT.Data(pos, name, tvars, ctors) =>
       for {
         x1 <- ctx.addDataType(name)
         (data, ctx) = x1
