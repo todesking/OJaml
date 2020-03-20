@@ -43,7 +43,7 @@ object Javalizer {
       methodDefs :+= m
     }
   }
-  class Transformer(moduleClass: ClassRef) {
+  class Transformer(moduleRef: ModuleRef, moduleClass: ClassRef) {
     private[this] var nextFunClassID = 0
     private[this] val builder = new ClassBuilder(moduleClass, TObject.ref)
     private[this] var klasses = Vector.empty[J.ClassDef]
@@ -52,11 +52,13 @@ object Javalizer {
     def appTerm(t: T.Term): Unit = t match {
       case T.TLet(pos, name, tpe, expr) =>
         val f = builder.addStaticField(name.value, tpe.jtype)
-        val c = appExpr(expr, 0)
-        builder.addClinit(
-          J.PutStatic(f, appExpr(expr, 0)))
-      case T.Data(pos, name, tpe, ctors) =>
-        appData(name.value, tpe, ctors.map { case (k, v) => k.value -> v.map(_.jtype) })
+        expr.foreach { expr =>
+          val c = appExpr(expr, 0)
+          builder.addClinit(
+            J.PutStatic(f, appExpr(expr, 0)))
+        }
+      case T.Data(pos, name, params, ctors) =>
+        appData(name.value, ctors)
       case T.TExpr(pos, expr) =>
         builder.addClinit(J.TExpr(appExpr(expr, 0)))
     }
@@ -148,11 +150,10 @@ object Javalizer {
           t.jtype)
     }
 
-    def appData(name: String, dataType: Type, ctors: Seq[(String, Seq[JType])]): Unit = {
-      val tpe = dataType.jtype
+    def appData(name: String, ctors: Seq[T.DataCtor]): Unit = {
       val dataBaseClass = ClassRef.fromInternalName("com/todesking/ojaml/ml0/runtime/Data")
 
-      val dataKlass = ClassRef.fromInternalName(tpe.jname)
+      val dataKlass = JType.dataClass(moduleRef, name).ref
       val dataBuilder = new ClassBuilder(dataKlass, dataBaseClass)
 
       val initBody = Seq(
@@ -171,8 +172,9 @@ object Javalizer {
       klasses :+= dataBuilder.build()
 
       ctors.foreach {
-        case (name, params) =>
-          val ctorKlass = ClassRef(dataKlass.pkg, s"${dataKlass.name}$$${name}")
+        case T.DataCtor(pos, ctorName, oparams, checkerName, extractorNames) =>
+          val params = oparams.map(_.jtype)
+          val ctorKlass = ClassRef(dataKlass.pkg, s"${dataKlass.name}$$${ctorName}")
           val ctorBuilder = new ClassBuilder(ctorKlass, dataKlass)
           val paramFields = params.zipWithIndex.map { case (t, i) => FieldRef(ctorKlass, s"v$i", t) }
           paramFields.foreach { field =>
@@ -201,18 +203,32 @@ object Javalizer {
           ctorBuilder.addMethod(J.MethodDef("values", false, Seq(), Some(JType.ObjectArray), valuesBody))
 
           val nameBody = Seq(
-            J.TReturn(J.LitString(name)))
+            J.TReturn(J.LitString(ctorName)))
           ctorBuilder.addMethod(J.MethodDef("name", false, Seq(), Some(JType.TString), nameBody))
 
           klasses :+= ctorBuilder.build()
 
-          val fieldCheck = builder.addStaticField(s"$name$$check", JType.Fun)
+          val fieldCtor = FieldRef(moduleClass, ctorName, if (params.isEmpty) JType.TKlass(dataKlass) else JType.Fun)
+          val ctorTree = params.foldRight(
+            T.Upcast(
+              pos,
+              T.JNew(
+                pos,
+                ctorKlass,
+                oparams.zipWithIndex.map {
+                  case (t, i) =>
+                    T.LocalRef(pos, i + 1, 0, t)
+                }),
+              Type.Klass(dataKlass)): T.Expr) { (t, e) => T.Fun(pos, e, e.tpe) }
+          builder.addClinit(J.PutStatic(fieldCtor, appExpr(ctorTree, 0)))
+
+          val fieldCheck = FieldRef(moduleClass, checkerName, JType.Fun)
           val funCheck = createFun(J.InstanceOf(J.GetLocal(1, JType.TObject), ctorKlass), None)
           builder.addClinit(
             J.PutStatic(fieldCheck, J.JNew(funCheck, Seq(J.Null(JType.TObject), J.Null(JType.Fun)))))
-          paramFields.zipWithIndex.foreach {
-            case (field, i) =>
-              val fieldGet = builder.addStaticField(s"$name$$get$i", JType.Fun)
+          paramFields.zip(extractorNames).foreach {
+            case (field, checkerName) =>
+              val fieldGet = FieldRef(moduleClass, checkerName, JType.Fun)
               val funGet = createFun(J.GetField(field, J.Cast(J.GetLocal(1, JType.TObject), JType.TKlass(ctorKlass))), None)
               builder.addClinit(
                 J.PutStatic(fieldGet, J.JNew(funGet, Seq(J.Null(JType.TObject), J.Null(JType.Fun)))))
@@ -272,7 +288,7 @@ class Javalizer {
 
   def apply(m: T.Module): Seq[J.ClassDef] = {
     val moduleClass = ClassRef(m.pkg.asPackage, m.name.value)
-    val transformer = new Javalizer.Transformer(moduleClass)
+    val transformer = new Javalizer.Transformer(m.moduleRef, moduleClass)
     m.body.foreach { t => transformer.appTerm(t) }
     transformer.build()
   }

@@ -45,16 +45,20 @@ class Namer() {
       } yield {
         (c.addModuleMember(name.value), NT.TLet(pos, name, e))
       }
-    case RT.Data(pos, name, tvars, ctors) =>
+    case RT.Data(pos, name, tparams, ctors) =>
       for {
-        x1 <- ctx.addDataType(name)
-        (data, ctx) = x1
-        resolved <- ctors.map {
+        ctx <- ctx.addDataType(name)
+        tvars = tparams.zipWithIndex.map(_._2).map(Type.Var(_))
+        boundCtx = tparams.zip(tvars).foldLeft(ctx) {
+          case (c, (param, tv)) => c.bindType(param.value, tv)
+        }
+        resolvedCtors <- ctors.map {
           case (name, params) =>
-            params.map { tname => ctx.findType(tname) }.validated.map { ts => (name, ts) }
+            params.map { tname => boundCtx.findType(tname) }.validated.map { ts => (name, ts) }
         }.validated
-        ctx2 <- resolved.foldLeftE(ctx) { case (c, (n, ts)) => c.addCtor(data, n, ts) }
-      } yield (ctx2, NT.Data(pos, name, data, resolved))
+        ctx2 <- resolvedCtors
+          .foldLeftE(ctx) { case (c, (n, ts)) => c.addCtor(name.value, tvars, n.value, ts) }
+      } yield (ctx2, NT.Data(pos, name, tvars, resolvedCtors))
     case RT.TExpr(pos, expr) =>
       for {
         e <- appExpr(ctx, expr)
@@ -340,24 +344,27 @@ object Namer {
           }
     }
 
-    def addDataType(name: Name): Result[(Type.Data, Ctx)] = {
+    def addDataType(name: Name): Result[Ctx] = {
       if (localTypes.contains(name.value)) {
         error(name.pos, s"Type ${name.value} is already defined")
       } else {
-        val tpe = Type.Data(currentModule, name.value)
+        val tpe = Type.Data(currentModule, name.value, Seq()) // TODO
         val c = copy(
           localTypes = localTypes + (name.value -> tpe),
           penv = penv.addModuleTypeMember(currentModule, name.value))
-        ok((tpe, c))
+        ok(c)
       }
     }
+    def bindType(name: String, tpe: Type): Ctx =
+      copy(localTypes = localTypes + (name -> tpe))
+
     def patCheckerName(name: String) = s"${name}$$check"
     def patExtractorName(name: String, i: Int) = s"$name$$get$i"
-    def addCtor(data: Type.Data, name: Name, ts: Seq[Type]): Result[Ctx] = {
+    def addCtor(dataName: String, tvars: Seq[Type.Var], ctorName: String, ts: Seq[Type]): Result[Ctx] = {
       // TODO: check duplicate
-      val ctorRef = ValueLike.Value(VarRef.ModuleMember(currentModule, name.value), Some((data.module, name.value, ts)))
-      val newPenv = penv.addModuleMember(currentModule, name.value, Some(ts))
-      ok(copy(venv = venv + (name.value -> ctorRef), penv = newPenv))
+      val ctorRef = ValueLike.Value(VarRef.ModuleMember(currentModule, ctorName), Some((currentModule, ctorName, ts)))
+      val newPenv = penv.addModuleMember(currentModule, ctorName, Some(ts))
+      ok(copy(venv = venv + (ctorName -> ctorRef), penv = newPenv))
     }
     def locateCtor(name: Name): Result[(ModuleRef, String)] = findValue(name.value)
       .toResult(name.pos, s"Data constructor not found: ${name.value}")

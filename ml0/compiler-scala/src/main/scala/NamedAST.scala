@@ -70,7 +70,7 @@ object NamedAST {
 
   sealed abstract class Term extends NamedAST
   case class TLet(pos: Pos, name: Name, expr: Expr) extends Term
-  case class Data(pos: Pos, name: Name, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]) extends Term
+  case class Data(pos: Pos, name: Name, tvars: Seq[Type.Var], ctors: Seq[(Name, Seq[Type])]) extends Term
   case class TExpr(pos: Pos, expr: Expr) extends Term
 
   sealed abstract class Expr extends NamedAST

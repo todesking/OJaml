@@ -32,11 +32,15 @@ object Type {
     override def jtype = JType.TObject
   }
 
-  case class Data(module: ModuleRef, name: String) extends Reference {
+  case class Data(module: ModuleRef, name: String, args: Seq[Type]) extends Reference {
     override def substitute(a: Type.Var, t: Type) = this
     override def freeTypeVariables = Set()
-    override def jtype = JType.TKlass(ClassRef(module.pkg, s"${module.name}$$data_$name"))
-    override def toString(group: Boolean): String = name
+    override def jtype = JType.dataClass(module, name)
+    override def toString(group: Boolean): String =
+      if (args.isEmpty) name else {
+        val naked = s"$name ${args.map(_.toString(true)).mkString(" ")}"
+        if (group) s"($naked)" else naked
+      }
   }
 
   case class Abs(params: Seq[Var], body: Type) extends Type {

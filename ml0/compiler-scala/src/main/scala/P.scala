@@ -46,7 +46,7 @@ object P {
       "}")
   def tlet(name: Name, tpe: Option[String], body: Doc) =
     group(
-      s"let ${name.value} =",
+      s"let ${name.value}${tpe.map { t => s": $t" } getOrElse ""} =",
       groupi(body))
   def data(name: Name, tvars: Seq[Name], ctors: Seq[(String, Seq[String])]) =
     group(

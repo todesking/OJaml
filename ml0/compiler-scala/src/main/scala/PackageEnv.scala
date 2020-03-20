@@ -73,7 +73,7 @@ case class PackageEnv(
             case PackageEnv.ModuleMember(name, None) =>
               s"    v: ${name}"
             case PackageEnv.ModuleMember(name, Some(ts)) =>
-              s"    v: ${name} ${ts.mkString(", ")}"
+              s"    v: ${name} ctor: ${ts.mkString(", ")}"
           })
       }.mkString("\n")
   }.mkString("\n")

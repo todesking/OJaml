@@ -15,9 +15,7 @@ object TypedAST {
     case Module(pos, pkg, name, body) =>
       P.module(s"${pkg.value}.${name.value}", body.map(prettyDoc(_, false)))
     case TLet(pos, name, tpe, expr) =>
-      P.tlet(name, Some(tpe.toString), prettyDoc(expr, false))
-    case Data(pos, name, tpe, ctors) =>
-      P.data(name, Seq(), ctors.map { case (n, ts) => (n.value, ts.map(_.toString)) })
+      P.tlet(name, Some(tpe.toString), expr.map(prettyDoc(_, false)).getOrElse("".doc))
     case LitInt(pos, value) =>
       Doc.Text(value.toString)
     case LitBool(pos, value) =>
@@ -74,9 +72,11 @@ object TypedAST {
   }
 
   sealed abstract class Term extends TypedAST
-  case class TLet(pos: Pos, name: Name, tpe: Type, expr: Expr) extends Term
-  case class Data(pos: Pos, name: Name, tpe: Type.Data, ctors: Seq[(Name, Seq[Type])]) extends Term
+  case class TLet(pos: Pos, name: Name, tpe: Type, expr: Option[Expr]) extends Term
   case class TExpr(pos: Pos, expr: Expr) extends Term
+
+  case class Data(pos: Pos, name: Name, tparams: Seq[Type.Var], ctors: Seq[DataCtor]) extends Term
+  case class DataCtor(pos: Pos, name: String, params: Seq[Type], checkerName: String, extractorNames: Seq[String])
 
   sealed abstract class Expr extends TypedAST {
     def tpe: Type

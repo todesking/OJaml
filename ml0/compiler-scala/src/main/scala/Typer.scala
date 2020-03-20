@@ -56,42 +56,36 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
       } yield {
         assertNoFVs(e, Set())
         val e2 = reindex(Subst.empty, 1, e)
-        (c, Seq(TT.TLet(pos, name, e2.tpe, e2)))
+        (c, Seq(TT.TLet(pos, name, e2.tpe, Some(e2))))
       }
-    case NT.Data(pos, name, tpe, ctors) =>
-      for {
-        bound <- ctors.foldLeftE(ctx) {
-          case (c, (name, params)) =>
-            val ctorType =
-              params.foldRight(tpe: Type) { (from, to) =>
-                Type.Fun(from, to)
-              }
-            c.bindModuleValue(name, ctorType).flatMap { c =>
-              // TODO: change to bindModuleValue(str, ...)
-              c.bindModuleValue(Name(null, s"${name.value}$$check"), Type.Fun(tpe, Type.Bool)).flatMap { c =>
-                params.zipWithIndex.foldLeftE(c) {
-                  case (c, (t, i)) =>
-                    c.bindModuleValue(Name(null, s"${name.value}$$get$i"), Type.Fun(tpe, t))
-                }
-              }
+    case NT.Data(pos, name, tvars, ctors) =>
+      def wrap(t: Type) = if (tvars.isEmpty) t else Type.Abs(tvars, t)
+      val data = Type.Data(ctx.currentModule, name.value, tvars)
+      val ctorDefs = ctors.map {
+        case (ctorName, ts) =>
+          TT.DataCtor(
+            ctorName.pos,
+            ctorName.value,
+            ts,
+            s"${ctorName.value}$$check",
+            ts.zipWithIndex.map { case (_, i) => s"${ctorName.value}$$get$i" })
+      }
+      val members = ctorDefs.flatMap {
+        case TT.DataCtor(pos, ctorName, params, checkerName, extractorNames) =>
+          Seq(
+            TT.TLet(pos, Name(pos, ctorName), wrap(params.foldRight(data: Type)(Type.Fun.apply)), None),
+            TT.TLet(pos, Name(pos, checkerName), wrap(Type.Fun(data, Type.Bool)), None)) ++ extractorNames.zip(params).map {
+              case (extractorName, t) =>
+                TT.TLet(pos, Name(pos, extractorName), wrap(Type.Fun(data, t)), None)
             }
+      }
+      for {
+        ctx <- members.foldLeftE(ctx) {
+          case (ctx, TT.TLet(pos, name, tpe, body)) =>
+            ctx.bindModuleValue(name, tpe)
         }
       } yield {
-        val ctorDefs = ctors.map {
-          case (name, params) =>
-            val ctorPos = name.pos
-            val ctorType = params.foldRight(tpe: Type)(Type.Fun.apply)
-            // TODO: Duplicate in Emitter
-            val dataClass = ClassRef(tpe.jtype.ref.pkg, s"${tpe.jtype.ref.name}$$${name.value}")
-            val ctorArgs = params.zipWithIndex.map {
-              case (t, i) =>
-                TT.LocalRef(ctorPos, i + 1, 0, t)
-            }
-            val newExpr = TT.Upcast(ctorPos, TT.JNew(ctorPos, dataClass, ctorArgs), tpe)
-            val body = params.foldRight(newExpr: TT.Expr) { (t, e) => TT.Fun(ctorPos, e, Type.Fun(t, e.tpe)) }
-            TT.TLet(ctorPos, name, ctorType, body)
-        }
-        (bound, TT.Data(pos, name, tpe, ctors) +: ctorDefs)
+        (ctx, members :+ TT.Data(pos, name, tvars, ctorDefs))
       }
     case NT.TExpr(pos, e) =>
       eval(ctx, e).map { e => (ctx, Seq(TT.TExpr(pos, e))) }
@@ -302,20 +296,8 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
 object Typer {
   def moduleVarsOf(s: TypedAST.Module): Map[VarRef.ModuleMember, Type] = s.body.collect {
     case TypedAST.TLet(pos, name, tpe, _) =>
-      Seq(VarRef.ModuleMember(s.moduleRef, name.value) -> tpe)
-    case TypedAST.Data(pos, name, tpe, ctors) =>
-      ctors.flatMap {
-        case (name, args) =>
-          val ctorType = args.foldRight(tpe: Type) { case (l, r) => Type.Fun(l, r) }
-          val ctor = VarRef.ModuleMember(tpe.module, name.value) -> ctorType
-          val checker = VarRef.ModuleMember(tpe.module, s"${name.value}$$check") -> Type.Fun(tpe, Type.Bool)
-          val extractors = args.zipWithIndex.map {
-            case (arg, i) =>
-              VarRef.ModuleMember(tpe.module, s"${name.value}$$get$i") -> Type.Fun(tpe, arg)
-          }
-          Seq(ctor, checker) ++ extractors
-      }
-  }.flatten.toMap
+      VarRef.ModuleMember(s.moduleRef, name.value) -> tpe
+  }.toMap
 
   // TODO: add unified flag
   class Subst(val items: List[(Type, Type)]) {

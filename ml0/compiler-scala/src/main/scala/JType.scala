@@ -84,6 +84,9 @@ object JType {
     case _ => Some(TUnit) // :(
   }
 
+  def dataClass(module: ModuleRef, name: String) =
+    TKlass(ClassRef(module.pkg, s"${module.name}$$data_$name"))
+
   def toAsm(t: Option[JType]): asm.Type = t match {
     case None => asm.Type.VOID_TYPE
     case Some(t) => toAsm(t)

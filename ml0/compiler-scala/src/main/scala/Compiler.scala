@@ -67,7 +67,7 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
         println(TypedAST.pretty(typed))
         println("Module members")
         newMvs.toSeq
-          .map { case (k, v) => s"${k.module.fullName}.${k.name}" -> v }
+          .map { case (k, v) => s"$k" -> v }
           .sortBy(_._1)
           .foreach {
             case (k, v) =>
