@@ -48,4 +48,11 @@ object Syntax {
     def mapResult[B](f: A => Result[B]): Result[Option[B]] =
       self.fold[Result[Option[B]]](Result.ok(None))(f(_).map(Some.apply))
   }
+
+  implicit class DebugSyntax[A](val self: A) extends AnyVal {
+    def debug(f: PartialFunction[A, String]): A = {
+      if (f.isDefinedAt(self)) println(f(self))
+      self
+    }
+  }
 }

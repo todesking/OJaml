@@ -20,14 +20,11 @@ class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
   def appModule(s: NT.Module): Result[TT.Module] = {
     val env = Typer.Ctx(s.moduleRef, classRepo).bindModuleValues(moduleVars)
     s.body
-      .mapWithContext(env) {
+      .mapWithContextEC(env) {
         case (e, t) =>
-          appTerm(e, t).fold({ l =>
-            (e, Result.errors(l))
-          }, { case (ee, tt) => (ee, Result.ok(tt)) })
+          appTerm(e, t)
       }
-      .validated
-      .map(_.flatten)
+      .map(_._2.flatten)
       .map(TT.Module(s.pos, s.pkg, s.name, _))
   }
 
@@ -345,6 +342,8 @@ object Typer {
           }
         case (t, a: Type.Var) :: xs =>
           unify0((a -> t) :: xs, pos)
+        case (Type.Data(m1, n1, a1), Type.Data(m2, n2, a2)) :: xs if m1 == m2 && n1 == n2 =>
+          unify0(a1.zip(a2).foldLeft(xs) { (l, x) => x :: l }, pos)
         case (Type.Fun(l1, r1), Type.Fun(l2, r2)) :: xs =>
           unify0((l1 -> l2) :: (r1 -> r2) :: xs, pos)
         case (l, r) :: xs =>

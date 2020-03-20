@@ -33,8 +33,8 @@ object Type {
   }
 
   case class Data(module: ModuleRef, name: String, args: Seq[Type]) extends Reference {
-    override def substitute(a: Type.Var, t: Type) = this
-    override def freeTypeVariables = Set()
+    override def substitute(a: Type.Var, t: Type) = copy(args = args.map(_.substitute(a, t)))
+    override def freeTypeVariables = args.flatMap(_.freeTypeVariables).toSet
     override def jtype = JType.dataClass(module, name)
     override def toString(group: Boolean): String =
       if (args.isEmpty) name else {

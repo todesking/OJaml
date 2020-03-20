@@ -11,12 +11,11 @@ module Data_generic {
   (* gg1: G (G int) = G (G 1) *)
 
   let f x = match x
-    | G (G x) => x ;;
+    | G x => x ;;
 
   let x1 = f (G (G 123)) ;;
-  (* x1: int = 123 *)
+  (* x1: G int = G 123 *)
 
   let x2 = f (G 456) ;;
-  (* x2: int = 454 *)
+  (* x2: int = 456 *)
 }
-(* TODO: Rec data(List a = Cons a (List a) *)
