@@ -47,7 +47,7 @@ class Namer() {
       }
     case RT.Data(pos, name, tparams, ctors) =>
       for {
-        ctx <- ctx.addDataType(name)
+        ctx <- ctx.addDataType(name, tparams)
         tvars = tparams.zipWithIndex.map(_._2).map(Type.Var(_))
         boundCtx = tparams.zip(tvars).foldLeft(ctx) {
           case (c, (param, tv)) => c.bindType(param.value, tv)
@@ -281,6 +281,20 @@ object Namer {
           tl <- findType(l)
           tr <- findType(r)
         } yield Type.Fun(tl, tr)
+      case TypeName.App(pos, n, ns) =>
+        for {
+          t <- findType(n)
+          args <- ns.map(findType).validated
+          applied <- t match {
+            case Type.Abs(params, body) =>
+              if (params.size != args.size)
+                error(pos, s"Type scheme $n has arity ${params.size} but argument length is ${args.size}")
+              else
+                ok(params.zip(args).foldLeft(body) { case (t, (p, a)) => t.substitute(p, a) })
+            case other =>
+              error(pos, s"Type $n can't take type parameters")
+          }
+        } yield applied
     }
 
     def bindLocal(name: String): (VarRef.Local, Ctx) = {
@@ -344,11 +358,16 @@ object Namer {
           }
     }
 
-    def addDataType(name: Name): Result[Ctx] = {
+    def addDataType(name: Name, params: Seq[Name]): Result[Ctx] = {
       if (localTypes.contains(name.value)) {
         error(name.pos, s"Type ${name.value} is already defined")
       } else {
-        val tpe = Type.Data(currentModule, name.value, Seq()) // TODO
+        val tpe =
+          if (params.isEmpty) Type.Data(currentModule, name.value, Seq())
+          else {
+            val tvars = params.zipWithIndex.map(_._2).map(Type.Var(_))
+            Type.Abs(tvars, Type.Data(currentModule, name.value, tvars))
+          }
         val c = copy(
           localTypes = localTypes + (name.value -> tpe),
           penv = penv.addModuleTypeMember(currentModule, name.value))

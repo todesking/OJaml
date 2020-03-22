@@ -82,11 +82,13 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   val eot = ";;"
 
   // TODO: Support parenthesis
-  def typename: Parser[TypeName] = rep1sep(typename1, kwd("=>")) ^^ { ts =>
+  def typename: Parser[TypeName] = rep1sep(typename_app | typename1, kwd("=>")) ^^ { ts =>
     ts.tail.foldLeft(ts.head) { (l, r) => TypeName.Fun(l, r) }
   }
-  def typename1: Parser[TypeName] =
-    (name ^^ { n => TypeName.Atom(n.pos, n.value) }) | ("(" ~> typename) <~ ")"
+  def typename1: Parser[TypeName] = typename_atom | typename_group
+  def typename_app = typename_atom ~ rep1(typename1) ^^ { case n ~ args => TypeName.App(n.pos, n, args) }
+  def typename_atom = name ^^ { n => TypeName.Atom(n.pos, n.value) }
+  def typename_group = ("(" ~> typename) <~ ")"
 
   lazy val program: Parser[RawAST.Program] = withpos(pkg ~ rep(`import`) ~ rep1(module)) { case (pos, p ~ is ~ ss) => T.Program(pos, p, is, ss) }
   lazy val pkg: Parser[QName] = kwd("package") ~> qname
@@ -120,7 +122,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   def texpr = withpos(expr <~ eot) { case (pos, e) => T.TExpr(pos, e) }
 
-  def datadef = name ~ rep(typename)
+  def datadef = name ~ rep(typename1)
 
   def expr: Parser[T.Expr] = expr1
 
