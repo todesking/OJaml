@@ -147,14 +147,14 @@ class Repl extends Closeable {
     }
   }
 
-  private[this] def evalRuntime(in: Input, tree: TT.Module): Either[Result, Result] = {
+  private[this] def evalRuntime(in: Input, tree: TT.Module): Result = {
     evalClass(tree.moduleRef.fullName).map { klass =>
       in match {
         case Input.Data(_, _) => Result.Empty
         case Input.Let(name, _) => readValue(klass, tree)
         case Input.Expr(name, _) => readValue(klass, tree)
       }
-    }
+    }.merge
   }
 
   def eval(code: String): Result = {
@@ -164,7 +164,7 @@ class Repl extends Closeable {
         case Input.Expr(name, tree) => (RT.TLet(fakePos, mkName(name), tree), Seq(name))
         case Input.Let(name, tree) => (tree, Seq(name))
       }
-      compile(statement).flatMap {
+      compile(statement).map {
         case (newPEnv, newMEnv, tree) =>
           val j = new Javalizer
           compiler.javalizePhase(tree).foreach(compiler.emit)
