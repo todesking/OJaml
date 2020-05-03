@@ -3,7 +3,6 @@ package com.todesking.ojaml.ml0
 import com.todesking.ojaml.ml0.compiler.{ scala => ojaml }
 
 import ojaml.util.Syntax._
-import com.todesking.ojaml.ml0.compiler.scala.PackageEnv
 import com.todesking.ojaml.ml0.compiler.scala.Javalizer
 import java.io.Closeable
 import java.nio.file.Files

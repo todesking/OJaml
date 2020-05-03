@@ -11,7 +11,7 @@ import util.Syntax._
 
 class Namer() {
 
-  def appProgram(p: RT.Program, packageEnv: PackageEnv): Result[(PackageEnv, Seq[NT.Module])] =
+  def appProgram(p: RT.Program, packageEnv: NameEnv): Result[(NameEnv, Seq[NT.Module])] =
     p.items.mapWithContextEC(packageEnv) { (penv, x) =>
       appModule(p.pkg, p.imports, penv, x).map {
         case (pe, named) =>
@@ -19,7 +19,7 @@ class Namer() {
       }
     }
 
-  private[this] def appModule(pkg: QName, imports: Seq[Import], penv: PackageEnv, s: RT.Module): Result[(PackageEnv, NT.Module)] = {
+  private[this] def appModule(pkg: QName, imports: Seq[Import], penv: NameEnv, s: RT.Module): Result[(NameEnv, NT.Module)] = {
     val currentModule = ModuleRef(PackageRef.fromInternalName(pkg.internalName), s.name.value)
     if (penv.memberExists(currentModule.pkg, currentModule.name))
       return error(s.name.pos, s"${currentModule.fullName} already defined")
@@ -238,7 +238,7 @@ object Namer {
   }
 
   case class Ctx(
-    penv: PackageEnv,
+    penv: NameEnv,
     currentModule: ModuleRef,
     venv: Map[String, ValueLike] = Map(),
     stack: List[Ctx] = Nil,
@@ -256,7 +256,7 @@ object Namer {
 
     def findValue(name: String): Option[ValueLike] =
       venv.get(name) orElse penv.findModuleMember(currentModule, name).map {
-        case PackageEnv.ModuleMember(name, ctorInfo) =>
+        case NameEnv.ModuleMember(name, ctorInfo) =>
           val info = ctorInfo.map { args => (currentModule, name, args) }
           ValueLike.Value(VarRef.ModuleMember(currentModule, name), info)
       } orElse {
@@ -342,7 +342,7 @@ object Namer {
                       .map(ValueLike.TopLevel)
                   case PackageMember.Module(m) =>
                     penv.findModuleMember(m, n.value).map {
-                      case PackageEnv.ModuleMember(name, ctorInfo) =>
+                      case NameEnv.ModuleMember(name, ctorInfo) =>
                         val info = ctorInfo.map { args => (m, name, args) }
                         ValueLike.Value(VarRef.ModuleMember(m, name), info)
                     }.toResult(n.pos, s"Member ${n.value} is not found in module $m")

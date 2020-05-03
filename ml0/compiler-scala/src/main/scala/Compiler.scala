@@ -26,7 +26,7 @@ class Compiler(debugPrint: Boolean = false) {
     result
   }
 
-  def namePhase(penv: PackageEnv, tree: RawAST.Program): Result[(PackageEnv, Seq[NamedAST.Module])] = {
+  def namePhase(penv: NameEnv, tree: RawAST.Program): Result[(NameEnv, Seq[NamedAST.Module])] = {
     namer.appProgram(tree, penv).map {
       case (pe, namedTrees) =>
         if (debugPrint) {
@@ -104,11 +104,11 @@ object Compiler {
       copy(types = types ++ xs)
   }
 
-  case class Env(classpath: Classpath, nameEnv: PackageEnv, typeEnv: TypeEnv)
+  case class Env(classpath: Classpath, nameEnv: NameEnv, typeEnv: TypeEnv)
 
   def newEnv(cl: ClassLoader) = {
     val cp = new Classpath(cl)
-    Env(cp, new PackageEnv(cp), TypeEnv(cp, Map()))
+    Env(cp, new NameEnv(cp), TypeEnv(cp, Map()))
   }
 }
 
