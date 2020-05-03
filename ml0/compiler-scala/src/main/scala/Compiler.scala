@@ -11,7 +11,7 @@ class Compiler(cl: ClassLoader, debugPrint: Boolean = false) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TypedAST => TT }
   import Compiler.ModuleEnv
 
-  val classRepo = new ClassRepo(cl)
+  val classpath = new Classpath(cl)
   val namer = new Namer()
 
   def parsePhase(file: FileContent): Result[RawAST.Program] = {
@@ -41,7 +41,7 @@ class Compiler(cl: ClassLoader, debugPrint: Boolean = false) {
   }
 
   def typePhase(moduleVars: ModuleEnv, tree: NamedAST.Module): Result[(ModuleEnv, TypedAST.Module)] = {
-    val typer = new Typer(classRepo, moduleVars)
+    val typer = new Typer(classpath, moduleVars)
     typer.appModule(tree).map { typed =>
       val newMvs = moduleVars ++ Typer.moduleVarsOf(typed)
       if (debugPrint) {
@@ -73,7 +73,7 @@ class Compiler(cl: ClassLoader, debugPrint: Boolean = false) {
   }
 
   def typeContents(files: Seq[FileContent]): Result[(Map[VarRef.ModuleMember, Type], Seq[TypedAST.Module])] = {
-    val penv = PackageEnv(classRepo)
+    val penv = PackageEnv(classpath)
     files.mapWithContextEC((penv, Map.empty[VarRef.ModuleMember, Type])) {
       case ((pe, me), f) =>
         typeContent(pe, me, f).map { case (p, m, t) => ((p, m), t) }

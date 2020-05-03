@@ -6,7 +6,7 @@ import com.todesking.ojaml.ml0.compiler.scala.{ NamedAST => NT, TypedAST => TT }
 
 import util.Syntax._
 
-class Typer(classRepo: ClassRepo, moduleVars: Map[VarRef.ModuleMember, Type]) {
+class Typer(classRepo: Classpath, moduleVars: Map[VarRef.ModuleMember, Type]) {
   import Typer.Ctx
   import Typer.Subst
 
@@ -357,7 +357,7 @@ object Typer {
 
   case class Ctx(
     currentModule: ModuleRef,
-    repo: ClassRepo,
+    repo: Classpath,
     gamma: Map[VarRef, Type] = Map()) {
 
     def typeOf(ref: VarRef): Type =

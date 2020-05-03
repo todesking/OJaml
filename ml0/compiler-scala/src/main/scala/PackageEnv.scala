@@ -4,7 +4,7 @@ import util.Syntax._
 
 import PackageEnv._
 case class PackageEnv(
-  cr: ClassRepo,
+  cr: Classpath,
   moduleMembers: Map[ModuleRef, Map[String, ModuleMember]] = Map(),
   moduleTypeMembers: Map[ModuleRef, Set[String]] = Map()) {
   def findMember(pkg: PackageRef, name: String): Option[PackageMember] = {

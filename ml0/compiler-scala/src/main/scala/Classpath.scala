@@ -5,7 +5,7 @@ import java.nio.file.Path
 import org.objectweb.asm
 import org.objectweb.asm.MethodVisitor
 
-class ClassRepo(cl: ClassLoader) {
+class Classpath(cl: ClassLoader) {
   private[this] var _cache = Map.empty[ClassRef, ClassSig]
 
   // Note: Some jar contains only file, not directory.
