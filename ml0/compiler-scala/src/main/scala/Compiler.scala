@@ -10,7 +10,6 @@ import util.Syntax._
 class Compiler(debugPrint: Boolean = false) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TypedAST => TT }
   import Compiler.Env
-  import Compiler.TypeEnv
 
   val namer = new Namer()
 
@@ -41,8 +40,8 @@ class Compiler(debugPrint: Boolean = false) {
   }
 
   def typePhase(env: TypeEnv, tree: NamedAST.Module): Result[(TypeEnv, TypedAST.Module)] = {
-    val typer = new Typer(env.classpath, env.types)
-    typer.appModule(tree).map { typed =>
+    val typer = new Typer
+    typer.appModule(env, tree).map { typed =>
       val newEnv = env.addTypes(Typer.moduleVarsOf(typed))
       if (debugPrint) {
         println("Phase: Typer")
@@ -99,11 +98,6 @@ class Compiler(debugPrint: Boolean = false) {
 }
 
 object Compiler {
-  case class TypeEnv(classpath: Classpath, types: Map[VarRef.ModuleMember, Type]) {
-    def addTypes(xs: Map[VarRef.ModuleMember, Type]): TypeEnv =
-      copy(types = types ++ xs)
-  }
-
   case class Env(classpath: Classpath, nameEnv: NameEnv, typeEnv: TypeEnv)
 
   def newEnv(cl: ClassLoader) = {

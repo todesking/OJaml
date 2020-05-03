@@ -6,7 +6,7 @@ import com.todesking.ojaml.ml0.compiler.scala.{ NamedAST => NT, TypedAST => TT }
 
 import util.Syntax._
 
-class Typer(classRepo: Classpath, moduleVars: Map[VarRef.ModuleMember, Type]) {
+class Typer {
   import Typer.Ctx
   import Typer.Subst
 
@@ -17,10 +17,10 @@ class Typer(classRepo: Classpath, moduleVars: Map[VarRef.ModuleMember, Type]) {
     v
   }
 
-  def appModule(s: NT.Module): Result[TT.Module] = {
-    val env = Typer.Ctx(s.moduleRef, classRepo).bindModuleValues(moduleVars)
+  def appModule(env: TypeEnv, s: NT.Module): Result[TT.Module] = {
+    val ctx = Typer.newCtx(s.moduleRef, env)
     s.body
-      .mapWithContextEC(env) {
+      .mapWithContextEC(ctx) {
         case (e, t) =>
           appTerm(e, t)
       }
@@ -384,5 +384,8 @@ object Typer {
     def bindLocal(ref: VarRef.Local, tpe: Type): Ctx =
       copy(gamma = gamma + (ref -> tpe))
   }
+
+  def newCtx(module: ModuleRef, env: TypeEnv) =
+    Ctx(module, env.classpath).bindModuleValues(env.types)
 
 }
