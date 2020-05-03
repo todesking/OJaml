@@ -23,7 +23,9 @@ class Repl extends Closeable {
   lazy val targetClassLoader = new java.net.URLClassLoader(Array(tmpDir.toUri.toURL), this.getClass.getClassLoader)
 
   private[this] def newCompiler(debugPrint: Boolean) =
-    new ojaml.Compiler(tmpDir, getClass.getClassLoader, debugPrint)
+    new ojaml.Compiler(getClass.getClassLoader, debugPrint)
+
+  private[this] def emitter = new ojaml.Emitter(tmpDir)
 
   private[this] var compiler = newCompiler(false)
   private[this] var packageEnv = ojaml.PackageEnv(compiler.classRepo)
@@ -70,7 +72,7 @@ class Repl extends Closeable {
       }
     }, {
       case (newPEnv, newMEnv, trees) =>
-        trees.flatMap(compiler.javalizePhase(_)) foreach (compiler.emit)
+        trees.flatMap(compiler.javalizePhase(_)).foreach(emitter.emit)
         this.packageEnv = newPEnv
         this.moduleEnv = newMEnv
         this.imports ++= predefImports
@@ -140,7 +142,7 @@ class Repl extends Closeable {
     val isUnit = tpe == ojaml.Type.Unit
     if (isUnit) Result.Empty
     else {
-      val fieldName = compiler.emitter.escape(name.value)
+      val fieldName = emitter.escape(name.value)
       val field = klass.getField(fieldName)
       val value = field.get(null)
       Result.Value(name.value, value, tpe.toString)
@@ -167,7 +169,7 @@ class Repl extends Closeable {
       compile(statement).map {
         case (newPEnv, newMEnv, tree) =>
           val j = new Javalizer
-          compiler.javalizePhase(tree).foreach(compiler.emit)
+          compiler.javalizePhase(tree).foreach(emitter.emit)
           this.packageEnv = newPEnv
           this.moduleEnv = newMEnv
           this.imports = this.imports ++ names.map { name =>

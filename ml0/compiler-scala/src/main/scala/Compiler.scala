@@ -7,16 +7,12 @@ import java.nio.file.Files
 import util.Syntax._
 
 // Facade of compile phases
-class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
+class Compiler(cl: ClassLoader, debugPrint: Boolean = false) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TypedAST => TT }
   import Compiler.ModuleEnv
 
   val classRepo = new ClassRepo(cl)
-  val emitter = new Emitter(baseDir)
   val namer = new Namer()
-
-  def emit(tree: JAST.ClassDef) =
-    emitter.emit(tree)
 
   def parsePhase(file: FileContent): Result[RawAST.Program] = {
     val parser = new Parser(file.path.toString)

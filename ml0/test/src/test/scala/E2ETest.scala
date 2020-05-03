@@ -72,7 +72,8 @@ class E2ETest extends FunSpec {
 
     val outDir = Files.createTempDirectory("ojaml-test")
     val cl = this.getClass.getClassLoader
-    val compiler = new scala_compiler.Compiler(outDir, cl, debugPrint)
+    val compiler = new scala_compiler.Compiler(cl, debugPrint)
+    val emitter = new scala_compiler.Emitter(outDir)
 
     assert(expectedErrors.isEmpty || assertions.isEmpty)
 
@@ -137,7 +138,7 @@ class E2ETest extends FunSpec {
     }, {
       case (env, trees) =>
         validateErrors(Seq())
-        trees.foreach(compiler.emit)
+        trees.foreach(emitter.emit)
         validateRuntime(env)
     })
 
