@@ -4,7 +4,7 @@ sealed abstract class Result[+A] {
   def map[B](f: A => B): Result[B] =
     flatMap { x => Result.ok(f(x)) }
   def flatMap[B](f: A => Result[B]): Result[B]
-  def fold[B](left: Seq[Result.Message] => B, right: A => B): B
+  def fold[B](left: Seq[Result.Message] => B)(right: A => B): B
   def foreach(f: A => Unit): Unit
   def toEither: Either[Seq[Result.Message], A]
   def tapFail(f: Seq[Result.Message] => Unit): Result[A]
@@ -14,7 +14,7 @@ object Result {
   case class Success[A](value: A) extends Result[A] {
     override def flatMap[B](f: A => Result[B]): Result[B] =
       f(value)
-    override def fold[B](left: Seq[Message] => B, right: A => B): B =
+    override def fold[B](left: Seq[Message] => B)(right: A => B): B =
       right(value)
     override def foreach(f: A => Unit): Unit = f(value)
     override def toEither: Either[Seq[Result.Message], A] = Right(value)
@@ -23,7 +23,7 @@ object Result {
   case class Failure(messages: Seq[Message]) extends Result[Nothing] {
     override def flatMap[B](f: Nothing => Result[B]): Result[B] =
       this
-    override def fold[B](left: Seq[Message] => B, right: Nothing => B): B =
+    override def fold[B](left: Seq[Message] => B)(right: Nothing => B): B =
       left(messages)
     override def foreach(f: Nothing => Unit): Unit = {}
     override def toEither: Either[Seq[Result.Message], Nothing] = Left(messages)

@@ -8,6 +8,7 @@ import com.todesking.ojaml.ml0.compiler.scala.ModuleRef
 import com.todesking.ojaml.ml0.compiler.scala.Result
 import com.todesking.ojaml.ml0.compiler.scala.Type
 import com.todesking.ojaml.ml0.compiler.scala.VarRef
+import com.todesking.ojaml.ml0.compiler.{ scala => scala_compiler }
 
 import scala.collection.JavaConverters._
 import com.todesking.ojaml.ml0.compiler.scala.Javalizer
@@ -21,6 +22,24 @@ class E2ETest extends FunSpec {
     val baseDir = new java.io.File(classLoader.getResource("test").toURI).toPath
 
     listFiles(baseDir).foreach(registerTest(baseDir, _))
+  }
+
+  val emptyEnv = scala_compiler.Compiler.newEnv(classLoader)
+  val predefDir = Files.createTempDirectory("ojaml-test-predef")
+  val predefEnv = {
+    val predefPath = new java.io.File(classLoader.getResource("lib/Predef.ml0").toURI).toPath
+    val predefContent = scala_compiler.FileContent(predefPath, Files.readAllLines(predefPath).asScala.mkString("\n"))
+
+    val compiler = new scala_compiler.Compiler(false)
+    val emitter = new scala_compiler.Emitter(predefDir)
+
+    compiler.compile(emptyEnv, Seq(predefContent)).fold { errors =>
+      throw new AssertionError(s"Predef compilation error: ${errors.mkString("\n")}")
+    } {
+      case (env, trees) =>
+        trees.foreach(emitter.emit(_))
+        env
+    }
   }
 
   def listFiles(p: Path): Seq[Path] =
@@ -51,13 +70,9 @@ class E2ETest extends FunSpec {
   private[this] def test(testName: String, paths: Seq[Path]): Unit = {
     import E2ETest.Target
     import E2ETest.Assertion
-    import com.todesking.ojaml.ml0.compiler.{ scala => scala_compiler }
-
-    lazy val predefPath = new java.io.File(classLoader.getResource("lib/Predef.ml0").toURI).toPath
-    lazy val predefContent = scala_compiler.FileContent(predefPath, Files.readAllLines(predefPath).asScala.mkString("\n"))
 
     val targets = paths.sortBy(_.toString).map(Target.from)
-    val predef = targets.exists(_.predef)
+    val usePredef = targets.exists(_.predef)
     val debugPrint = targets.exists(_.debugPrint)
     val pending = targets.exists(_.pending)
     if (pending) this.pending
@@ -66,16 +81,19 @@ class E2ETest extends FunSpec {
       t.expectedErrors.map { case (l, c) => (t.path.toString, l, c) }
     }.toSet
     val assertions = targets.flatMap(_.assertions)
+    assert(expectedErrors.isEmpty || assertions.isEmpty)
 
-    val testContents = targets.map { t => scala_compiler.FileContent(t.path, t.content) }
-    val contents = if (predef) predefContent +: testContents else testContents
+    val contents = targets.map { t => scala_compiler.FileContent(t.path, t.content) }
 
     val outDir = Files.createTempDirectory("ojaml-test")
     val compiler = new scala_compiler.Compiler(debugPrint)
-    val env = scala_compiler.Compiler.newEnv(getClass.getClassLoader)
     val emitter = new scala_compiler.Emitter(outDir)
 
-    assert(expectedErrors.isEmpty || assertions.isEmpty)
+    val env = if (usePredef) predefEnv else emptyEnv
+
+    val runtimeClasspath = (
+      if (usePredef) Array(predefDir, outDir)
+      else Array(outDir)).map(_.toUri.toURL)
 
     def validateErrors(result: Seq[Result.Message]): Unit = {
       val errors = result.map { e =>
@@ -102,7 +120,7 @@ class E2ETest extends FunSpec {
     def validateRuntime(env: Map[VarRef.ModuleMember, Type]): Unit = {
       try {
         try {
-          val cl = new java.net.URLClassLoader(Array(outDir.toUri.toURL), this.getClass.getClassLoader)
+          val cl = new java.net.URLClassLoader(runtimeClasspath, this.classLoader)
 
           // make sure all classes are valid
           targets.flatMap(_.classNames).foreach { cn => cl.loadClass(cn) }
@@ -133,14 +151,14 @@ class E2ETest extends FunSpec {
       }
     }
 
-    compiler.compile(env, contents).fold({ errors =>
+    compiler.compile(env, contents).fold { errors =>
       validateErrors(errors)
-    }, {
+    } {
       case (env, trees) =>
         validateErrors(Seq())
         trees.foreach(emitter.emit)
         validateRuntime(env.typeEnv.types)
-    })
+    }
 
     rmr(outDir) // skipped if test failed
   }

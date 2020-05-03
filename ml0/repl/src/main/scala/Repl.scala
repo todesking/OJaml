@@ -66,16 +66,16 @@ class Repl extends Closeable {
         }
         (newTenv, typedAst) = x2
       } yield (env.copy(nameEnv = newNenv, typeEnv = newTenv), typedAst)
-    result.fold({ errors =>
+    result.fold { errors =>
       errors.foreach { e =>
         println(e)
       }
-    }, {
+    } {
       case (newEnv, trees) =>
         trees.flatMap(compiler.javalizePhase(_)).foreach(emitter.emit)
         this.env = newEnv
         this.imports ++= predefImports
-    })
+    }
   }
 
   private[this] def input(tree: ojaml.RawAST.Term): Input = {
