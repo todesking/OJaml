@@ -11,6 +11,7 @@ import java.nio.file.Path
 import java.util.stream.Collectors
 import scala.collection.JavaConverters._
 import com.todesking.ojaml.ml0.compiler.scala.Pos
+import com.todesking.ojaml.ml0.compiler.scala.Classpath
 
 class Repl extends Closeable {
   import ojaml.{ RawAST => RT, TypedAST => TT }
@@ -23,13 +24,12 @@ class Repl extends Closeable {
   lazy val targetClassLoader = new java.net.URLClassLoader(Array(tmpDir.toUri.toURL), this.getClass.getClassLoader)
 
   private[this] def newCompiler(debugPrint: Boolean) =
-    new ojaml.Compiler(getClass.getClassLoader, debugPrint)
+    new ojaml.Compiler(debugPrint)
 
   private[this] def emitter = new ojaml.Emitter(tmpDir)
 
   private[this] var compiler = newCompiler(false)
-  private[this] var packageEnv = ojaml.PackageEnv(compiler.classRepo)
-  private[this] var moduleEnv = Map.empty[ojaml.VarRef.ModuleMember, ojaml.Type]
+  private[this] var env = ojaml.Compiler.newEnv(getClass.getClassLoader)
 
   private[this] val predefImports =
     Seq("+", "-", "*", "/", "%", "==", "<=", ">=", ">", "<")
@@ -59,22 +59,21 @@ class Repl extends Closeable {
     val result =
       for {
         rawAst <- compiler.parsePhase(predefContent)
-        x1 <- compiler.namePhase(packageEnv, rawAst)
-        (newPEnv, namedAsts) = x1
-        x2 <- namedAsts.mapWithContextEC(moduleEnv) { (menv, tree) =>
-          compiler.typePhase(menv, tree)
+        x1 <- compiler.namePhase(env.nameEnv, rawAst)
+        (newNenv, namedAsts) = x1
+        x2 <- namedAsts.mapWithContextEC(env.typeEnv) { (tenv, tree) =>
+          compiler.typePhase(tenv, tree)
         }
-        (newMEnv, typedAst) = x2
-      } yield (newPEnv, newMEnv, typedAst)
+        (newTenv, typedAst) = x2
+      } yield (env.copy(nameEnv = newNenv, typeEnv = newTenv), typedAst)
     result.fold({ errors =>
       errors.foreach { e =>
         println(e)
       }
     }, {
-      case (newPEnv, newMEnv, trees) =>
+      case (newEnv, trees) =>
         trees.flatMap(compiler.javalizePhase(_)).foreach(emitter.emit)
-        this.packageEnv = newPEnv
-        this.moduleEnv = newMEnv
+        this.env = newEnv
         this.imports ++= predefImports
     })
   }
@@ -103,7 +102,7 @@ class Repl extends Closeable {
     }
   }
 
-  private[this] def compile(statement: RT.Term): Either[Result, (PackageEnv, ojaml.Compiler.ModuleEnv, TT.Module)] = {
+  private[this] def compile(statement: RT.Term): Either[Result, (ojaml.Compiler.Env, TT.Module)] = {
     val program = RT.Program(
       fakePos,
       mkQName("ojaml.repl"),
@@ -115,11 +114,11 @@ class Repl extends Closeable {
           Seq(statement))))
     val result =
       for {
-        x1 <- compiler.namePhase(packageEnv, program)
-        (newPEnv, Seq(namedTree)) = x1
-        x2 <- compiler.typePhase(moduleEnv, namedTree)
-        (newMEnv, typedTree) = x2
-      } yield (newPEnv, newMEnv, typedTree)
+        x1 <- compiler.namePhase(env.nameEnv, program)
+        (nenv, Seq(namedTree)) = x1
+        x2 <- compiler.typePhase(env.typeEnv, namedTree)
+        (tenv, typedTree) = x2
+      } yield (env.copy(nameEnv = nenv, typeEnv = tenv), typedTree)
     result.toEither.swap.map { errors =>
       Result.CompileError(errors.mkString(", "))
     }.swap
@@ -167,11 +166,10 @@ class Repl extends Closeable {
         case Input.Let(name, tree) => (tree, Seq(name))
       }
       compile(statement).map {
-        case (newPEnv, newMEnv, tree) =>
+        case (newEnv, tree) =>
           val j = new Javalizer
           compiler.javalizePhase(tree).foreach(emitter.emit)
-          this.packageEnv = newPEnv
-          this.moduleEnv = newMEnv
+          this.env = newEnv
           this.imports = this.imports ++ names.map { name =>
             ojaml.Import.Single(mkQName(s"${tree.moduleRef.fullName}.$name"), None)
           }

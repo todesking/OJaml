@@ -7,11 +7,11 @@ import java.nio.file.Files
 import util.Syntax._
 
 // Facade of compile phases
-class Compiler(cl: ClassLoader, debugPrint: Boolean = false) {
+class Compiler(debugPrint: Boolean = false) {
   import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, TypedAST => TT }
-  import Compiler.ModuleEnv
+  import Compiler.Env
+  import Compiler.TypeEnv
 
-  val classpath = new Classpath(cl)
   val namer = new Namer()
 
   def parsePhase(file: FileContent): Result[RawAST.Program] = {
@@ -40,15 +40,15 @@ class Compiler(cl: ClassLoader, debugPrint: Boolean = false) {
     }
   }
 
-  def typePhase(moduleVars: ModuleEnv, tree: NamedAST.Module): Result[(ModuleEnv, TypedAST.Module)] = {
-    val typer = new Typer(classpath, moduleVars)
+  def typePhase(env: TypeEnv, tree: NamedAST.Module): Result[(TypeEnv, TypedAST.Module)] = {
+    val typer = new Typer(env.classpath, env.types)
     typer.appModule(tree).map { typed =>
-      val newMvs = moduleVars ++ Typer.moduleVarsOf(typed)
+      val newEnv = env.addTypes(Typer.moduleVarsOf(typed))
       if (debugPrint) {
         println("Phase: Typer")
         println(TypedAST.pretty(typed))
         println("Module members")
-        newMvs.toSeq
+        newEnv.types.toSeq
           .map { case (k, v) => s"$k" -> v }
           .sortBy(_._1)
           .foreach {
@@ -56,7 +56,7 @@ class Compiler(cl: ClassLoader, debugPrint: Boolean = false) {
               println(s"- $k: $v")
           }
       }
-      (newMvs, typed)
+      (newEnv, typed)
     }
   }
 
@@ -72,34 +72,43 @@ class Compiler(cl: ClassLoader, debugPrint: Boolean = false) {
     klasses
   }
 
-  def typeContents(files: Seq[FileContent]): Result[(Map[VarRef.ModuleMember, Type], Seq[TypedAST.Module])] = {
-    val penv = PackageEnv(classpath)
-    files.mapWithContextEC((penv, Map.empty[VarRef.ModuleMember, Type])) {
-      case ((pe, me), f) =>
-        typeContent(pe, me, f).map { case (p, m, t) => ((p, m), t) }
+  def typeContents(env: Env, files: Seq[FileContent]): Result[(Env, Seq[TypedAST.Module])] = {
+    files.mapWithContextEC(env) {
+      case (env, file) =>
+        typeContent(env, file)
     }
-      .map { case ((p, c), treess) => (c, treess.flatten) }
+      .map { case (env, treess) => (env, treess.flatten) }
   }
 
-  def typeContent(penv: PackageEnv, moduleVars: ModuleEnv, file: FileContent): Result[(PackageEnv, ModuleEnv, Seq[TypedAST.Module])] = {
+  def typeContent(env: Env, file: FileContent): Result[(Env, Seq[TypedAST.Module])] = {
     for {
       rawTree <- parsePhase(file)
-      x1 <- namePhase(penv, rawTree)
-      (pe, namedTrees) = x1
-      x2 <- namedTrees.mapWithContextEC(moduleVars) { (mvs, nt) =>
-        typePhase(mvs, nt)
+      x1 <- namePhase(env.nameEnv, rawTree)
+      (nenv, namedTrees) = x1
+      x2 <- namedTrees.mapWithContextEC(env.typeEnv) { (tenv, tree) =>
+        typePhase(tenv, tree)
       }
-      (mvs, typed) = x2
-    } yield (pe, mvs, typed)
+      (tenv, typed) = x2
+    } yield (env.copy(nameEnv = nenv, typeEnv = tenv), typed)
   }
 
-  def compile(files: Seq[FileContent]): Result[(ModuleEnv, Seq[JAST.ClassDef])] =
-    typeContents(files)
+  def compile(env: Env, files: Seq[FileContent]): Result[(Env, Seq[JAST.ClassDef])] =
+    typeContents(env, files)
       .map { case (env, trees) => (env, trees.flatMap(javalizePhase(_))) }
 
 }
 
 object Compiler {
-  type ModuleEnv = Map[VarRef.ModuleMember, Type]
+  case class TypeEnv(classpath: Classpath, types: Map[VarRef.ModuleMember, Type]) {
+    def addTypes(xs: Map[VarRef.ModuleMember, Type]): TypeEnv =
+      copy(types = types ++ xs)
+  }
+
+  case class Env(classpath: Classpath, nameEnv: PackageEnv, typeEnv: TypeEnv)
+
+  def newEnv(cl: ClassLoader) = {
+    val cp = new Classpath(cl)
+    Env(cp, new PackageEnv(cp), TypeEnv(cp, Map()))
+  }
 }
 

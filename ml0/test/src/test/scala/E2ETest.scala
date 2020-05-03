@@ -71,8 +71,8 @@ class E2ETest extends FunSpec {
     val contents = if (predef) predefContent +: testContents else testContents
 
     val outDir = Files.createTempDirectory("ojaml-test")
-    val cl = this.getClass.getClassLoader
-    val compiler = new scala_compiler.Compiler(cl, debugPrint)
+    val compiler = new scala_compiler.Compiler(debugPrint)
+    val env = scala_compiler.Compiler.newEnv(getClass.getClassLoader)
     val emitter = new scala_compiler.Emitter(outDir)
 
     assert(expectedErrors.isEmpty || assertions.isEmpty)
@@ -133,13 +133,13 @@ class E2ETest extends FunSpec {
       }
     }
 
-    compiler.compile(contents).fold({ errors =>
+    compiler.compile(env, contents).fold({ errors =>
       validateErrors(errors)
     }, {
       case (env, trees) =>
         validateErrors(Seq())
         trees.foreach(emitter.emit)
-        validateRuntime(env)
+        validateRuntime(env.typeEnv.types)
     })
 
     rmr(outDir) // skipped if test failed
