@@ -132,12 +132,12 @@ class E2ETest extends FunSpec {
       }
     }
 
-    compiler.typeContents(contents).fold({ errors =>
+    compiler.compile(contents).fold({ errors =>
       validateErrors(errors)
     }, {
       case (env, trees) =>
         validateErrors(Seq())
-        trees.flatMap(compiler.javalizePhase).foreach(compiler.emit)
+        trees.foreach(compiler.emit)
         validateRuntime(env)
     })
 

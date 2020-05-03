@@ -15,20 +15,6 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
   val emitter = new Emitter(baseDir)
   val namer = new Namer()
 
-  /*
-  def compileFiles(files: Seq[Path]): Seq[Result.Message] =
-    compileContents(files.map(FileContent.read))
-
-  def compileContents(files: Seq[FileContent]): Seq[Result.Message] = {
-    typeContents(files)
-      .map {
-        case (_, trees) =>
-          trees.foreach(emitter.emit)
-          Seq.empty[Result.Message]
-      }.merge
-  }
-  */
-
   def emit(tree: JAST.ClassDef) =
     emitter.emit(tree)
 
@@ -110,6 +96,11 @@ class Compiler(baseDir: Path, cl: ClassLoader, debugPrint: Boolean = false) {
       (mvs, typed) = x2
     } yield (pe, mvs, typed)
   }
+
+  def compile(files: Seq[FileContent]): Result[(ModuleEnv, Seq[JAST.ClassDef])] =
+    typeContents(files)
+      .map { case (env, trees) => (env, trees.flatMap(javalizePhase(_))) }
+
 }
 
 object Compiler {
