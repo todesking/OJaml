@@ -14,7 +14,7 @@ class Compiler(debugPrint: Boolean = false) {
 
   val namer = new Namer()
 
-  def parsePhase(file: FileContent): Result[RawAST.Program] = {
+  def parsePhase(file: Source): Result[RawAST.Program] = {
     val parser = new Parser(file.path.toString)
     val result = parser.parse(file.content)
     if (debugPrint) {
@@ -72,7 +72,7 @@ class Compiler(debugPrint: Boolean = false) {
     klasses
   }
 
-  def typeContents(env: Env, files: Seq[FileContent]): Result[(Env, Seq[TypedAST.Module])] = {
+  def typeContents(env: Env, files: Seq[Source]): Result[(Env, Seq[TypedAST.Module])] = {
     files.mapWithContextEC(env) {
       case (env, file) =>
         typeContent(env, file)
@@ -80,7 +80,7 @@ class Compiler(debugPrint: Boolean = false) {
       .map { case (env, treess) => (env, treess.flatten) }
   }
 
-  def typeContent(env: Env, file: FileContent): Result[(Env, Seq[TypedAST.Module])] = {
+  def typeContent(env: Env, file: Source): Result[(Env, Seq[TypedAST.Module])] = {
     for {
       rawTree <- parsePhase(file)
       x1 <- namePhase(env.nameEnv, rawTree)
@@ -92,7 +92,7 @@ class Compiler(debugPrint: Boolean = false) {
     } yield (env.copy(nameEnv = nenv, typeEnv = tenv), typed)
   }
 
-  def compile(env: Env, files: Seq[FileContent]): Result[(Env, Seq[JAST.ClassDef])] =
+  def compile(env: Env, files: Seq[Source]): Result[(Env, Seq[JAST.ClassDef])] =
     typeContents(env, files)
       .map { case (env, trees) => (env, trees.flatMap(javalizePhase(_))) }
 

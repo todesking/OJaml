@@ -12,6 +12,8 @@ import java.util.stream.Collectors
 import scala.collection.JavaConverters._
 import com.todesking.ojaml.ml0.compiler.scala.Pos
 import com.todesking.ojaml.ml0.compiler.scala.Classpath
+import com.todesking.ojaml.ml0.compiler.scala.Import
+import com.todesking.ojaml.ml0.compiler.scala.Source
 
 class Repl extends Closeable {
   import ojaml.{ RawAST => RT, TypedAST => TT }
@@ -31,11 +33,6 @@ class Repl extends Closeable {
   private[this] var compiler = newCompiler(false)
   private[this] var env = ojaml.Compiler.newEnv(getClass.getClassLoader)
 
-  private[this] val predefImports =
-    Seq("+", "-", "*", "/", "%", "==", "<=", ">=", ">", "<")
-      .map { name => mkQName(s"com.todesking.ojaml.ml0.lib.Predef.$name") }
-      .map(ojaml.Import.Single.apply(_, None))
-
   private[this] var imports: Seq[ojaml.Import] = Seq()
   private[this] var nextIndex = 0
 
@@ -46,33 +43,26 @@ class Repl extends Closeable {
   }
 
   def evalPredef(): Unit = {
-    val src = {
-      val is = getClass.getClassLoader.getResourceAsStream("lib/Predef.ml0")
-      val s = new java.util.Scanner(is)
-      var lines = Seq.empty[String]
-      while (s.hasNextLine()) {
-        lines :+= s.nextLine()
-      }
-      lines.mkString("\n")
-    }
-    val predefContent = ojaml.FileContent(java.nio.file.Paths.get("(Predef)"), src)
-    val result =
-      for {
-        rawAst <- compiler.parsePhase(predefContent)
-        x1 <- compiler.namePhase(env.nameEnv, rawAst)
-        (newNenv, namedAsts) = x1
-        x2 <- namedAsts.mapWithContextEC(env.typeEnv) { (tenv, tree) =>
-          compiler.typePhase(tenv, tree)
-        }
-        (newTenv, typedAst) = x2
-      } yield (env.copy(nameEnv = newNenv, typeEnv = newTenv), typedAst)
-    result.fold { errors =>
+    val predefContent = Source.readResource(getClass.getClassLoader, "lib/Predef.ml0")
+    compiler.typeContents(env, Seq(predefContent)).fold { errors =>
       errors.foreach { e =>
         println(e)
       }
     } {
       case (newEnv, trees) =>
-        trees.flatMap(compiler.javalizePhase(_)).foreach(emitter.emit)
+        val predefImports = trees.flatMap { tree =>
+          tree.body.collect {
+            case TT.TLet(pos, name, tpe, expr) =>
+              (tree.moduleRef, name.value)
+          }
+        }.map {
+          case (module, name) =>
+            val qname = mkQName(s"${module.fullName}.$name")
+            Import.Single(qname, None)
+        }
+        trees
+          .flatMap(compiler.javalizePhase(_))
+          .foreach(emitter.emit(_))
         this.env = newEnv
         this.imports ++= predefImports
     }

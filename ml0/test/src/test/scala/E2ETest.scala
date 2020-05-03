@@ -27,8 +27,7 @@ class E2ETest extends FunSpec {
   val emptyEnv = scala_compiler.Compiler.newEnv(classLoader)
   val predefDir = Files.createTempDirectory("ojaml-test-predef")
   val predefEnv = {
-    val predefPath = new java.io.File(classLoader.getResource("lib/Predef.ml0").toURI).toPath
-    val predefContent = scala_compiler.FileContent(predefPath, Files.readAllLines(predefPath).asScala.mkString("\n"))
+    val predefContent = scala_compiler.Source.readResource(classLoader, "lib/Predef.ml0")
 
     val compiler = new scala_compiler.Compiler(false)
     val emitter = new scala_compiler.Emitter(predefDir)
@@ -83,7 +82,7 @@ class E2ETest extends FunSpec {
     val assertions = targets.flatMap(_.assertions)
     assert(expectedErrors.isEmpty || assertions.isEmpty)
 
-    val contents = targets.map { t => scala_compiler.FileContent(t.path, t.content) }
+    val contents = targets.map { t => scala_compiler.Source(t.path.toString, t.content) }
 
     val outDir = Files.createTempDirectory("ojaml-test")
     val compiler = new scala_compiler.Compiler(debugPrint)
