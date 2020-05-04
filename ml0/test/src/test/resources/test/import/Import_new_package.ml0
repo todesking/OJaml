@@ -1,0 +1,8 @@
+package test.ml0.p1
+
+import test.ml0.p1
+
+module Import_new_package {
+  let x = 1 ;
+  let y = p1.Import_new_package.x ;
+}
