@@ -248,7 +248,7 @@ object Namer {
     def tlet(name: Name): Result[Ctx] = {
       require(stack.isEmpty)
       val varRef = VarRef.ModuleMember(currentModule, name.value)
-      if (venv.contains(name.value))
+      if (venv.get(name.value).exists(_ == varRef))
         error(name.pos, s"""Name "${name.value}" is already defined in ${currentModule.name}""")
       else
         ok(copy(venv = venv + (varRef.name -> ValueLike.Value(varRef, None))))

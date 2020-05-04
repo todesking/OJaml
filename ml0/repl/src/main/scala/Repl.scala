@@ -13,6 +13,7 @@ import com.todesking.ojaml.ml0.compiler.scala.Pos
 import com.todesking.ojaml.ml0.compiler.scala.Classpath
 import com.todesking.ojaml.ml0.compiler.scala.Import
 import com.todesking.ojaml.ml0.compiler.scala.Source
+import com.todesking.ojaml.ml0.compiler.scala.RawAST
 
 class Repl extends Closeable {
   import ojaml.{ RawAST => RT, TypedAST => TT }
@@ -103,10 +104,10 @@ class Repl extends Closeable {
           Seq(statement))))
     val result =
       for {
-        x1 <- compiler.namePhase(env.nameEnv, program)
-        (nenv, Seq(namedTree)) = x1
-        x2 <- compiler.typePhase(env.typeEnv, namedTree)
-        (tenv, typedTree) = x2
+        x <- compiler.namePhase(env.nameEnv, program)
+        (nenv, Seq(namedTree)) = x
+        x <- compiler.typePhase(env.typeEnv, namedTree)
+        (tenv, typedTree) = x
       } yield (env.copy(nameEnv = nenv, typeEnv = tenv), typedTree)
     result.toEither.swap.map { errors =>
       Result.CompileError(errors.mkString(", "))

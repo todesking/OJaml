@@ -1,0 +1,9 @@
+package test.ml0
+
+import A.x
+
+module B {
+  let x = 2 ;;
+  (* x: int = 2 *)
+}
+

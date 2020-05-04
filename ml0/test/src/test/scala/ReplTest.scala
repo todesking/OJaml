@@ -50,4 +50,12 @@ class ReplTest extends FunSuite with BeforeAndAfterEach {
         assertFun(repl.eval(srcs.last))
       }
   }
+
+  test("name override") {
+    val res0 = repl.eval("let x = 1 ;;")
+    assert(res0 == Repl.Result.Value("x", 1, "int"))
+
+    val res1 = repl.eval("let x = 2 ;;")
+    assert(res1 == Repl.Result.Value("x", 2, "int"))
+  }
 }
