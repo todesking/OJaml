@@ -53,7 +53,6 @@ object Javalizer {
       case T.TLet(pos, name, tpe, expr) =>
         val f = builder.addStaticField(name.value, tpe.jtype)
         expr.foreach { expr =>
-          val c = appExpr(expr, 0)
           builder.addClinit(
             J.PutStatic(f, appExpr(expr, 0)))
         }
