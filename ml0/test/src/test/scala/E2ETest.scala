@@ -42,7 +42,15 @@ class E2ETest extends FunSpec {
   }
 
   def listFiles(p: Path): Seq[Path] =
-    Files.list(p).collect(java.util.stream.Collectors.toList[Path]).asScala
+    Files.list(p)
+      .collect(java.util.stream.Collectors.toList[Path])
+      .asScala
+      .sortBy { path =>
+        val grouped =
+          if (Files.isDirectory(path) && !path.toString.endsWith(".ml0")) 1
+          else 0
+        (grouped, path.toString)
+      }
 
   private[this] def registerTest(base: Path, p: Path): Unit = {
     if (Files.isDirectory(p)) {
