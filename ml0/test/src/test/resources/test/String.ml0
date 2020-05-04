@@ -1,6 +1,6 @@
 package test.ml0
 
 module String {
-  let x1 = "foo" ;;
+  let x1 = "foo" ;
   (* x1: java.lang.String = foo *)
 }

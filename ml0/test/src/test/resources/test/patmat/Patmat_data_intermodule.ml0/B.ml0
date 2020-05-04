@@ -3,9 +3,9 @@ package test.ml0
 import A.{L, R}
 
 module B {
-  let l = L 1 ;;
+  let l = L 1 ;
   let x = match l
     | L a => a
-    | R a => 0 ;;
+    | R a => 0 ;
   (* x: int = 1 *)
 }

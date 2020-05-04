@@ -1,8 +1,8 @@
 package test.ml0
 
 module Ref_tlet_inner {
-  let x = 123 ;;
-  let y = x ;;
+  let x = 123 ;
+  let y = x ;
 }
 (* x: int = 123 *)
 (* y: int = 123 *)

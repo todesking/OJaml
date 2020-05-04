@@ -32,11 +32,11 @@ class ReplTest extends FunSuite with BeforeAndAfterEach {
 
   val longExamples = Seq[(Seq[String], PartialFunction[RR, Unit])](
     Seq(
-      "let x = 1 ;;",
+      "let x = 1 ;",
       "x") -> { case RR.Value(_, 1, "int") => },
     Seq(
-      "data E = L int | R int ;;",
-      "let m ee = match ee | L x => 1 | _ => 2 ;;",
+      "data E = L int | R int ;",
+      "let m ee = match ee | L x => 1 | _ => 2 ;",
       "m (L 1)") -> { case RR.Value(_, 1, "int") => })
   longExamples.foreach {
     case (srcs, assertFun) =>
@@ -52,10 +52,10 @@ class ReplTest extends FunSuite with BeforeAndAfterEach {
   }
 
   test("name override") {
-    val res0 = repl.eval("let x = 1 ;;")
+    val res0 = repl.eval("let x = 1 ;")
     assert(res0 == Repl.Result.Value("x", 1, "int"))
 
-    val res1 = repl.eval("let x = 2 ;;")
+    val res1 = repl.eval("let x = 2 ;")
     assert(res1 == Repl.Result.Value("x", 2, "int"))
   }
 }

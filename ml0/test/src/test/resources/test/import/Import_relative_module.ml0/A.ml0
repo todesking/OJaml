@@ -1,5 +1,5 @@
 package test.ml0
 
 module A {
-  let a = 10 ;;
+  let a = 10 ;
 }

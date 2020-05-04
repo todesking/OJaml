@@ -1,8 +1,8 @@
 package test.ml0
 
 module LetDup {
-  let x = 2 ;;
-  let y = 3 ;;
-  let x = 4 ;;
+  let x = 2 ;
+  let y = 3 ;
+  let x = 4 ;
 (*    ^ *)
 }

@@ -3,6 +3,6 @@ package test.ml0
 import test.ml0.p1.A.x
 
 module B {
-  let y = x ;;
+  let y = x ;
   (* y: int = 10 *)
 }

@@ -4,7 +4,7 @@ import java.lang
 import lang.Integer
 
 module Import_relative_package {
-  let a = Integer##parseInt("123") ;;
+  let a = Integer##parseInt("123") ;
   (* a: int = 123 *)
 }
 

@@ -7,7 +7,7 @@ module App_error {
   let x =
     let f = fun x => x + 1 in
     let y = f 100 in
-    f "a" ;;
+    f "a" ;
 (*   ^ *)
 }
 

@@ -13,6 +13,6 @@ import test.ml0.{
 }
 
 module X {
-  let a = ax + by + z ;;
+  let a = ax + by + z ;
   (* a: int = 310 *)
 }

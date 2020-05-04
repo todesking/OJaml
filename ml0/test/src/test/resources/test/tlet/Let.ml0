@@ -1,6 +1,6 @@
 package test.ml0
 
 module Let {
-  let result = 2 ;;
+  let result = 2 ;
 }
 (* result: int = 2 *)

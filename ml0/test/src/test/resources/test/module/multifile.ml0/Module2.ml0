@@ -1,6 +1,6 @@
 package test.ml0.modules
 
 module Module2 {
-  let y = 32 ;;
+  let y = 32 ;
 }
 

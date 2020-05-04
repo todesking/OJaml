@@ -1,5 +1,5 @@
 package test.ml0
 
 module TExpr {
-  123 ;;
+  123 ;
 }

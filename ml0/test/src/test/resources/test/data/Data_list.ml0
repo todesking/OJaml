@@ -1,20 +1,20 @@
 package test.ml0
 
 module Data_list {
-  data List a = Cons a (List a) | Nil ;;
+  data List a = Cons a (List a) | Nil ;
 
-  let ilist = Cons 0 (Cons 1 (Cons 2 Nil)) ;;
+  let ilist = Cons 0 (Cons 1 (Cons 2 Nil)) ;
   (* ilist: List int = Cons 0 (Cons 1 (Cons 2 Nil)) *)
 
-  let blist = Cons true (Cons false Nil) ;;
+  let blist = Cons true (Cons false Nil) ;
   (* blist: List bool = Cons true (Cons false Nil) *)
 
   let head xs = match xs
-    | Cons x xs => x ;;
+    | Cons x xs => x ;
 
-  let hi = head ilist ;;
+  let hi = head ilist ;
   (* hi: int = 0 *)
 
-  let hb = head blist ;;
+  let hb = head blist ;
   (* hb: bool = true *)
 }

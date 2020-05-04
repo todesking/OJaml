@@ -3,10 +3,10 @@ package ml0.test
 
 (* NOTE: Initialize functions first(e.g. f, g, and then x) *)
 module Tlet_is_rec_by_default {
-  let f = fun x: int => g false x ;;
+  let f = fun x: int => g false x ;
 
-  let x = f true 100 ;;
+  let x = f true 100 ;
   (* x: int = 100 *)
 
-  let g = fun c: bool => fun x: int => if c then f x else x ;;
+  let g = fun c: bool => fun x: int => if c then f x else x ;
 }

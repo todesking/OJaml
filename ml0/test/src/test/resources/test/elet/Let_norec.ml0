@@ -12,7 +12,7 @@ module Let_norec {
     let a = 1 in
     let b = a in
     let a = a * 10 in
-    a + b ;;
+    a + b ;
   (* x: int = 11 *)
 }
 

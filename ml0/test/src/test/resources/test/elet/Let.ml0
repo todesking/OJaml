@@ -8,13 +8,13 @@ module Let {
   let x =
     let add = fun x: int => fun y: int => x + y in
     let add3 = add 3 in
-    add3 100 ;;
+    add3 100 ;
   (* x: int = 103 *)
 
   let y =
     let x = 1 in
     let y = 2 in
     let x = 3 in
-    x + y ;;
+    x + y ;
   (* y: int = 5 *)
 }

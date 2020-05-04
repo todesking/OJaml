@@ -17,7 +17,7 @@ module Let_rec {
         if n == 0 then false
         else is_even (n - 1)
     in
-      is_even 99 ;;
+      is_even 99 ;
   (* x: bool = false *)
 
   let y =
@@ -26,7 +26,7 @@ module Let_rec {
       else if n == 1 then 1
       else fact (n - 1) + fact (n - 2)
     in
-      fact 10 ;;
+      fact 10 ;
   (* y: int = 55 *)
 
   let z =
@@ -41,7 +41,7 @@ module Let_rec {
           if check x then 0
           else tmp * 10
       in
-        h 5 ;;
+        h 5 ;
   (* z: int = 510 *)
 
 

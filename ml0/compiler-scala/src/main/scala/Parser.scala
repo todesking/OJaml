@@ -79,7 +79,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   val var_name = small_name
   val tvar_name = small_name
 
-  val eot = ";;"
+  val eot = ";"
 
   // TODO: Support parenthesis
   def typename: Parser[TypeName] = rep1sep(typename_app | typename1, kwd("=>")) ^^ { ts =>

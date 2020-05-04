@@ -4,26 +4,26 @@ package test.ml0
 import com.todesking.ojaml.ml0.lib.Predef.+
 
 module Poly {
-  let id = fun x => x ;;
+  let id = fun x => x ;
   (* id: [?1] ?1 -> ?1 = * *)
 
-  let id2 = fun x => x ;;
+  let id2 = fun x => x ;
   (* id2: [?1] ?1 -> ?1 = * *)
 
-  let id3 = id2 ;;
+  let id3 = id2 ;
   (* id3: [?1] ?1 -> ?1 = * *)
 
-  let x_int = id 1 ;;
+  let x_int = id 1 ;
   (* x_int: int = 1 *)
 
-  let x_str = id "foo" ;;
+  let x_str = id "foo" ;
   (* x_str: java.lang.String = foo *)
 
   let y =
     let id = fun x => x in
     let x = id 1 in
     let y = id "foo" in
-    y ;;
+    y ;
   (* y: java.lang.String = foo *)
 
 }

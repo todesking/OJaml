@@ -1,6 +1,6 @@
 package test.ml0
 
 module A {
-  let x = 1 ;;
+  let x = 1 ;
   (* x: int = 1 *)
 }

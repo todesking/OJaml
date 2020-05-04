@@ -2,6 +2,6 @@ package test.ml0
 import A.{ICons, INil}
 
 module B {
-  let l = ICons 1 INil ;;
+  let l = ICons 1 INil ;
   (* l: * = ICons 1 INil *)
 }

@@ -2,8 +2,8 @@
 package ml0.test
 
 module Tlet_error1 {
-  let f = fun a: int => x ;;
-  let y = x ;;
+  let f = fun a: int => x ;
+  let y = x ;
   (*      ^ *)
-  let x = 10 ;;
+  let x = 10 ;
 }
