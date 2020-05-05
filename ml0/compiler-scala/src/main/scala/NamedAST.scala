@@ -14,8 +14,8 @@ object NamedAST {
   def prettyDoc(ast: NamedAST, paren: Boolean): Doc = ast match {
     case Module(pos, pkg, name, body) =>
       P.module(s"$pkg.$name", body.map(prettyDoc(_, false)))
-    case TLet(pos, name, expr) =>
-      P.tlet(name, None, prettyDoc(expr, false))
+    case TLet(pos, name, tpe, expr) =>
+      P.tlet(name, tpe.map(_.toString), prettyDoc(expr, false))
     case Data(pos, name, tpe, ctors) =>
       P.data(name, Seq(), ctors.map { case (n, ts) => (n.value, ts.map(_.toString)) })
     case TExpr(pos, e) =>
@@ -69,7 +69,7 @@ object NamedAST {
   }
 
   sealed abstract class Term extends NamedAST
-  case class TLet(pos: Pos, name: Name, expr: Expr) extends Term
+  case class TLet(pos: Pos, name: Name, tpe: Option[Type], expr: Expr) extends Term
   case class Data(pos: Pos, name: Name, tvars: Seq[Type.Var], ctors: Seq[(Name, Seq[Type])]) extends Term
   case class TExpr(pos: Pos, expr: Expr) extends Term
 

@@ -50,7 +50,7 @@ class Namer() {
           .fold[Result[Option[Type]]] { ok(None) } { x => x }
         c <- ctx.tlet(name)
       } yield {
-        (c.addModuleMember(name.value), NT.TLet(pos, name, e))
+        (c.addModuleMember(name.value), NT.TLet(pos, name, t, e))
       }
     case RT.Data(pos, name, tparams, ctors) =>
       for {

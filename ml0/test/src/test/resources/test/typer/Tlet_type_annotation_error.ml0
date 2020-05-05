@@ -2,5 +2,5 @@ package test.ml0
 
 module Tlet_type_annotation {
   let x: int = true ;
-  (*  ^ *)
+  (*          ^ *)
 }

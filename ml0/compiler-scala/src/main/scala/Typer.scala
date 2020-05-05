@@ -28,32 +28,35 @@ class Typer {
       .map(TT.Module(s.pos, s.pkg, s.name, _))
   }
 
-  private[this] def eval(ctx: Ctx, expr: NT.Expr): Result[TT.Expr] = {
-    appExpr(ctx, expr).map {
-      case (s, tree) =>
-        def tabs(e: TT.Expr) = {
-          val tvs = e.tpe.freeTypeVariables.toSeq.sortBy(_.id)
-          if (tvs.isEmpty) e
-          else TT.TAbs(expr.pos, tvs, e, Type.Abs(tvs, e.tpe))
-        }
-        subst(s, tree) match {
-          case expr @ (TT.Fun(_, _, _) | TT.ModuleVarRef(_, _, _, _)) =>
-            tabs(expr)
-          case x =>
-            // TODO: Is this really safe??
-            tabs(x)
-        }
+  private[this] def eval(ctx: Ctx, expr: NT.Expr, hint: Option[Type]): Result[TT.Expr] = {
+    for {
+      x <- appExpr(ctx, expr)
+      (s, tree) = x
+      s <- hint.fold(s) { t => s + (t -> tree.tpe) }.unify(expr.pos)
+    } yield {
+      def tabs(e: TT.Expr) = {
+        val tvs = e.tpe.freeTypeVariables.toSeq.sortBy(_.id)
+        if (tvs.isEmpty) e
+        else TT.TAbs(expr.pos, tvs, e, Type.Abs(tvs, e.tpe))
+      }
+      subst(s, tree) match {
+        case expr @ (TT.Fun(_, _, _) | TT.ModuleVarRef(_, _, _, _)) =>
+          tabs(expr)
+        case x =>
+          // TODO: Is this really safe??
+          tabs(x)
+      }
     }
   }
   def appTerm(ctx: Ctx, t: NT.Term): Result[(Ctx, Seq[TT.Term])] = t match {
-    case NT.TLet(pos, name, expr) =>
+    case NT.TLet(pos, name, tpe, expr) =>
       for {
-        e <- eval(ctx, expr)
-        c <- ctx.bindModuleValue(name, e.tpe)
+        e <- eval(ctx, expr, tpe)
+        ctx <- ctx.bindModuleValue(name, e.tpe)
       } yield {
         assertNoFVs(e, Set())
         val e2 = reindex(Subst.empty, 1, e)
-        (c, Seq(TT.TLet(pos, name, e2.tpe, Some(e2))))
+        (ctx, Seq(TT.TLet(pos, name, e2.tpe, Some(e2))))
       }
     case NT.Data(pos, name, tvars, ctors) =>
       def wrap(t: Type) = if (tvars.isEmpty) t else Type.Abs(tvars, t)
@@ -85,7 +88,7 @@ class Typer {
         (ctx, members :+ TT.Data(pos, name, tvars, ctorDefs))
       }
     case NT.TExpr(pos, e) =>
-      eval(ctx, e).map { e => (ctx, Seq(TT.TExpr(pos, e))) }
+      eval(ctx, e, None).map { e => (ctx, Seq(TT.TExpr(pos, e))) }
   }
 
   private[this] def ok(s: Subst, e: TT.Expr): Result[(Subst, TT.Expr)] =
