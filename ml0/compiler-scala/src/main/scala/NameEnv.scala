@@ -65,7 +65,7 @@ case class NameEnv(
     addRef(Ref.Member(module, name))
 
   private def addRef(ref: Ref): NameEnv = {
-    parentOf(ref).fold {
+    ref.parent.fold {
       // root package
       this
     } { parent =>
@@ -75,29 +75,7 @@ case class NameEnv(
 
   private def addHierarchy(parent: Ref, child: Ref): NameEnv = {
     val items = hierarchies.get(parent) getOrElse Map()
-    copy(hierarchies = hierarchies + (parent -> (items + (nameOf(child) -> child))))
-  }
-
-  def parentOf(ref: Ref): Option[Ref] = ref match {
-    case Ref.Package(pkg) =>
-      pkg.parentOption.map(Ref.Package(_))
-    case Ref.Klass(klass) =>
-      Some(Ref.Package(klass.pkg))
-    case Ref.Module(module) =>
-      Some(Ref.Package(module.pkg))
-    case Ref.Member(module, name) =>
-      Some(Ref.Module(module))
-  }
-
-  def nameOf(ref: Ref): String = ref match {
-    case Ref.Package(pkg) =>
-      pkg.parts.lastOption getOrElse ""
-    case Ref.Klass(klass) =>
-      klass.name
-    case Ref.Module(module) =>
-      module.name
-    case Ref.Member(module, name) =>
-      name
+    copy(hierarchies = hierarchies + (parent -> (items + (child.name -> child))))
   }
 
   def children(ref: Ref): Seq[Ref] =
@@ -108,7 +86,7 @@ case class NameEnv(
 
   def pretty: String = "NameEnv\n" + modules.sortBy(_.fullName).map { module =>
     s"  module $module\n" + children(Ref.Module(module)).map { member =>
-      val name = nameOf(member)
+      val name = member.name
       (
         findType(member).fold("") { tpe => s"    t: $name = $tpe\n" }
         + (if (valueExists(member)) s"    v: $name\n" else "")
@@ -120,21 +98,31 @@ case class NameEnv(
 object NameEnv {
   case class ModuleMember(name: String, ctorInfo: Option[Seq[Type]])
 
-  sealed abstract class Ref
+  sealed abstract class Ref {
+    def parent: Option[Ref]
+    def name: String
+  }
   object Ref {
     val rootPackage = Package(PackageRef.Root)
 
     case class Package(pkg: PackageRef) extends Ref {
       override def toString = s"package $pkg"
+      override def parent = pkg.parentOption.map(Package(_))
+      override def name = pkg.parts.lastOption getOrElse ""
     }
     case class Klass(klass: ClassRef) extends Ref {
       override def toString = s"class $klass"
+      override def parent = Some(Package(klass.pkg))
+      override def name = klass.name
     }
     case class Module(module: ModuleRef) extends Ref {
       override def toString = s"module $module"
+      override def parent = Some(Package(module.pkg))
+      override def name = module.name
     }
     case class Member(module: ModuleRef, name: String) extends Ref {
       override def toString = s"member $module.$name"
+      override def parent = Some(Module(module))
     }
   }
 }

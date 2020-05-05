@@ -317,7 +317,7 @@ object Namer {
     def addImport(i: Import): Result[Ctx] = i.flatten.foldLeftE(this) {
       case (ctx, Import.Single(qname, alias)) =>
         ctx.resolveRef(qname).map { ref =>
-          ctx.addImport(ref, alias.map(_.value) getOrElse env.nameOf(ref))
+          ctx.addImport(ref, alias.map(_.value) getOrElse ref.name)
         }
     }
 
