@@ -206,6 +206,10 @@ class Namer() {
 }
 
 object Namer {
+  val defaultImports = Map(
+      "bool" -> NameEnv.Ref.Member(PackageRef.root("ojaml").moduleRef("Primitives"), "Bool"),
+      "int" -> NameEnv.Ref.Member(PackageRef.root("ojaml").moduleRef("Primitives"), "Int"),
+    )
   case class Ctx(
     env: NameEnv,
     currentModule: ModuleRef,

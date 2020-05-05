@@ -96,7 +96,13 @@ case class NameEnv(
 }
 
 object NameEnv {
-  case class ModuleMember(name: String, ctorInfo: Option[Seq[Type]])
+  def defaultEnv(cp: Classpath): NameEnv = {
+    val primitivesModule = PackageRef.Root.packageRef("ojaml").moduleRef("Primitives")
+    new NameEnv(cp)
+      .addModule(primitivesModule)
+      .addTypeMember(primitivesModule, "Bool", Type.Bool)
+      .addTypeMember(primitivesModule, "Int", Type.Int)
+  }
 
   sealed abstract class Ref {
     def parent: Option[Ref]
