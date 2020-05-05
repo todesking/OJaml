@@ -13,7 +13,7 @@ object TypedAST {
     PrettyPrinter.pretty(80, prettyDoc(ast, false))
   def prettyDoc(ast: TypedAST, paren: Boolean): Doc = ast match {
     case Module(pos, pkg, name, body) =>
-      P.module(s"${pkg.value}.${name.value}", body.map(prettyDoc(_, false)))
+      P.module(s"$pkg.$name", body.map(prettyDoc(_, false)))
     case TLet(pos, name, tpe, expr) =>
       P.tlet(name, Some(tpe.toString), expr.map(prettyDoc(_, false)).getOrElse("".doc))
     case LitInt(pos, value) =>

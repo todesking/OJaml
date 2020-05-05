@@ -1,0 +1,6 @@
+package test.ml0
+
+module Tlet_type_annotation {
+  let x: java.foo.Type = 1 ;
+  (*          ^ *)
+}

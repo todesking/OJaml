@@ -1,0 +1,22 @@
+package test.ml0
+
+import java.lang
+
+module Tlet_type_annotation {
+  data D = D int ;
+
+  let x: int = 10 ;
+  (* x: int = 10 *)
+
+  let y: java.lang.String = "y" ;
+  (* y: java.lang.String = y *)
+
+  let z: lang.String = "z" ;
+  (* z: java.lang.String = z *)
+
+  let d1: D = D 1 ;
+  (* d1: D = D 1 *)
+
+  let d2: Tlet_type_annotation.D = D 2 ;
+  (* d2: D = D 2 *)
+}

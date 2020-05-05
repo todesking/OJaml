@@ -34,10 +34,10 @@ object P {
     }
 
   def pkg(name: QName): Doc =
-    Doc.Text(s"package ${name.value}")
+    Doc.Text(s"package $name")
   def imports(items: Seq[Import]): Doc =
     bgroup(items.flatMap(_.flatten).map { x =>
-      Doc.Text(s"import ${x.qname.value}")
+      Doc.Text(s"import ${x.qname}")
     })
   def module(name: String, body: Seq[Doc]) =
     bgroup(

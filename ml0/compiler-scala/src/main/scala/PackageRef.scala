@@ -7,15 +7,20 @@ sealed abstract class PackageRef {
   def classRef(name: String) = ClassRef(this, name)
   def moduleRef(name: String) = ModuleRef(this, name)
   def packageRef(name: String) = PackageRef.Child(this, name)
-  override def toString = s"PackageRef($fullName)"
+  def parentOption: Option[PackageRef]
+  override def toString = fullName
 }
 object PackageRef {
+  def root(name: String) = Root.packageRef(name)
+
   case object Root extends PackageRef {
     override def parts: Seq[Nothing] = Seq()
+    override def parentOption = None
   }
   case class Child(parent: PackageRef, name: String) extends PackageRef {
     require(!name.contains(".") && !name.contains("/"), name)
     override def parts: Seq[String] = parent.parts :+ name
+    override def parentOption = Some(parent)
   }
 
   // TODO: Handle ""

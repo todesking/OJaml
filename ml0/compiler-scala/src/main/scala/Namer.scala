@@ -5,25 +5,30 @@ import Result.error
 import Result.validate
 import com.todesking.ojaml.ml0.compiler.scala.{ RawAST => RT, NamedAST => NT }
 import Namer.Ctx
-import Namer.ValueLike
 
 import util.Syntax._
 
+import NameEnv.Ref
+
 class Namer() {
 
-  def appProgram(p: RT.Program, packageEnv: NameEnv): Result[(NameEnv, Seq[NT.Module])] =
-    p.items.mapWithContextEC(packageEnv) { (penv, x) =>
-      appModule(p.pkg, p.imports, penv, x).map {
+  def appProgram(p: RT.Program, env: NameEnv): Result[(NameEnv, Seq[NT.Module])] =
+    p.items.mapWithContextEC(env) { (env, x) =>
+      appModule(p.pkg, p.imports, env, x).map {
         case (pe, named) =>
           (pe, named)
       }
     }
 
-  private[this] def appModule(pkg: QName, imports: Seq[Import], penv: NameEnv, s: RT.Module): Result[(NameEnv, NT.Module)] = {
+  private[this] def appModule(pkg: QName, imports: Seq[Import], env: NameEnv, s: RT.Module): Result[(NameEnv, NT.Module)] = {
     val currentModule = ModuleRef(PackageRef.fromInternalName(pkg.internalName), s.name.value)
-    if (penv.memberExists(currentModule.pkg, currentModule.name))
+    if(env.exists(currentModule.pkg, currentModule.name))
       return error(s.name.pos, s"${currentModule.fullName} already defined")
-    val init = Ctx(penv.addModule(currentModule), currentModule)
+    val init =Ctx(env.addModule(currentModule), currentModule)
+      .copy(imports = Map(
+        "bool" -> NameEnv.Ref.Member(PackageRef.root("ojaml").moduleRef("Primitives"), "Bool"),
+        "int" -> NameEnv.Ref.Member(PackageRef.root("ojaml").moduleRef("Primitives"), "Int"),
+      ))
     imports.foldLeft(Result.ok(init)) { (c, i) =>
       c.flatMap(_.addImport(i))
     }.flatMap { ctx =>
@@ -32,15 +37,17 @@ class Namer() {
           appTerm(c, t)
       }.map {
         case (c, ts) =>
-          (c.penv, NT.Module(s.pos, pkg, s.name, ts))
+          (c.env, NT.Module(s.pos, pkg, s.name, ts))
       }
     }
   }
 
   private[this] def appTerm(ctx: Ctx, t: RT.Term): Result[(Ctx, NT.Term)] = t match {
-    case RT.TLet(pos, name, expr) =>
+    case RT.TLet(pos, name, tname, expr) =>
       for {
         e <- appExpr(ctx, expr)
+        t <- tname.map { tn => ctx.resolveType(tn).map(Some(_)) }
+          .fold[Result[Option[Type]]] { ok(None) } { x => x }
         c <- ctx.tlet(name)
       } yield {
         (c.addModuleMember(name.value), NT.TLet(pos, name, e))
@@ -54,11 +61,11 @@ class Namer() {
         }
         resolvedCtors <- ctors.map {
           case (name, params) =>
-            params.map { tname => boundCtx.findType(tname) }.validated.map { ts => (name, ts) }
+            params.map { tname => boundCtx.resolveType(tname) }.validated.map { ts => (name, ts) }
         }.validated
-        ctx2 <- resolvedCtors
-          .foldLeftE(ctx) { case (c, (n, ts)) => c.addCtor(name.value, tvars, n.value, ts) }
-      } yield (ctx2, NT.Data(pos, name, tvars, resolvedCtors))
+        ctx <- resolvedCtors
+          .foldLeftE(ctx) { case (c, (n, ts)) => c.addCtor(n.value, ts.size) }
+      } yield (ctx, NT.Data(pos, name, tvars, resolvedCtors))
     case RT.TExpr(pos, expr) =>
       for {
         e <- appExpr(ctx, expr)
@@ -67,13 +74,7 @@ class Namer() {
 
   private[this] def appExpr(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = expr match {
     case RT.Ref(pos, name) =>
-      valueLike(ctx, expr)
-        .flatMap(_.toValue(name.pos, s"${name.value} is not a value"))
-        .map(NT.Ref(pos, _))
-    case RT.Prop(pos, e, n) =>
-      valueLike(ctx, expr)
-        .flatMap(_.toValue(n.pos, s"${n.value} is not a value"))
-        .map(NT.Ref(pos, _))
+      ctx.resolveValue(name).map(NT.Ref(pos, _))
     case RT.LitInt(pos, v) => ok(NT.LitInt(pos, v))
     case RT.LitBool(pos, v) => ok(NT.LitBool(pos, v))
     case RT.LitString(pos, v) => ok(NT.LitString(pos, v))
@@ -85,7 +86,7 @@ class Namer() {
       } yield NT.If(pos, e0, e1, e2)
     case RT.Fun(pos, name, tpeName, body) =>
       for {
-        tpe <- tpeName.mapResult(ctx.findType)
+        tpe <- tpeName.mapResult(ctx.resolveType)
         (ref, c) = ctx.bindLocal(name.value)
         tbody <- appExpr(c, body)
       } yield {
@@ -95,7 +96,7 @@ class Namer() {
       for {
         x <- ctx.bindLocals(bs.map(_._1))
         (refs, c) = x
-        ts <- validate(bs.map(_._2).map(_.mapResult(c.findType)))
+        ts <- validate(bs.map(_._2).map(_.mapResult(c.resolveType)))
         vs <- validate(bs.map(_._3).map(appExpr(c, _))).map(_.map(_.asInstanceOf[NT.Fun]))
         b <- appExpr(c, body)
       } yield NT.ELetRec(pos, refs.zip(ts).zip(vs).map { case ((r, t), v) => (r, t, v) }, b)
@@ -113,23 +114,22 @@ class Namer() {
         e1 <- appExpr(ctx, x)
       } yield NT.App(pos, e0, e1)
     case RT.JCall(pos, expr, name, args, isStatic) =>
-      validate(args.map(appExpr(ctx, _))).flatMap { targs =>
+      validate(args.map(appExpr(ctx, _))).flatMap { args =>
         if (isStatic) {
-          valueLike(ctx, expr).flatMap {
-            case ValueLike.TopLevel(ref) => ref match {
-              case PackageMember.Class(ref) =>
-                ok(NT.JCallStatic(pos, ref, name, targs))
-              case PackageMember.Module(ref) =>
-                error(name.pos, "Module is not a class")
-              case PackageMember.Package(ref) =>
-                error(name.pos, "Package is not a class")
-            }
-            case ValueLike.Value(ref, _) =>
-              error(name.pos, "Value is not a class")
+          expr match {
+            case RT.Ref(pos, qname) =>
+              ctx.resolveSimpleType(qname).flatMap {
+                case Type.Klass(klass) =>
+                  ok(NT.JCallStatic(pos, klass, name, args))
+                case tpe =>
+                  error(pos, "Static call: Class name required")
+              }
+            case expr =>
+              error(expr.pos, "Static method call: Class name required")
           }
         } else {
           appExpr(ctx, expr).map { receiver =>
-            NT.JCallInstance(pos, receiver, name, targs)
+            NT.JCallInstance(pos, receiver, name, args)
           }
         }
       }
@@ -176,115 +176,94 @@ class Namer() {
     case RT.Pat.Capture(pos, name) =>
       ok((NT.LitBool(pat.pos, true), Seq(name -> target)))
     case RT.Pat.Ctor(pos, name, args) =>
-      ctx.locateCtor(Name(pos, name))
-        .flatMap {
-          case (module, ctorName) =>
-            val checkerRef = VarRef.ModuleMember(module, ctx.patCheckerName(ctorName))
-            val extractorRefs = args.zipWithIndex.map {
-              case (_, i) =>
-                VarRef.ModuleMember(module, ctx.patExtractorName(ctorName, i))
-            }
-
-            val rootChecker = NT.App(pat.pos, NT.Ref(pat.pos, checkerRef), target)
-            extractorRefs.zip(args).map {
-              case (extractor, arg) =>
-                appPat(ctx, arg, NT.App(arg.pos, NT.Ref(arg.pos, extractor), target))
-            }.validated.map { subPatterns =>
+      // TODO: Support qname
+      for {
+        x <- ctx.resolveCtor(QName(Seq(Name(pos, name))))
+        (module, ctorName, arity) = x
+        _ <-
+          if(args.size == arity) ok(())
+          else error(pos, s"Ctor $ctorName has arity $arity but argument size is ${args.size}")
+        checkerRef = VarRef.ModuleMember(module, ctx.patCheckerName(ctorName))
+        extractorRefs = args.zipWithIndex.map {
+          case (_, i) =>
+            VarRef.ModuleMember(module, ctx.patExtractorName(ctorName, i))
+        }
+        rootChecker = NT.App(pat.pos, NT.Ref(pat.pos, checkerRef), target)
+        subPatterns <-
+          extractorRefs.zip(args).map {
+            case (extractor, arg) =>
+              appPat(ctx, arg, NT.App(arg.pos, NT.Ref(arg.pos, extractor), target))
+          }.validated
+      } yield {
               val checker = subPatterns.map(_._1).foldLeft(rootChecker: NT.Expr) {
                 case (l, r) =>
                   NT.If(r.pos, l, r, NT.LitBool(r.pos, false))
               }
               val extractor = subPatterns.flatMap(_._2)
               (checker, extractor)
-            }
-        }
-  }
-
-  private[this] def valueLike(ctx: Ctx, expr: RT.Expr): Result[ValueLike] = expr match {
-    case RT.Ref(pos, name) =>
-      ctx.findValue(name.value)
-        .toResult(name.pos, s"Value ${name.value} is not found")
-    case RT.Prop(pos, e, n) =>
-      valueLike(ctx, e).flatMap {
-        case ValueLike.TopLevel(ref) => ref match {
-          case PackageMember.Class(c) =>
-            error(n.pos, s"Property not supported for class")
-          case PackageMember.Package(p) =>
-            ctx.findPackageMember(p, n.value)
-              .map(ValueLike.TopLevel)
-              .toResult(n.pos, s"Member ${n.value} is not found in package ${p.fullName}")
-          case PackageMember.Module(m) =>
-            ctx.findModuleMember(m, n).map(ValueLike.Value(_, None))
-        }
-        case ValueLike.Value(ref, _) =>
-          error(n.pos, s"Property of value is not supported")
       }
-    case expr =>
-      throw new AssertionError(expr.toString)
   }
 }
 
 object Namer {
-  sealed abstract class ValueLike {
-    def toValue(pos: Pos, msg: String): Result[VarRef]
-  }
-  object ValueLike {
-    case class TopLevel(ref: PackageMember) extends ValueLike {
-      override def toValue(pos: Pos, msg: String) = error(pos, msg)
-    }
-    case class Value(ref: VarRef, ctor: Option[(ModuleRef, String, Seq[Type])]) extends ValueLike {
-      override def toValue(pos: Pos, msg: String) = ok(ref)
-    }
-  }
-
   case class Ctx(
-    penv: NameEnv,
+    env: NameEnv,
     currentModule: ModuleRef,
-    venv: Map[String, ValueLike] = Map(),
+    imports: Map[String, Ref] = Map(),
+    values: Map[String, VarRef] = Map(),
     stack: List[Ctx] = Nil,
     localTypes: Map[String, Type] = Map()) {
     val depth: Int = stack.size
 
     def tlet(name: Name): Result[Ctx] = {
       require(stack.isEmpty)
-      val varRef = VarRef.ModuleMember(currentModule, name.value)
-      if (venv.get(name.value).exists(_ == varRef))
-        error(name.pos, s"""Name "${name.value}" is already defined in ${currentModule.name}""")
+      if(env.valueExists(currentModule, name.value))
+        error(name.pos, s"Name $name is already defined in ${currentModule.name}")
       else
-        ok(copy(venv = venv + (varRef.name -> ValueLike.Value(varRef, None))))
+        ok(copy(env = env.addValueMember(currentModule, name.value)))
     }
 
-    def findValue(name: String): Option[ValueLike] =
-      venv.get(name) orElse penv.findModuleMember(currentModule, name).map {
-        case NameEnv.ModuleMember(name, ctorInfo) =>
-          val info = ctorInfo.map { args => (currentModule, name, args) }
-          ValueLike.Value(VarRef.ModuleMember(currentModule, name), info)
-      } orElse {
-        penv.findMember(currentModule.pkg, name)
-          .orElse(penv.findMember(PackageRef.Root, name))
-          .map(ValueLike.TopLevel.apply)
+    def resolveRef(qname: QName): Result[Ref] =
+      resolveRootRef(qname.parts.head).flatMap { root =>
+        resolveRef(root, qname.parts.tail.toList)
       }
 
-    def findPackageMember(pkg: PackageRef, name: String): Option[PackageMember] =
-      penv.findMember(pkg, name)
+    private[this] def resolveRef(root: Ref, parts: List[Name]): Result[Ref] = parts match {
+      case Nil => ok(root)
+      case x :: xs =>
+        env.findRef(root, x.value)
+          .toResult(x.pos, s"Name `$x` is not found in $root")
+          .flatMap { ref =>
+            resolveRef(ref, xs)
+          }
+    }
 
-    def findType(tname: TypeName): Result[Type] = tname match {
-      case TypeName.Atom(pos, n) => n match {
-        case n if localTypes.contains(n) => // TODO: Support qualified type name
-          ok(localTypes(n))
-        case "int" => ok(Type.Int)
-        case "bool" => ok(Type.Bool)
-        case unk => error(tname.pos, s"Type not found: $unk")
-      }
+    private[this] def resolveRootRef(name: Name): Result[Ref] =
+      (
+        env.findRef(Ref.Module(currentModule), name.value)
+        orElse imports.get(name.value)
+        orElse env.findRef(Ref.Package(currentModule.pkg), name.value)
+        orElse env.findRef(name.value)
+      ).toResult(name.pos, s"Name $name not found")
+
+    def resolveSimpleType(qname: QName): Result[Type] = (
+      (if(qname.size == 1) localTypes.get(qname.head.value).map(ok(_)) else None)
+      getOrElse resolveRef(qname)
+        .flatMap { ref => env.findType(ref).toResult(qname.pos, s"$qname is not a type") }
+    )
+
+    def resolveType(tname: TypeName): Result[Type] = tname match {
+      case TypeName.Atom(pos, n) =>
+        resolveSimpleType(n)
       case TypeName.Fun(l, r) =>
         for {
-          tl <- findType(l)
-          tr <- findType(r)
+          tl <- resolveType(l)
+          tr <- resolveType(r)
         } yield Type.Fun(tl, tr)
       case TypeName.App(pos, n, ns) =>
         for {
-          t <- findType(n)
-          args <- ns.map(findType).validated
+          t <- resolveType(n)
+          args <- ns.map(resolveType).validated
           applied <- t match {
             case Type.Abs(params, body) =>
               if (params.size != args.size)
@@ -297,69 +276,56 @@ object Namer {
         } yield applied
     }
 
+    def resolveValue(qname: QName): Result[VarRef] = (
+      (if(qname.size == 1) values.get(qname.head.value).map(ok(_)) else None)
+      getOrElse resolveRef(qname).flatMap {
+        case Ref.Member(module, name) =>
+          if(env.valueExists(module, name))
+            ok(VarRef.ModuleMember(module, name))
+          else
+            error(qname.lastPartPos, s"Member $module.$name is not a value")
+        case ref =>
+          error(qname.lastPartPos, s"$ref is not a value")
+      }
+    )
+
     def bindLocal(name: String): (VarRef.Local, Ctx) = {
       val ref = VarRef.Local(depth + 1, 0)
       (ref, copy(
-        venv = venv + (name -> ValueLike.Value(ref, None)),
+        values  = values + (name -> ref),
         stack = this :: stack))
     }
 
     def bindLocals(names: Seq[Name]): Result[(Seq[VarRef.Local], Ctx)] = {
-      names.mapWithContextE(Set.empty[String]) { (a, name) =>
-        if (a.contains(name.value))
-          error(name.pos, s"Name conflict: ${name.value}")
-        else
-          ok((a + name.value, name.value))
-      }.map { ns =>
-        val refs = ns.zipWithIndex.map { case (_, i) => VarRef.Local(depth + 1, i + 1) }
+      names.foldLeftE(Set.empty[String]) { (ns, n) =>
+        if(ns.contains(n.value)) error(n.pos, s"Name conflict: $n")
+        else ok(ns + n.value)
+      }.map { _ =>
+        val refs = names.zipWithIndex.map { case (_, i) => VarRef.Local(depth + 1, i + 1) }
         val c = copy(
-          venv = venv ++ ns.zip(refs.map(ValueLike.Value(_, None))),
+          values = values ++ names.map(_.value).zip(refs),
           stack = this :: stack)
         (refs, c)
       }
     }
 
-    def addModuleMember(name: String): Ctx = copy(penv = penv.addModuleMember(currentModule, name, None))
-    def findModuleMember(m: ModuleRef, name: Name): Result[VarRef.ModuleMember] =
-      if (penv.moduleMemberExists(m, name.value))
-        ok(VarRef.ModuleMember(m, name.value))
-      else
-        error(name.pos, s"Member ${name.value} is not found in module ${m.fullName}")
+    def addModuleMember(name: String): Ctx = {
+      require(stack.isEmpty)
+      copy(env = env.addValueMember(currentModule, name))
+    }
 
     def addImport(i: Import): Result[Ctx] = i.flatten.foldLeftE(this) {
       case (ctx, Import.Single(qname, alias)) =>
-        val nameParts = qname.parts
-        val aliasName = alias.map(_.value) getOrElse nameParts.last.value
-        ctx.findValue(nameParts.head.value)
-          .toResult(nameParts.head.pos, s"Member not found: ${nameParts.head.value}")
-          .flatMap { head =>
-            nameParts.tail.foldLeft[Result[ValueLike]](ok(head)) { (v, n) =>
-              v.flatMap {
-                case ValueLike.TopLevel(pm) => pm match {
-                  case PackageMember.Package(ref) =>
-                    ctx.findPackageMember(ref, n.value)
-                      .toResult(n.pos, s"Package member not found: ${n.value}")
-                      .map(ValueLike.TopLevel)
-                  case PackageMember.Module(m) =>
-                    penv.findModuleMember(m, n.value).map {
-                      case NameEnv.ModuleMember(name, ctorInfo) =>
-                        val info = ctorInfo.map { args => (m, name, args) }
-                        ValueLike.Value(VarRef.ModuleMember(m, name), info)
-                    }.toResult(n.pos, s"Member ${n.value} is not found in module $m")
-                  case PackageMember.Class(ref) =>
-                    error(n.pos, s"${ref.fullName} is class and field reference not supported")
-                }
-                case ValueLike.Value(ref, _) =>
-                  error(n.pos, "Property of value is not importable")
-              }
-            }.map { v =>
-              ctx.copy(venv = ctx.venv + (aliasName -> v))
-            }
-          }
+        ctx.resolveRef(qname).map { ref =>
+          ctx.addImport(ref, alias.map(_.value) getOrElse env.nameOf(ref))
+        }
     }
 
+    def addImport(ref: Ref, name: String): Ctx =
+      copy(imports = imports + (name -> ref))
+
     def addDataType(name: Name, params: Seq[Name]): Result[Ctx] = {
-      if (localTypes.contains(name.value)) {
+      if(env.typeExists(currentModule, name.value)) {
         error(name.pos, s"Type ${name.value} is already defined")
       } else {
         val tpe =
@@ -369,8 +335,7 @@ object Namer {
             Type.Abs(tvars, Type.Data(currentModule, name.value, tvars))
           }
         val c = copy(
-          localTypes = localTypes + (name.value -> tpe),
-          penv = penv.addModuleTypeMember(currentModule, name.value))
+          env = env.addTypeMember(currentModule, name.value, tpe))
         ok(c)
       }
     }
@@ -379,22 +344,16 @@ object Namer {
 
     def patCheckerName(name: String) = s"${name}$$check"
     def patExtractorName(name: String, i: Int) = s"$name$$get$i"
-    def addCtor(dataName: String, tvars: Seq[Type.Var], ctorName: String, ts: Seq[Type]): Result[Ctx] = {
-      // TODO: check duplicate
-      val ctorRef = ValueLike.Value(VarRef.ModuleMember(currentModule, ctorName), Some((currentModule, ctorName, ts)))
-      val newPenv = penv.addModuleMember(currentModule, ctorName, Some(ts))
-      ok(copy(venv = venv + (ctorName -> ctorRef), penv = newPenv))
+
+    def addCtor(name: String, arity: Int): Result[Ctx] = {
+      require(stack.isEmpty)
+      ok(copy(env = env.addCtorMember(currentModule, name, arity)))
     }
-    def locateCtor(name: Name): Result[(ModuleRef, String)] = findValue(name.value)
-      .toResult(name.pos, s"Data constructor not found: ${name.value}")
-      .flatMap {
-        case ValueLike.TopLevel(_) =>
-          error(name.pos, s"${name.value} is toplevel value, not a data constructor")
-        case ValueLike.Value(ref, None) =>
-          println(venv)
-          error(name.pos, s"$ref is not a data constructor")
-        case ValueLike.Value(ref, Some((module, ctorName, args))) =>
-          ok((module, ctorName))
+
+    def resolveCtor(qname: QName): Result[(ModuleRef, String, Int)] =
+      resolveRef(qname).flatMap { ref =>
+        env.findCtor(ref)
+          .toResult(qname.lastPartPos, s"${qname.last} is not a constructor")
       }
   }
 }

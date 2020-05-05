@@ -9,8 +9,8 @@ object TypeName {
   private[this] def wrap(group: Boolean, naked: String) =
     if (group) s"($naked)" else naked
 
-  case class Atom(pos: Pos, name: String) extends TypeName {
-    override def toString(group: Boolean) = name
+  case class Atom(pos: Pos, qname: QName) extends TypeName {
+    override def toString(group: Boolean) = qname.toString
   }
   // TOTO: Make pos to point "=>"
   case class Fun(l: TypeName, r: TypeName) extends TypeName {

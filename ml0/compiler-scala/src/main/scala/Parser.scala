@@ -76,7 +76,8 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   val qname: Parser[QName] = rep1sep(name, ".") ^^ { case xs => QName(xs) }
 
   val ctor_name = capital_name
-  val var_name = small_name
+  val var_name = normal_name
+  val var_qname = rep1sep(normal_name, ".") ^^ { case xs => QName(xs) }
   val tvar_name = small_name
 
   val eot = ";"
@@ -87,7 +88,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   }
   def typename1: Parser[TypeName] = typename_atom | typename_group
   def typename_app = typename_atom ~ rep1(typename1) ^^ { case n ~ args => TypeName.App(n.pos, n, args) }
-  def typename_atom = name ^^ { n => TypeName.Atom(n.pos, n.value) }
+  def typename_atom = qname ^^ { n => TypeName.Atom(n.pos, n) }
   def typename_group = ("(" ~> typename) <~ ")"
 
   lazy val program: Parser[RawAST.Program] = withpos(pkg ~ rep(`import`) ~ rep1(module)) { case (pos, p ~ is ~ ss) => T.Program(pos, p, is, ss) }
@@ -101,11 +102,14 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   }
 
   def term: Parser[T.Term] = tlet | data | texpr
-  def tlet: Parser[RawAST.TLet] = withpos((kwd("let") ~> name) ~ (fun_params.? <~ "=") ~ expr <~ eot) {
-    case (pos, n ~ None ~ e) =>
-      T.TLet(pos, n, e)
-    case (pos, name ~ Some(params) ~ expr) =>
-      T.TLet(pos, name, mkLetBody(params, expr))
+  def tlet: Parser[RawAST.TLet] = tlet_fun | tlet_generic
+  val tlet_generic: Parser[RawAST.TLet] = withpos((kwd("let") ~> name) ~ (":" ~> typename).? ~ ("=" ~> expr) <~ eot) {
+    case (pos, n ~ tn ~ e) =>
+      T.TLet(pos, n, tn, e)
+  }
+  val tlet_fun: Parser[RawAST.TLet] = withpos((kwd("let") ~> name) ~ (":" ~> typename1).? ~ (fun_params1 <~ "=") ~ expr <~ eot) {
+    case (pos, name ~ tn ~ params ~ expr) =>
+      T.TLet(pos, name, tn, mkLetBody(params, expr))
   }
 
   private[this] def mkLetBody(params: Seq[Name ~ Option[TypeName]], body: T.Expr): T.Expr = params match {
@@ -142,7 +146,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
               op.pos,
               T.App(
                 op.pos,
-                T.Ref(op.pos, op),
+                T.Ref(op.pos, QName(Seq(op))),
                 l),
               r)
         }
@@ -159,7 +163,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   def expr3: Parser[RawAST.Expr] = ematch | eif | fun | eletr | elet | app
 
-  lazy val expr4: Parser[RawAST.Expr] = expr5 ~ jcall.? ^^ {
+  lazy val expr4: Parser[RawAST.Expr] = expr6 ~ jcall.? ^^ {
     case e ~ None => e
     case e ~ Some("#" ~ n ~ args) => T.JCall(n.pos, e, n, args, false)
     case e ~ Some("##" ~ n ~ args) => T.JCall(n.pos, e, n, args, true)
@@ -167,12 +171,6 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   }
 
   lazy val jcall: Parser[String ~ Name ~ List[RawAST.Expr]] = ("##" | "#") ~ name ~ ("(" ~> repsep(expr, ",") <~ ")")
-
-  def expr5: Parser[RawAST.Expr] = expr6 ~ prop.? ^^ {
-    case e ~ None => e
-    case e ~ Some(ns) => ns.foldLeft(e) { (e, n) => T.Prop(n.pos, e, n) }
-  }
-  val prop: Parser[List[Name]] = "." ~> rep1sep(name, ".")
 
   def expr6: Parser[RawAST.Expr] = paren | lit_bool | lit_int | lit_string | var_ref
 
@@ -188,6 +186,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   val lit_bool: Parser[RawAST.LitBool] = withpos(("true" | "false")) {
     case (pos, "true") => T.LitBool(pos, true)
     case (pos, "false") => T.LitBool(pos, false)
+    case _ => throw new AssertionError()
   }
   val lit_string: Parser[RawAST.LitString] =
     withpos(("\"" ~> """[^"]+""".r) <~ "\"") { (pos, s) => T.LitString(pos, s) }
@@ -200,7 +199,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
   }
   def fun_params1 = rep1(normal_name ~ (":" ~> typename1).?)
   def fun_params = rep(normal_name ~ (":" ~> typename1).?)
-  val var_ref: Parser[RawAST.Ref] = normal_name ^^ { n => T.Ref(n.pos, n) }
+  val var_ref: Parser[RawAST.Ref] = var_qname ^^ { n => T.Ref(n.pos, n) }
   val eletr: Parser[RawAST.ELetRec] = withpos((kwd("let") ~ kwd("rec") ~> rep1sep(letrec_binding, ";")) ~ (kwd("in") ~> expr)) {
     case (pos, bs ~ body) =>
       T.ELetRec(pos, bs, body)

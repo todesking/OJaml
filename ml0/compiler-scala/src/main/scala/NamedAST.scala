@@ -13,7 +13,7 @@ object NamedAST {
     PrettyPrinter.pretty(80, prettyDoc(ast, false))
   def prettyDoc(ast: NamedAST, paren: Boolean): Doc = ast match {
     case Module(pos, pkg, name, body) =>
-      P.module(s"${pkg.value}.${name.value}", body.map(prettyDoc(_, false)))
+      P.module(s"$pkg.$name", body.map(prettyDoc(_, false)))
     case TLet(pos, name, expr) =>
       P.tlet(name, None, prettyDoc(expr, false))
     case Data(pos, name, tpe, ctors) =>

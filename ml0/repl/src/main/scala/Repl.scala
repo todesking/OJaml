@@ -45,8 +45,9 @@ class Repl extends Closeable {
   def evalPredef(): Unit = {
     val predefContent = Source.readResource(getClass.getClassLoader, "lib/Predef.ml0")
     compiler.typeContents(env, Seq(predefContent)).fold { errors =>
+      println("Compile error in Predef:")
       errors.foreach { e =>
-        println(e)
+        println(s"${e.pos} ${e.message}")
       }
     } {
       case (newEnv, trees) =>
@@ -71,7 +72,7 @@ class Repl extends Closeable {
   private[this] def input(tree: ojaml.RawAST.Term): Input = {
     import ojaml.{ RawAST => RT }
     tree match {
-      case tree @ RT.TLet(_, name, expr) => Input.Let(name.value, tree)
+      case tree @ RT.TLet(_, name, tname, expr) => Input.Let(name.value, tree)
       case tree @ RT.Data(_, name, tvars, ctors) => Input.Data(ctors.map(_._1.value), tree)
       case tree @ RT.TExpr(_, expr) => Input.Expr(s"res$nextIndex", expr)
     }
@@ -152,7 +153,7 @@ class Repl extends Closeable {
     parse(code).flatMap { in =>
       val (statement, names) = in match {
         case Input.Data(cnames, tree) => (tree, cnames)
-        case Input.Expr(name, tree) => (RT.TLet(fakePos, mkName(name), tree), Seq(name))
+        case Input.Expr(name, tree) => (RT.TLet(fakePos, mkName(name), None, tree), Seq(name))
         case Input.Let(name, tree) => (tree, Seq(name))
       }
       compile(statement).map {

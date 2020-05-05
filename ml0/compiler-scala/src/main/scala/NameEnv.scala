@@ -3,82 +3,138 @@ package com.todesking.ojaml.ml0.compiler.scala
 import util.Syntax._
 
 import NameEnv._
+import NameEnv.Ref
+
 case class NameEnv(
   cr: Classpath,
-  moduleMembers: Map[ModuleRef, Map[String, ModuleMember]] = Map(),
-  moduleTypeMembers: Map[ModuleRef, Set[String]] = Map()) {
-  def findMember(pkg: PackageRef, name: String): Option[PackageMember] = {
-    if (modules.get(pkg).exists(_.contains(name)))
-      Some(PackageMember.Module(ModuleRef(pkg, name)))
-    else if (cr.classExists(pkg, name))
-      Some(PackageMember.Class(ClassRef(pkg, name)))
-    else if (packageExists(pkg, name))
-      Some(PackageMember.Package(pkg.packageRef(name)))
-    else
-      None
+  hierarchies: Map[Ref, Map[String, Ref]] = Map(),
+  types: Map[Ref, Type] = Map(),
+  values: Set[Ref] = Set(),
+  ctors: Map[Ref, (ModuleRef, String, Int)] = Map()) {
+  def findRef(name: String): Option[Ref] =
+    findRef(Ref.rootPackage, name)
+
+  def findRef(parent: Ref, name: String): Option[Ref] = (
+    hierarchies.get(parent).flatMap(_.get(name))
+    orElse (parent match {
+      case Ref.Package(pkg) =>
+        if (cr.packageExists(pkg, name)) Some(Ref.Package(pkg.packageRef(name)))
+        else if (cr.classExists(pkg, name)) Some(Ref.Klass(pkg.classRef(name)))
+        else None
+      case Ref.Klass(klass) => None
+      case Ref.Module(module) => None
+      case Ref.Member(module, name) => None
+    }))
+
+  def exists(pkg: PackageRef, name: String): Boolean =
+    findRef(Ref.Package(pkg), name).nonEmpty
+
+  def findType(ref: Ref): Option[Type] = ref match {
+    case Ref.Klass(klass) => Some(Type.Klass(klass))
+    case _ => types.get(ref)
   }
-  def findModuleMember(module: ModuleRef, name: String): Option[ModuleMember] =
-    for {
-      m <- moduleMembers.get(module)
-      mm <- m.get(name)
-    } yield mm
 
-  lazy val modulePackages: Set[PackageRef] = moduleMembers.keys.flatMap { m =>
-    m.pkg.parts.inits.map(PackageRef.fromParts)
-  }.toSet
+  def valueExists(ref: Ref): Boolean =
+    values.contains(ref)
 
-  lazy val modules: Map[PackageRef, Set[String]] = moduleMembers.keys.map { m =>
-    m.pkg -> m.name
-  }.groupBy(_._1).map { case (p, ns) => p -> ns.map(_._2).toSet }
+  def valueExists(module: ModuleRef, name: String): Boolean =
+    valueExists(Ref.Member(module, name))
 
-  def packageExists(pkg: PackageRef, name: String): Boolean =
-    cr.packageExists(pkg, name) || modulePackages.contains(pkg.packageRef(name))
+  def typeExists(module: ModuleRef, name: String): Boolean =
+    findType(Ref.Member(module, name)).nonEmpty
 
-  def memberExists(pkg: PackageRef, name: String): Boolean =
-    findMember(pkg, name).nonEmpty
+  def findCtor(ref: Ref): Option[(ModuleRef, String, Int)] =
+    ctors.get(ref)
 
-  def addModule(m: ModuleRef): NameEnv =
-    if (moduleMembers.contains(m)) this
-    else copy(moduleMembers = moduleMembers + (m -> Map()))
+  def addModule(module: ModuleRef): NameEnv =
+    addRef(Ref.Module(module))
 
-  def addModuleMember(m: ModuleRef, name: String, ctorInfo: Option[Seq[Type]]): NameEnv = {
-    require(modules.get(m.pkg).exists(_.contains(m.name)), s"Module ${m.fullName} not found")
-    val mm = ModuleMember(name, ctorInfo)
-    moduleMembers.get(m).fold {
-      copy(moduleMembers = moduleMembers + (m -> Map(mm.name -> mm)))
-    } { ms =>
-      copy(moduleMembers = moduleMembers + (m -> (ms + (mm.name -> mm))))
+  def addTypeMember(module: ModuleRef, name: String, tpe: Type): NameEnv =
+    addMember(module, name)
+      .copy(types = types + (Ref.Member(module, name) -> tpe))
+
+  def addValueMember(module: ModuleRef, name: String): NameEnv =
+    addMember(module, name)
+      .copy(values = values + Ref.Member(module, name))
+
+  def addCtorMember(module: ModuleRef, name: String, arity: Int): NameEnv =
+    addValueMember(module, name)
+      .copy(ctors = ctors + (Ref.Member(module, name) -> (module, name, arity)))
+
+  private[this] def addMember(module: ModuleRef, name: String): NameEnv =
+    addRef(Ref.Member(module, name))
+
+  private def addRef(ref: Ref): NameEnv = {
+    parentOf(ref).fold {
+      // root package
+      this
+    } { parent =>
+      addRef(parent).addHierarchy(parent, ref)
     }
   }
-  def addModuleTypeMember(m: ModuleRef, name: String): NameEnv = {
-    require(modules.get(m.pkg).exists(_.contains(m.name)), s"Module ${m.fullName} not found")
-    moduleTypeMembers.get(m).fold {
-      copy(moduleTypeMembers = moduleTypeMembers + (m -> Set(name)))
-    } { ms =>
-      copy(moduleTypeMembers = moduleTypeMembers + (m -> (ms + name)))
-    }
+
+  private def addHierarchy(parent: Ref, child: Ref): NameEnv = {
+    val items = hierarchies.get(parent) getOrElse Map()
+    copy(hierarchies = hierarchies + (parent -> (items + (nameOf(child) -> child))))
   }
 
-  def moduleMemberExists(m: ModuleRef, name: String): Boolean =
-    moduleMembers.get(m).exists(_.contains(name))
+  def parentOf(ref: Ref): Option[Ref] = ref match {
+    case Ref.Package(pkg) =>
+      pkg.parentOption.map(Ref.Package(_))
+    case Ref.Klass(klass) =>
+      Some(Ref.Package(klass.pkg))
+    case Ref.Module(module) =>
+      Some(Ref.Package(module.pkg))
+    case Ref.Member(module, name) =>
+      Some(Ref.Module(module))
+  }
 
-  def pretty: String = "NameEnv\n" + modules.toSeq.sortBy(_._1.fullName).map {
-    case (k, vs) =>
-      s"  package ${k.fullName}\n" + vs.toSeq.sorted.flatMap { v =>
-        val m = k.moduleRef(v)
-        (
-          Seq(s"  - module $v") ++
-          moduleTypeMembers.getOrElse(m, Set()).toSeq.sorted.map { name => s"    t: $name" } ++
-          moduleMembers.getOrElse(m, Map()).values.toSeq.sortBy(_.name).map {
-            case NameEnv.ModuleMember(name, None) =>
-              s"    v: ${name}"
-            case NameEnv.ModuleMember(name, Some(ts)) =>
-              s"    v: ${name} ctor: ${ts.mkString(", ")}"
-          })
-      }.mkString("\n")
+  def nameOf(ref: Ref): String = ref match {
+    case Ref.Package(pkg) =>
+      pkg.parts.lastOption getOrElse ""
+    case Ref.Klass(klass) =>
+      klass.name
+    case Ref.Module(module) =>
+      module.name
+    case Ref.Member(module, name) =>
+      name
+  }
+
+  def children(ref: Ref): Seq[Ref] =
+    hierarchies.get(ref).map(_.values.toSeq) getOrElse Seq()
+
+  lazy val modules: Seq[ModuleRef] =
+    hierarchies.values.flatMap(_.values.collect { case Ref.Module(m) => m }).toSeq
+
+  def pretty: String = "NameEnv\n" + modules.sortBy(_.fullName).map { module =>
+    s"  module $module\n" + children(Ref.Module(module)).map { member =>
+      val name = nameOf(member)
+      (
+        findType(member).fold("") { tpe => s"    t: $name = $tpe\n" }
+        + (if (valueExists(member)) s"    v: $name\n" else "")
+        + findCtor(member).fold("") { case (module, name, arity) => s"    c: $name arity=$arity" })
+    }.mkString("\n")
   }.mkString("\n")
 }
 
 object NameEnv {
   case class ModuleMember(name: String, ctorInfo: Option[Seq[Type]])
+
+  sealed abstract class Ref
+  object Ref {
+    val rootPackage = Package(PackageRef.Root)
+
+    case class Package(pkg: PackageRef) extends Ref {
+      override def toString = s"package $pkg"
+    }
+    case class Klass(klass: ClassRef) extends Ref {
+      override def toString = s"class $klass"
+    }
+    case class Module(module: ModuleRef) extends Ref {
+      override def toString = s"module $module"
+    }
+    case class Member(module: ModuleRef, name: String) extends Ref {
+      override def toString = s"member $module.$name"
+    }
+  }
 }

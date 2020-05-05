@@ -20,8 +20,8 @@ object RawAST {
           items.map(prettyDoc(_, false))))
     case Module(_, name, body) =>
       P.module(name.value, body.map(prettyDoc(_, false)))
-    case TLet(_, name, expr) =>
-      P.tlet(name, None, prettyDoc(expr, false))
+    case TLet(_, name, tname, expr) =>
+      P.tlet(name, tname.map(_.toString), prettyDoc(expr, false))
     case Data(_, name, tvars, ctors) =>
       P.data(name, tvars, ctors.map {
         case (n, ts) => (n.value, ts.map(_.toString))
@@ -34,8 +34,8 @@ object RawAST {
       Doc.Text(value.toString)
     case LitString(_, value) =>
       s""""$value"""".doc
-    case Ref(_, name) =>
-      name.value.doc
+    case Ref(_, qname) =>
+      qname.fullName.doc
     case JCall(_, expr, name, args, isStatic) =>
       P.jcall(
         prettyDoc(expr, true),
@@ -60,8 +60,6 @@ object RawAST {
             (n.value, tn.map(_.toString), prettyDoc(f, false))
         },
         prettyDoc(body, false))
-    case Prop(_, expr, name) =>
-      P.prop(prettyDoc(expr, true), name)
     case Match(_, expr, cs) =>
       P.paren(paren, P.pmatch(
         prettyDoc(expr, false),
@@ -85,7 +83,7 @@ object RawAST {
   case class Module(pos: Pos, name: Name, body: Seq[Term]) extends RawAST
 
   sealed abstract class Term extends RawAST
-  case class TLet(pos: Pos, name: Name, expr: Expr) extends Term
+  case class TLet(pos: Pos, name: Name, typeName: Option[TypeName], expr: Expr) extends Term
   case class Data(pos: Pos, name: Name, tparams: Seq[Name], ctors: Seq[(Name, Seq[TypeName])]) extends Term
   case class TExpr(pos: Pos, expr: Expr) extends Term
 
@@ -97,14 +95,13 @@ object RawAST {
   case class LitBool(pos: Pos, value: Boolean) extends Lit
   case class LitString(pos: Pos, value: String) extends Lit
 
-  case class Ref(pos: Pos, name: Name) extends Expr
+  case class Ref(pos: Pos, qname: QName) extends Expr
   case class JCall(pos: Pos, expr: Expr, name: Name, args: Seq[Expr], isStatic: Boolean) extends Expr
   case class If(pos: Pos, cond: Expr, th: Expr, el: Expr) extends Expr
   case class Fun(pos: Pos, name: Name, tpeName: Option[TypeName], body: Expr) extends Expr
   case class App(pos: Pos, fun: Expr, arg: Expr) extends Expr
   case class ELet(pos: Pos, name: Name, value: Expr, body: Expr) extends Expr
   case class ELetRec(pos: Pos, bindings: Seq[(Name, Option[TypeName], Fun)], body: Expr) extends Expr
-  case class Prop(pos: Pos, expr: Expr, name: Name) extends Expr
 
   case class Match(pos: Pos, expr: Expr, clauses: Seq[Clause]) extends Expr
   case class Clause(pos: Pos, pat: Pat, body: Expr) extends RawAST

@@ -26,7 +26,7 @@ class E2ETest extends FunSpec {
 
   val emptyEnv = scala_compiler.Compiler.newEnv(classLoader)
   val predefDir = Files.createTempDirectory("ojaml-test-predef")
-  val predefEnv = {
+  lazy val predefEnv = {
     val predefContent = scala_compiler.Source.readResource(classLoader, "lib/Predef.ml0")
 
     val compiler = new scala_compiler.Compiler(false)
