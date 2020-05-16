@@ -5,6 +5,7 @@ case class ModuleRef(pkg: PackageRef, name: String) {
   def fullName = s"${pkg.fullName}.$name"
   def internalName = s"${pkg.internalName}/$name"
   val classRef = ClassRef(pkg, name)
+  def memberRef(name: String) = MemberRef(this, name)
 }
 
 object ModuleRef {

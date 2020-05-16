@@ -2,7 +2,7 @@ package com.todesking.ojaml.ml0.compiler.scala
 
 import com.todesking.ojaml.ml0.compiler.scala.{ JAST => J }
 import com.todesking.ojaml.ml0.compiler.scala.{ TypedAST => T }
-import com.todesking.ojaml.ml0.compiler.scala.TypedAST.ModuleVarRef
+import com.todesking.ojaml.ml0.compiler.scala.TypedAST.RefMember
 
 import JType.TObject
 
@@ -54,20 +54,21 @@ object Javalizer {
         val f = builder.addStaticField(name.value, tpe.jtype)
         expr.foreach { expr =>
           builder.addClinit(
-            J.PutStatic(f, appExpr(expr, 0)))
+            J.PutStatic(f, appExpr(expr, 0, Map())))
         }
       case T.Data(pos, name, params, ctors) =>
         appData(name.value, ctors)
       case T.TExpr(pos, expr) =>
-        builder.addClinit(J.TExpr(appExpr(expr, 0)))
+        builder.addClinit(J.TExpr(appExpr(expr, 0, Map())))
     }
-    def appExpr(expr: T.Expr, depth: Int): J.Expr = expr match {
+    def appExpr(expr: T.Expr, depth: Int, locals: Map[String, (Int, Int)]): J.Expr = expr match {
       case T.LitInt(pos, v) => J.LitInt(v)
       case T.LitBool(pos, v) => J.LitBool(v)
       case T.LitString(pos, v) => J.LitString(v)
-      case T.ModuleVarRef(pos, m, n, t) =>
-        J.GetStatic(FieldRef(m.classRef, n, t.jtype))
-      case T.LocalRef(pos, d, index, tt) =>
+      case T.RefMember(pos, m, t) =>
+        J.GetStatic(FieldRef(m.module.classRef, m.name, t.jtype))
+      case T.RefLocal(pos, name, tt) =>
+        val (d, index) = locals(name)
         val t = tt.jtype
         if (depth == d) {
           if (index == 0) {
@@ -98,8 +99,9 @@ object Javalizer {
             t)
         }
       case T.LetRec(pos, vs, b) =>
-        val funs = vs.map(appExpr(_, depth + 1))
-        val body = appExpr(b, depth + 1)
+        val newLocals = locals ++ vs.map(_._1).zipWithIndex.map { case (name, i) => name -> (depth + 1, i + 1) }
+        val funs = vs.map { case (name, fun) => appExpr(fun, depth + 1, newLocals) }
+        val body = appExpr(b, depth + 1, newLocals)
         val funKlass = createFun(body, Some(funs))
         val funNewArgs =
           if (depth == 0) Seq(J.Null(TObject), J.Null(JType.Fun))
@@ -113,36 +115,41 @@ object Javalizer {
               Seq(J.NewObjectArray(vs.size))),
             body.tpe.boxed), body.tpe)
       case T.If(pos, c, th, el, t) =>
-        J.If(appExpr(c, depth), appExpr(th, depth), appExpr(el, depth), t.jtype)
+        J.If(
+          appExpr(c, depth, locals),
+          appExpr(th, depth, locals),
+          appExpr(el, depth, locals),
+          t.jtype)
       case T.App(pos, f, a, t) =>
         val appSig = MethodSig(Type.Fun.ref, false, false, "app", Seq(TObject), Some(TObject))
         val invoke = J.Invoke(
           appSig,
           false,
-          Some(box(appExpr(f, depth))),
-          Seq(box(appExpr(a, depth))))
+          Some(box(appExpr(f, depth, locals))),
+          Seq(box(appExpr(a, depth, locals))))
         unbox(J.Cast(invoke, t.jtype.boxed), t.jtype)
-      case T.Fun(pos, b, t) =>
-        val funKlass = createFun(appExpr(b, depth + 1), None)
+      case T.Fun(pos, param, b, t) =>
+        val newLocals = locals + (param -> (depth + 1, 0))
+        val funKlass = createFun(appExpr(b, depth + 1, newLocals), None)
         val args =
           if (depth == 0) Seq(J.Null(TObject), J.Null(JType.Fun))
           else Seq(J.GetLocal(1, TObject), J.GetLocal(0, JType.Fun))
         J.Cast(J.JNew(funKlass, args), JType.Fun)
-      case T.TAbs(pos, ps, b, t) => appExpr(b, depth)
+      case T.TAbs(pos, ps, b, t) => appExpr(b, depth, locals)
       case T.JCallStatic(pos, m, a) =>
         val args = m.args.zip(a).map {
           case (t, a) =>
-            autobox(appExpr(a, depth), t)
+            autobox(appExpr(a, depth, locals), t)
         }
         J.Invoke(m, false, None, args)
       case T.JCallInstance(pos, m, r, a) =>
         val args = m.args.zip(a).map {
           case (t, a) =>
-            autobox(appExpr(a, depth), t)
+            autobox(appExpr(a, depth, locals), t)
         }
-        J.Invoke(m, false, Some(box(appExpr(r, depth))), args)
-      case T.JNew(pos, r, a) => J.JNew(r, a.map(appExpr(_, depth)))
-      case T.Upcast(pos, b, t) => J.Cast(appExpr(b, depth), t.jtype)
+        J.Invoke(m, false, Some(box(appExpr(r, depth, locals))), args)
+      case T.JNew(pos, r, a) => J.JNew(r, a.map(appExpr(_, depth, locals)))
+      case T.Upcast(pos, b, t) => J.Cast(appExpr(b, depth, locals), t.jtype)
       case T.MatchError(pos, t) =>
         J.Throw(
           J.JNew(ClassRef.fromInternalName("java/lang/RuntimeException"), Seq(J.LitString("match error"))),
@@ -208,7 +215,7 @@ object Javalizer {
           klasses :+= ctorBuilder.build()
 
           val fieldCtor = FieldRef(moduleClass, ctorName, if (params.isEmpty) JType.TKlass(dataKlass) else JType.Fun)
-          val ctorTree = params.foldRight(
+          val ctorTree = params.zipWithIndex.foldRight(
             T.Upcast(
               pos,
               T.JNew(
@@ -216,10 +223,10 @@ object Javalizer {
                 ctorKlass,
                 oparams.zipWithIndex.map {
                   case (t, i) =>
-                    T.LocalRef(pos, i + 1, 0, t)
+                    T.RefLocal(pos, s"param$i", t)
                 }),
-              Type.Klass(dataKlass)): T.Expr) { (t, e) => T.Fun(pos, e, e.tpe) }
-          builder.addClinit(J.PutStatic(fieldCtor, appExpr(ctorTree, 0)))
+              Type.Klass(dataKlass)): T.Expr) { case ((t, i), e) => T.Fun(pos, s"param$i", e, e.tpe) } // TODO: Type.Fun(t, e.tpe) ?
+          builder.addClinit(J.PutStatic(fieldCtor, appExpr(ctorTree, 0, Map())))
 
           val fieldCheck = FieldRef(moduleClass, checkerName, JType.Fun)
           val funCheck = createFun(J.InstanceOf(J.GetLocal(1, JType.TObject), ctorKlass), None)

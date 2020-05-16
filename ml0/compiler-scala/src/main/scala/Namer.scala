@@ -9,6 +9,7 @@ import Namer.Ctx
 import util.Syntax._
 
 import NameEnv.Ref
+import Namer.ValueRef
 
 class Namer() {
 
@@ -74,7 +75,10 @@ class Namer() {
 
   private[this] def appExpr(ctx: Ctx, expr: RT.Expr): Result[NT.Expr] = expr match {
     case RT.Ref(pos, name) =>
-      ctx.resolveValue(name).map(NT.Ref(pos, _))
+      ctx.resolveValue(name).map {
+        case ValueRef.Local(name) => NT.RefLocal(pos, name)
+        case ValueRef.Member(member) => NT.RefMember(pos, member)
+      }
     case RT.LitInt(pos, v) => ok(NT.LitInt(pos, v))
     case RT.LitBool(pos, v) => ok(NT.LitBool(pos, v))
     case RT.LitString(pos, v) => ok(NT.LitString(pos, v))
@@ -87,26 +91,26 @@ class Namer() {
     case RT.Fun(pos, name, tpeName, body) =>
       for {
         tpe <- tpeName.mapResult(ctx.resolveType)
-        (ref, c) = ctx.bindLocal(name.value)
+        c = ctx.bindLocal(name.value)
         tbody <- appExpr(c, body)
       } yield {
-        NT.Fun(pos, ref, tpe, tbody)
+        NT.Fun(pos, name.value, tpe, tbody)
       }
     case RT.ELetRec(pos, bs, body) =>
+      val names = bs.map(_._1)
       for {
-        x <- ctx.bindLocals(bs.map(_._1))
-        (refs, c) = x
+        c <- ctx.bindLocals(names)
         ts <- validate(bs.map(_._2).map(_.mapResult(c.resolveType)))
         vs <- validate(bs.map(_._3).map(appExpr(c, _))).map(_.map(_.asInstanceOf[NT.Fun]))
         b <- appExpr(c, body)
-      } yield NT.ELetRec(pos, refs.zip(ts).zip(vs).map { case ((r, t), v) => (r, t, v) }, b)
+      } yield NT.ELetRec(pos, names.zip(ts).zip(vs).map { case ((n, t), v) => (n.value, t, v) }, b)
     case RT.ELet(pos, name, value, body) =>
       for {
         v <- appExpr(ctx, value)
-        (ref, c) = ctx.bindLocal(name.value)
+        c = ctx.bindLocal(name.value)
         b <- appExpr(c, body)
       } yield {
-        NT.ELet(pos, ref, v, b)
+        NT.ELet(pos, name.value, v, b)
       }
     case RT.App(pos, f, x) =>
       for {
@@ -134,18 +138,19 @@ class Namer() {
         }
       }
     case root @ RT.Match(pos, expr, clauses) =>
+      val itName = s"$$it"
       for {
         e <- appExpr(ctx, expr)
-        (eVar, c) = ctx.bindLocal(s"$$it")
-        body <- appClauses(c, root.pos, eVar, clauses)
-      } yield NT.ELet(pos, eVar, e, body)
+        c = ctx.bindLocal(itName)
+        body <- appClauses(c, root.pos, itName, clauses)
+      } yield NT.ELet(pos, itName, e, body)
   }
 
-  private[this] def appClauses(ctx: Ctx, pos: Pos, eVar: VarRef, clauses: Seq[RT.Clause]): Result[NT.Expr] = {
+  private[this] def appClauses(ctx: Ctx, pos: Pos, target: String, clauses: Seq[RT.Clause]): Result[NT.Expr] = {
     clauses.map {
       case RT.Clause(pos, pat, body) =>
         for {
-          x <- appPat(ctx, pat, NT.Ref(pos, eVar))
+          x <- appPat(ctx, pat, NT.RefLocal(pos, target))
           (checker, extractors) = x
           body <- appClauseBody(ctx, extractors, body)
         } yield (checker, body)
@@ -158,13 +163,12 @@ class Namer() {
   }
 
   private[this] def appClauseBody(ctx: Ctx, extractors: Seq[(String, NT.Expr)], body: RT.Expr): Result[NT.Expr] = {
-    val (c2, refs) = extractors.mapWithContextC(ctx) {
+    val c2 = extractors.foldLeft(ctx) {
       case (c, (name, _)) =>
-        val (c2, r) = c.bindLocal(name)
-        (r, c2)
+         c.bindLocal(name)
     }
     appExpr(c2, body).map { b =>
-      val fun = refs.foldRight(b) { case (ref, e) => NT.Fun(e.pos, ref, None, e) }
+      val fun = extractors.foldRight(b) { case ((name, _), e) => NT.Fun(e.pos, name, None, e) }
       val app = extractors.foldLeft(fun) { case (f, (_, e)) => NT.App(e.pos, f, e) }
       app
     }
@@ -183,16 +187,16 @@ class Namer() {
         _ <-
           if(args.size == arity) ok(())
           else error(pos, s"Ctor $ctorName has arity $arity but argument size is ${args.size}")
-        checkerRef = VarRef.ModuleMember(module, ctx.patCheckerName(ctorName))
+        checkerRef = module.memberRef(ctx.patCheckerName(ctorName))
         extractorRefs = args.zipWithIndex.map {
           case (_, i) =>
-            VarRef.ModuleMember(module, ctx.patExtractorName(ctorName, i))
+            module.memberRef(ctx.patExtractorName(ctorName, i))
         }
-        rootChecker = NT.App(pat.pos, NT.Ref(pat.pos, checkerRef), target)
+        rootChecker = NT.App(pat.pos, NT.RefMember(pat.pos, checkerRef), target)
         subPatterns <-
           extractorRefs.zip(args).map {
             case (extractor, arg) =>
-              appPat(ctx, arg, NT.App(arg.pos, NT.Ref(arg.pos, extractor), target))
+              appPat(ctx, arg, NT.App(arg.pos, NT.RefMember(arg.pos, extractor), target))
           }.validated
       } yield {
               val checker = subPatterns.map(_._1).foldLeft(rootChecker: NT.Expr) {
@@ -210,11 +214,17 @@ object Namer {
       "bool" -> NameEnv.Ref.Member(PackageRef.root("ojaml").moduleRef("Primitives"), "Bool"),
       "int" -> NameEnv.Ref.Member(PackageRef.root("ojaml").moduleRef("Primitives"), "Int"),
     )
+  sealed abstract class ValueRef
+  object ValueRef {
+    case class Local(name: String) extends ValueRef
+    case class Member(member: MemberRef) extends ValueRef
+  }
+
   case class Ctx(
     env: NameEnv,
     currentModule: ModuleRef,
     imports: Map[String, Ref] = Map(),
-    values: Map[String, VarRef] = Map(),
+    values: Map[String, ValueRef] = Map(),
     stack: List[Ctx] = Nil,
     localTypes: Map[String, Type] = Map()) {
     val depth: Int = stack.size
@@ -280,36 +290,34 @@ object Namer {
         } yield applied
     }
 
-    def resolveValue(qname: QName): Result[VarRef] = (
+    def resolveValue(qname: QName): Result[ValueRef] = (
       (if(qname.size == 1) values.get(qname.head.value).map(ok(_)) else None)
       getOrElse resolveRef(qname).flatMap {
-        case Ref.Member(module, name) =>
-          if(env.valueExists(module, name))
-            ok(VarRef.ModuleMember(module, name))
+        case ref @ Ref.Member(member) =>
+          if(env.valueExists(ref))
+            ok(ValueRef.Member(member))
           else
-            error(qname.lastPartPos, s"Member $module.$name is not a value")
+            error(qname.lastPartPos, s"Member $member is not a value")
         case ref =>
           error(qname.lastPartPos, s"$ref is not a value")
       }
     )
 
-    def bindLocal(name: String): (VarRef.Local, Ctx) = {
-      val ref = VarRef.Local(depth + 1, 0)
-      (ref, copy(
-        values  = values + (name -> ref),
-        stack = this :: stack))
-    }
+    def bindLocal(name: String): Ctx = 
+      copy(
+        values  = values + (name -> ValueRef.Local(name)),
+        stack = this :: stack)
+    
 
-    def bindLocals(names: Seq[Name]): Result[(Seq[VarRef.Local], Ctx)] = {
+    def bindLocals(names: Seq[Name]): Result[Ctx] = {
       names.foldLeftE(Set.empty[String]) { (ns, n) =>
         if(ns.contains(n.value)) error(n.pos, s"Name conflict: $n")
         else ok(ns + n.value)
       }.map { _ =>
-        val refs = names.zipWithIndex.map { case (_, i) => VarRef.Local(depth + 1, i + 1) }
-        val c = copy(
-          values = values ++ names.map(_.value).zip(refs),
+        val newValues = names.map { name => name.value -> ValueRef.Local(name.value) }
+        copy(
+          values = values ++ newValues,
           stack = this :: stack)
-        (refs, c)
       }
     }
 

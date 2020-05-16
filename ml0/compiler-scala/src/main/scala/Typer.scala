@@ -40,7 +40,7 @@ class Typer {
         else TT.TAbs(expr.pos, tvs, e, Type.Abs(tvs, e.tpe))
       }
       subst(s, tree) match {
-        case expr @ (TT.Fun(_, _, _) | TT.ModuleVarRef(_, _, _, _)) =>
+        case expr @ (TT.Fun(_, _, _, _) | TT.RefMember(_, _, _)) =>
           tabs(expr)
         case x =>
           // TODO: Is this really safe??
@@ -52,7 +52,7 @@ class Typer {
     case NT.TLet(pos, name, tpe, expr) =>
       for {
         e <- eval(ctx, expr, tpe)
-        ctx <- ctx.bindModuleValue(name, e.tpe)
+        ctx <- ctx.bindMember(name, e.tpe)
       } yield {
         assertNoFVs(e, Set())
         val e2 = reindex(Subst.empty, 1, e)
@@ -82,7 +82,7 @@ class Typer {
       for {
         ctx <- members.foldLeftE(ctx) {
           case (ctx, TT.TLet(pos, name, tpe, body)) =>
-            ctx.bindModuleValue(name, tpe)
+            ctx.bindMember(name, tpe)
         }
       } yield {
         (ctx, members :+ TT.Data(pos, name, tvars, ctorDefs))
@@ -98,18 +98,18 @@ class Typer {
 
   private[this] def subst(s: Subst, tree: TT.Expr): TT.Expr = tree match {
     case _: TT.Lit => tree
-    case TT.ModuleVarRef(pos, m, n, t) => TT.ModuleVarRef(pos, m, n, s.app(t))
-    case TT.LocalRef(pos, d, i, t) => TT.LocalRef(pos, d, i, s.app(t))
+    case TT.RefMember(pos, member, t) => TT.RefMember(pos, member, s.app(t))
+    case TT.RefLocal(pos, name, t) => TT.RefLocal(pos, name, s.app(t))
     case TT.LetRec(pos, vs, b) => TT.LetRec(
       pos,
-      vs.map(subst(s, _)).map { case f: TT.Fun => f case _ => throw new AssertionError() },
+      vs.map { case (name, e) => name -> subst(s, e) }.map { case (name, f: TT.Fun) => name -> f case _ => throw new AssertionError() },
       subst(s, b))
     case TT.If(pos, c, th, el, t) =>
       TT.If(pos, subst(s, c), subst(s, th), subst(s, el), s.app(t))
     case TT.App(pos, f, x, t) =>
       TT.App(pos, subst(s, f), subst(s, x), s.app(t))
-    case TT.Fun(pos, b, t) =>
-      TT.Fun(pos, subst(s, b), s.app(t))
+    case TT.Fun(pos, p, b, t) =>
+      TT.Fun(pos, p, subst(s, b), s.app(t))
     case TT.TAbs(pos, ps, e, t) =>
       TT.TAbs(pos, ps, subst(s -- ps, e), s.app(t).asInstanceOf[Type.Abs])
     case TT.JCallStatic(pos, m, a) =>
@@ -122,18 +122,19 @@ class Typer {
 
   private[this] def reindex(s: Subst, nextIndex: Int, tree: TT.Expr): TT.Expr = tree match {
     case _: TT.Lit => tree
-    case TT.ModuleVarRef(pos, m, n, t) => TT.ModuleVarRef(pos, m, n, s.app(t))
-    case TT.LocalRef(pos, d, i, t) => TT.LocalRef(pos, d, i, s.app(t))
+    case TT.RefMember(pos, member, t) => TT.RefMember(pos, member, s.app(t))
+    case TT.RefLocal(pos, name, t) => TT.RefLocal(pos, name, s.app(t))
     case TT.LetRec(pos, vs, b) => TT.LetRec(
       pos,
-      vs.map(reindex(s, nextIndex, _)).map { case f: TT.Fun => f case _ => throw new AssertionError() },
+      vs.map { case (name, e) => name -> reindex(s, nextIndex, e) }
+        .map { case (name, f: TT.Fun) => name -> f case _ => throw new AssertionError() },
       reindex(s, nextIndex, b))
     case TT.If(pos, c, th, el, t) =>
       TT.If(pos, reindex(s, nextIndex, c), reindex(s, nextIndex, th), reindex(s, nextIndex, el), s.app(t))
     case TT.App(pos, f, x, t) =>
       TT.App(pos, reindex(s, nextIndex, f), reindex(s, nextIndex, x), s.app(t))
-    case TT.Fun(pos, b, t) =>
-      TT.Fun(pos, reindex(s, nextIndex, b), s.app(t))
+    case TT.Fun(pos, p, b, t) =>
+      TT.Fun(pos, p, reindex(s, nextIndex, b), s.app(t))
     case TT.TAbs(pos, ps, e, t) =>
       val s2 = s -- ps ++ Subst(ps.sortBy(_.id).zipWithIndex.map { case (v, i) => (v, Type.Var(nextIndex + i)) }: _*)
       TT.TAbs(pos, ps, reindex(s2, nextIndex + ps.size, e), t match { case Type.Abs(xs, b) => Type.Abs(xs.map(s2.app(_).asInstanceOf[Type.Var]), s2.app(b)) })
@@ -154,10 +155,11 @@ class Typer {
     assertNoFVs1(tree, nonFrees)
     tree match {
       case _: TT.Lit =>
-      case TT.ModuleVarRef(pos, m, n, t) =>
-      case TT.LocalRef(pos, d, i, t) =>
+      case TT.RefMember(pos, m, t) =>
+      case TT.RefLocal(pos, n, t) =>
       case TT.LetRec(pos, vs, b) =>
-        vs.foreach(assertNoFVs(_, nonFrees)); assertNoFVs(b, nonFrees)
+        vs.foreach { case (name, e) => assertNoFVs(e, nonFrees) }
+        assertNoFVs(b, nonFrees)
       case TT.If(pos, c, th, el, t) =>
         assertNoFVs(c, nonFrees)
         assertNoFVs(th, nonFrees)
@@ -165,7 +167,7 @@ class Typer {
       case TT.App(pos, f, x, t) =>
         assertNoFVs(f, nonFrees)
         assertNoFVs(x, nonFrees)
-      case TT.Fun(pos, b, t) =>
+      case TT.Fun(pos, p, b, t) =>
         assertNoFVs(b, nonFrees)
       case TT.TAbs(pos, ps, e, t) =>
         assertNoFVs(e, nonFrees ++ ps)
@@ -185,12 +187,10 @@ class Typer {
     case t => t
   }
   def appExpr(ctx: Ctx, expr: NT.Expr): Result[(Subst, TT.Expr)] = expr match {
-    case NT.Ref(pos, ref) => ref match {
-      case ref @ VarRef.ModuleMember(m, name) =>
-        ok0(TT.ModuleVarRef(pos, m, name, tappFresh(ctx.typeOf(ref))))
-      case ref @ VarRef.Local(depth, index) =>
-        ok0(TT.LocalRef(pos, depth, index, tappFresh(ctx.typeOf(ref))))
-    }
+    case NT.RefMember(pos, member) =>
+      ok0(TT.RefMember(pos, member, tappFresh(ctx.memberTypeOf(member))))
+    case NT.RefLocal(pos, name) =>
+      ok0(TT.RefLocal(pos, name, tappFresh(ctx.localTypeOf(name))))
     case NT.LitInt(pos, v) => ok0(TT.LitInt(pos, v))
     case NT.LitBool(pos, v) => ok0(TT.LitBool(pos, v))
     case NT.LitString(pos, v) => ok0(TT.LitString(pos, v))
@@ -212,39 +212,39 @@ class Typer {
         x <- appExpr(ctx.bindLocal(param, t), body)
         (s1, b) = x
         s = s1
-      } yield (s, TT.Fun(pos, b, Type.Fun(s.app(t), b.tpe)))
-    case NT.ELet(pos, ref, value, body) =>
+      } yield (s, TT.Fun(pos, param, b, Type.Fun(s.app(t), b.tpe)))
+    case NT.ELet(pos, name, value, body) =>
       val varIdStart = nextVarId
       for {
         x0 <- appExpr(ctx, value)
         (s0, e00) = x0
         e0 = e00 match {
-          case TT.Fun(pos, body, funType) =>
+          case TT.Fun(pos, param, body, funType) =>
             val params = funType.freeTypeVariables
               .filter(_.id >= varIdStart)
               .toSeq
               .sortBy(_.id)
             val tpe = Type.Abs(params, funType)
-            TT.TAbs(pos, params, TT.Fun(pos, body, funType), tpe)
+            TT.TAbs(pos, params, TT.Fun(pos, param, body, funType), tpe)
           case x => x
         }
-        x1 <- appExpr(ctx.bindLocal(ref, e0.tpe), body)
+        x1 <- appExpr(ctx.bindLocal(name, e0.tpe), body)
         (s1, e1) = x1
         s <- (s0 ++ s1).unify(body.pos)
-      } yield (s, TT.App(pos, TT.Fun(pos, e1, Type.Fun(e0.tpe, e1.tpe)), e0, e1.tpe))
+      } yield (s, TT.App(pos, TT.Fun(pos, name, e1, Type.Fun(e0.tpe, e1.tpe)), e0, e1.tpe))
     case NT.ELetRec(pos, bindings, body) =>
       val bs = bindings.map {
-        case (ref, tpe, fun) =>
-          (ref, tpe getOrElse freshVar(), fun)
+        case (name, tpe, fun) =>
+          (name, tpe getOrElse freshVar(), fun)
       }
       val c = bs.foldLeft(ctx) {
-        case (c, (ref, tpe, fun)) =>
-          c.bindLocal(ref, tpe)
+        case (c, (name, tpe, fun)) =>
+          c.bindLocal(name, tpe)
       }
 
       val typed =
         bs.map {
-          case (ref, tpe, fun) =>
+          case (_, tpe, fun) =>
             appExpr(c, fun).map {
               case (subst, tfun: TT.Fun) => (subst + (tpe -> tfun.tpe), tfun)
               case (subst, tfun) => throw new AssertionError(s"$tfun")
@@ -256,7 +256,7 @@ class Typer {
         x <- appExpr(c, body)
         (sb, b) = x
         s <- (ts.map(_._1) :+ sb).reduce(_ ++ _).unify(expr.pos)
-      } yield (s, TT.LetRec(pos, ts.map(_._2), b))
+      } yield (s, TT.LetRec(pos, bindings.map(_._1).zip(ts.map(_._2)), b))
     case NT.App(pos, f, x) =>
       val a1 = freshVar()
       val a2 = freshVar()
@@ -294,9 +294,9 @@ class Typer {
 }
 
 object Typer {
-  def moduleVarsOf(s: TypedAST.Module): Map[VarRef.ModuleMember, Type] = s.body.collect {
+  def memberTypes(s: TypedAST.Module): Map[MemberRef, Type] = s.body.collect {
     case TypedAST.TLet(pos, name, tpe, _) =>
-      VarRef.ModuleMember(s.moduleRef, name.value) -> tpe
+      MemberRef(s.moduleRef, name.value) -> tpe
   }.toMap
 
   // TODO: add unified flag
@@ -361,10 +361,14 @@ object Typer {
   case class Ctx(
     currentModule: ModuleRef,
     repo: Classpath,
-    gamma: Map[VarRef, Type] = Map()) {
+    memberTypes: Map[MemberRef, Type] = Map(),
+    localTypes: Map[String, Type] = Map()) {
 
-    def typeOf(ref: VarRef): Type =
-      gamma(ref) // If lookup failed, that means a bug.
+    def localTypeOf(name: String): Type =
+      localTypes(name)
+
+    def memberTypeOf(member: MemberRef): Type =
+      memberTypes(member)
 
     def findClass(tpe: Type): Option[ClassSig] = tpe match {
       case v: Type.Var => None
@@ -372,23 +376,24 @@ object Typer {
         // TODO: Support array
         repo.find(ClassRef.fromInternalName(t.jtype.boxed.jname))
     }
+
     def findClass(ref: ClassRef): Option[ClassSig] =
       repo.find(ref)
 
-    def bindModuleValue(name: Name, tpe: Type): Result[Ctx] = {
-      val ref = VarRef.ModuleMember(currentModule, name.value)
-      if (gamma.contains(ref)) error(name.pos, s"Member $name is already defined")
-      else Result.ok(copy(gamma = gamma + (ref -> tpe)))
+    def bindMember(name: Name, tpe: Type): Result[Ctx] = {
+      val ref = currentModule.memberRef(name.value)
+      if (memberTypes.contains(ref)) error(name.pos, s"Member $name is already defined")
+      else Result.ok(copy(memberTypes = memberTypes + (ref -> tpe)))
     }
 
-    def bindModuleValues(mvs: Map[VarRef.ModuleMember, Type]): Ctx =
-      copy(gamma = gamma ++ mvs)
+    def bindMembers(mts: Map[MemberRef, Type]): Ctx =
+      copy(memberTypes = memberTypes ++ mts)
 
-    def bindLocal(ref: VarRef.Local, tpe: Type): Ctx =
-      copy(gamma = gamma + (ref -> tpe))
+    def bindLocal(name: String, tpe: Type): Ctx =
+      copy(localTypes = localTypes + (name -> tpe))
   }
 
   def newCtx(module: ModuleRef, env: TypeEnv) =
-    Ctx(module, env.classpath).bindModuleValues(env.types)
+    Ctx(module, env.classpath).bindMembers(env.types)
 
 }

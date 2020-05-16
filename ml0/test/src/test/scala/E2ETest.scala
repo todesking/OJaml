@@ -7,12 +7,12 @@ import java.nio.file.Files
 import com.todesking.ojaml.ml0.compiler.scala.ModuleRef
 import com.todesking.ojaml.ml0.compiler.scala.Result
 import com.todesking.ojaml.ml0.compiler.scala.Type
-import com.todesking.ojaml.ml0.compiler.scala.VarRef
 import com.todesking.ojaml.ml0.compiler.{ scala => scala_compiler }
 
 import scala.collection.JavaConverters._
 import com.todesking.ojaml.ml0.compiler.scala.Javalizer
 import java.util.stream.Collectors
+import com.todesking.ojaml.ml0.compiler.scala.MemberRef
 
 class E2ETest extends FunSpec {
   private[this] val classLoader = getClass.getClassLoader
@@ -124,7 +124,7 @@ class E2ETest extends FunSpec {
       }
     }
 
-    def validateRuntime(env: Map[VarRef.ModuleMember, Type]): Unit = {
+    def validateRuntime(env: Map[MemberRef, Type]): Unit = {
       try {
         try {
           val cl = new java.net.URLClassLoader(runtimeClasspath, this.classLoader)
@@ -138,7 +138,7 @@ class E2ETest extends FunSpec {
               val field = klass.getField(fieldName)
               val actual = field.get(null)
               if (typeName != "*") {
-                val tpe = env(VarRef.ModuleMember(ref, fieldName))
+                val tpe = env(ref.memberRef(fieldName))
                 assert(typeName == tpe.toString)
                 assert(tpe.jtype.hname == field.getType.getName, s"at $fieldName")
               }

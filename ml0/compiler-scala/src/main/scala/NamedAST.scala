@@ -26,8 +26,10 @@ object NamedAST {
       Doc.Text(value.toString)
     case LitString(pos, value) =>
       s""""$value"""".doc
-    case Ref(pos, ref) =>
+    case RefMember(pos, ref) =>
       ref.toString.doc
+    case RefLocal(pos, name) =>
+      name.doc
     case JCallStatic(pos, target, name, args) =>
       P.jcall(
         target.fullName.doc,
@@ -80,12 +82,13 @@ object NamedAST {
   case class LitBool(pos: Pos, value: Boolean) extends Lit
   case class LitString(pos: Pos, value: String) extends Lit
 
-  case class Ref(pos: Pos, ref: VarRef) extends Expr
+  case class RefLocal(pos: Pos, name: String) extends Expr
+  case class RefMember(pos: Pos, member: MemberRef) extends Expr
   case class If(pos: Pos, cond: Expr, th: Expr, el: Expr) extends Expr
   case class App(pos: Pos, fun: Expr, arg: Expr) extends Expr
-  case class Fun(pos: Pos, param: VarRef.Local, tpe: Option[Type], body: Expr) extends Expr
-  case class ELet(pos: Pos, ref: VarRef.Local, value: Expr, body: Expr) extends Expr
-  case class ELetRec(pos: Pos, bindings: Seq[(VarRef.Local, Option[Type], Fun)], body: Expr) extends Expr
+  case class Fun(pos: Pos, param: String, tpe: Option[Type], body: Expr) extends Expr
+  case class ELet(pos: Pos, name: String, value: Expr, body: Expr) extends Expr
+  case class ELetRec(pos: Pos, bindings: Seq[(String, Option[Type], Fun)], body: Expr) extends Expr
   case class JCallInstance(pos: Pos, receiver: Expr, methodName: Name, args: Seq[Expr]) extends Expr
   case class JCallStatic(pos: Pos, target: ClassRef, methodName: Name, args: Seq[Expr]) extends Expr
 

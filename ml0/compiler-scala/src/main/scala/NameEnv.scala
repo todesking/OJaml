@@ -21,9 +21,9 @@ case class NameEnv(
         if (cr.packageExists(pkg, name)) Some(Ref.Package(pkg.packageRef(name)))
         else if (cr.classExists(pkg, name)) Some(Ref.Klass(pkg.classRef(name)))
         else None
-      case Ref.Klass(klass) => None
-      case Ref.Module(module) => None
-      case Ref.Member(module, name) => None
+      case Ref.Klass(_) => None
+      case Ref.Module(_) => None
+      case Ref.Member(_) => None
     }))
 
   def exists(pkg: PackageRef, name: String): Boolean =
@@ -85,12 +85,13 @@ case class NameEnv(
     hierarchies.values.flatMap(_.values.collect { case Ref.Module(m) => m }).toSeq
 
   def pretty: String = "NameEnv\n" + modules.sortBy(_.fullName).map { module =>
-    s"  module $module\n" + children(Ref.Module(module)).map { member =>
+    s"  module $module\n" + children(Ref.Module(module)).flatMap { member =>
       val name = member.name
-      (
-        findType(member).fold("") { tpe => s"    t: $name = $tpe\n" }
-        + (if (valueExists(member)) s"    v: $name\n" else "")
-        + findCtor(member).fold("") { case (module, name, arity) => s"    c: $name arity=$arity" })
+      Seq(
+        findType(member).fold("") { tpe => s"    t: $name = $tpe" }
+          + (if (valueExists(member)) s"    v: $name" else "")
+          + findCtor(member).fold("") { case (module, name, arity) => s"    c: $name arity=$arity" })
+        .filter(_.nonEmpty)
     }.mkString("\n")
   }.mkString("\n")
 }
@@ -126,9 +127,14 @@ object NameEnv {
       override def parent = Some(Package(module.pkg))
       override def name = module.name
     }
-    case class Member(module: ModuleRef, name: String) extends Ref {
-      override def toString = s"member $module.$name"
-      override def parent = Some(Module(module))
+    case class Member(member: MemberRef) extends Ref {
+      override def toString = s"member $member"
+      override def parent = Some(Module(member.module))
+      override def name = member.name
+    }
+    object Member {
+      def apply(module: ModuleRef, name: String): Member =
+        Member(MemberRef(module, name))
     }
   }
 }

@@ -42,7 +42,7 @@ class Compiler(debugPrint: Boolean = false) {
   def typePhase(env: TypeEnv, tree: NamedAST.Module): Result[(TypeEnv, TypedAST.Module)] = {
     val typer = new Typer
     typer.appModule(env, tree).map { typed =>
-      val newEnv = env.addTypes(Typer.moduleVarsOf(typed))
+      val newEnv = env.addTypes(Typer.memberTypes(typed))
       if (debugPrint) {
         println("Phase: Typer")
         println(TypedAST.pretty(typed))

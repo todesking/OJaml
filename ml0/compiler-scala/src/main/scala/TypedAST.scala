@@ -22,10 +22,10 @@ object TypedAST {
       Doc.Text(value.toString)
     case LitString(pos, value) =>
       s""""$value"""".doc
-    case LocalRef(pos, depth, index, tpe) =>
-      s"(local:$depth,$index: $tpe)".doc
-    case ModuleVarRef(pos, module, name, tpe) =>
-      s"(${module.fullName}.$name: $tpe)".doc
+    case RefLocal(pos, name, tpe) =>
+      s"($name: $tpe)".doc
+    case RefMember(pos, member, tpe) =>
+      s"($member: $tpe)".doc
     case JCallStatic(pos, method, args) =>
       P.jcall(
         method.klass.fullName.doc,
@@ -43,14 +43,15 @@ object TypedAST {
         prettyDoc(cond, false),
         prettyDoc(th, false),
         prettyDoc(el, false))
-    case Fun(pos, body, tpe) =>
-      P.funT(tpe.toString, prettyDoc(body, false))
+    case Fun(pos, param, body, tpe) =>
+      P.fun(param, Some(tpe.toString), prettyDoc(body, false), paren)
     case App(pos, fun, arg, tpe) =>
       P.app(paren, prettyDoc(fun, false), prettyDoc(arg, true))
     case LetRec(pos, values, body) =>
       P.eletrec(
-        values.map { f =>
-          ("?", None, prettyDoc(f, false))
+        values.map {
+          case (name, f) =>
+            (name, None, prettyDoc(f, false))
         },
         prettyDoc(body, false))
     case JNew(pos, ref, args) =>
@@ -88,14 +89,14 @@ object TypedAST {
   case class LitBool(pos: Pos, value: Boolean) extends Lit(Type.Bool)
   case class LitString(pos: Pos, value: String) extends Lit(Type.String)
 
-  case class ModuleVarRef(pos: Pos, module: ModuleRef, name: String, tpe: Type) extends Expr
-  case class LocalRef(pos: Pos, depth: Int, index: Int, tpe: Type) extends Expr
-  case class LetRec(pos: Pos, values: Seq[Fun], body: Expr) extends Expr {
+  case class RefMember(pos: Pos, member: MemberRef, tpe: Type) extends Expr
+  case class RefLocal(pos: Pos, name: String, tpe: Type) extends Expr
+  case class LetRec(pos: Pos, values: Seq[(String, Fun)], body: Expr) extends Expr {
     override def tpe: Type = body.tpe
   }
   case class If(pos: Pos, cond: Expr, th: Expr, el: Expr, tpe: Type) extends Expr
   case class App(pos: Pos, fun: Expr, arg: Expr, tpe: Type) extends Expr
-  case class Fun(pos: Pos, body: Expr, tpe: Type) extends Expr
+  case class Fun(pos: Pos, param: String, body: Expr, tpe: Type) extends Expr
   case class TAbs(pos: Pos, params: Seq[Type.Var], body: Expr, tpe: Type.Abs) extends Expr
 
   case class JCallStatic(pos: Pos, method: MethodSig, args: Seq[Expr]) extends Expr {
