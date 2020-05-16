@@ -252,7 +252,7 @@ object Javalizer {
             MethodSig(Type.Fun.ref, false, false, "<init>", Seq(TObject, JType.Fun), None),
             true,
             Some(J.GetLocal(0, JType.Fun)),
-            Seq(J.GetLocal(1, JType.Fun), J.GetLocal(2, TObject)))))
+            Seq(J.GetLocal(1, JType.TObject), J.GetLocal(2, JType.Fun)))))
       builder.addMethod(J.MethodDef("<init>", false, Seq(TObject, JType.Fun), None, initBody))
       val prepareRec = recValues.fold(Seq.empty[J.Term]) { rvs =>
         Seq(J.TExpr(J.PutValuesToArray(J.Cast(J.GetLocal(1, JType.TObject), JType.ObjectArray), rvs)))
