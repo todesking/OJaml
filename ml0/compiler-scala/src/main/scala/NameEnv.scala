@@ -105,6 +105,12 @@ object NameEnv {
       .addTypeMember(primitivesModule, "Int", Type.Int)
   }
 
+  val defaultImports = Map(
+      "bool" -> NameEnv.Ref.Member(PackageRef.root("ojaml").moduleRef("Primitives"), "Bool"),
+      "int" -> NameEnv.Ref.Member(PackageRef.root("ojaml").moduleRef("Primitives"), "Int"),
+    )
+
+
   sealed abstract class Ref {
     def parent: Option[Ref]
     def name: String

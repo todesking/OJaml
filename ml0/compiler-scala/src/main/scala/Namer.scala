@@ -203,37 +203,30 @@ class Namer() {
       for {
         x <- ctx.resolveCtor(QName(Seq(Name(pos, name))))
         (module, ctorName, arity) = x
-        _ <-
-          if(args.size == arity) ok(())
-          else error(pos, s"Ctor $ctorName has arity $arity but argument size is ${args.size}")
+        _ <- if (args.size == arity) ok(())
+        else error(pos, s"Ctor $ctorName has arity $arity but argument size is ${args.size}")
         checkerRef = module.memberRef(ctx.patCheckerName(ctorName))
         extractorRefs = args.zipWithIndex.map {
           case (_, i) =>
             module.memberRef(ctx.patExtractorName(ctorName, i))
         }
         rootChecker = NT.App(pat.pos, NT.RefMember(pat.pos, checkerRef), target)
-        subPatterns <-
-          extractorRefs.zip(args).map {
-            case (extractor, arg) =>
-              appPat(ctx, arg, NT.App(arg.pos, NT.RefMember(arg.pos, extractor), target))
-          }.validated
+        subPatterns <- extractorRefs.zip(args).map {
+          case (extractor, arg) =>
+            appPat(ctx, arg, NT.App(arg.pos, NT.RefMember(arg.pos, extractor), target))
+        }.validated
       } yield {
-              val checker = subPatterns.map(_._1).foldLeft(rootChecker: NT.Expr) {
-                case (l, r) =>
-                  NT.If(r.pos, l, r, litBool(pos, false))
-              }
-              val extractor = subPatterns.flatMap(_._2)
-              (checker, extractor)
+        val checker = subPatterns.map(_._1).foldLeft(rootChecker: NT.Expr) {
+          case (l, r) =>
+            NT.If(r.pos, l, r, litBool(pos, false))
+        }
+        val extractor = subPatterns.flatMap(_._2)
+        (checker, extractor)
       }
   }
 }
 
 object Namer {
-  val defaultImports = Map(
-      "bool" -> NameEnv.Ref.Member(PackageRef.root("ojaml").moduleRef("Primitives"), "Bool"),
-      "int" -> NameEnv.Ref.Member(PackageRef.root("ojaml").moduleRef("Primitives"), "Int"),
-    )
-
   def litBool(pos: Pos, v: Boolean): NT.Expr =
     NT.Lit(pos, LitValue.BoolValue(v))
 
