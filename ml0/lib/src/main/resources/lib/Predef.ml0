@@ -1,17 +1,20 @@
 package com.todesking.ojaml.ml0.lib
 
-import com.todesking.ojaml.ml0.runtime.Int
-import com.todesking.ojaml.ml0.runtime.Bool
+import com.todesking.ojaml.ml0.runtime.Runtime
 
 module Predef {
-  let + l: int r: int = Int##add(l, r) ;
-  let - l: int r: int = Int##sub(l, r) ;
-  let * l: int r: int = Int##mul(l, r) ;
-  let / l: int r: int = Int##div(l, r) ;
-  let % l: int r: int = Int##mod(l, r) ;
-  let == l: int r: int = Int##eq(l, r) ;
-  let > l: int r: int = Int##gt(l, r) ;
+  let + l: int r: int = Runtime##intAdd(l, r) ;
+  let - l: int r: int = Runtime##intSub(l, r) ;
+  let * l: int r: int = Runtime##intMul(l, r) ;
+  let / l: int r: int = Runtime##intDiv(l, r) ;
+  let % l: int r: int = Runtime##intMod(l, r) ;
+  let == l: int r: int = Runtime##intEq(l, r) ;
+  let > l: int r: int = Runtime##intGt(l, r) ;
   let >= l: int r: int = l > r || l == r ;
-  let < l: int r: int = Int##lt(l, r) ;
+  let < l: int r: int = Runtime##intLt(l, r) ;
   let <= l: int r: int = l < r || l == r ;
+
+  let int_eq l: int r: int = Runtime##intEq(l, r) ;
+  let bool_eq l: bool r: bool = Runtime##boolEq(l, r) ;
+  let string_eq l: java.lang.String r: java.lang.String = Runtime##stringEq(l, r) ;
 }

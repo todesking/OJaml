@@ -1,0 +1,26 @@
+(* using: Predef *)
+package test.ml0
+
+import com.todesking.ojaml.ml0.lib.Predef.{
+  int_eq,
+  bool_eq,
+  string_eq
+}
+
+module Basic_equality {
+  let int1 = int_eq 1 2 ;
+  (* int1: bool = false *)
+
+  let int2 = int_eq 1 1 ;
+  (* int2: bool = true *)
+
+  let bool1 = bool_eq true false ;
+  (* bool1: bool = false *)
+  let bool2 = bool_eq true true ;
+  (* bool2: bool = true *)
+
+  let str1 = string_eq "a" "b" ;
+  (* str1: bool = false *)
+  let str2 = string_eq "a" "a" ;
+  (* str2: bool = true *)
+}
