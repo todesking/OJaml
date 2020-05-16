@@ -25,13 +25,10 @@ class Namer() {
 
   private[this] def appModule(pkg: QName, imports: Seq[Import], env: NameEnv, s: RT.Module): Result[(NameEnv, NT.Module)] = {
     val currentModule = ModuleRef(PackageRef.fromInternalName(pkg.internalName), s.name.value)
-    if(env.exists(currentModule.pkg, currentModule.name))
+    if (env.exists(currentModule.pkg, currentModule.name))
       return error(s.name.pos, s"${currentModule.fullName} already defined")
-    val init =Ctx(env.addModule(currentModule), currentModule)
-      .copy(imports = Map(
-        "bool" -> NameEnv.Ref.Member(PackageRef.root("ojaml").moduleRef("Primitives"), "Bool"),
-        "int" -> NameEnv.Ref.Member(PackageRef.root("ojaml").moduleRef("Primitives"), "Int"),
-      ))
+    val init = Ctx(env.addModule(currentModule), currentModule)
+      .copy(imports = NameEnv.defaultImports)
     imports.foldLeft(Result.ok(init)) { (c, i) =>
       c.flatMap(_.addImport(i))
     }.flatMap { ctx =>
@@ -165,7 +162,7 @@ class Namer() {
   private[this] def appClauseBody(ctx: Ctx, extractors: Seq[(String, NT.Expr)], body: RT.Expr): Result[NT.Expr] = {
     val c2 = extractors.foldLeft(ctx) {
       case (c, (name, _)) =>
-         c.bindLocal(name)
+        c.bindLocal(name)
     }
     appExpr(c2, body).map { b =>
       val fun = extractors.foldRight(b) { case ((name, _), e) => NT.Fun(e.pos, name, None, e) }
@@ -190,12 +187,9 @@ class Namer() {
           NT.App(
             pos,
             NT.RefMember(pos, ModuleRef.predef.memberRef(checkerFun)),
-            target
-          ),
-          NT.Lit(pos, v)
-        ),
-        Seq()
-      ))
+            target),
+          NT.Lit(pos, v)),
+          Seq()))
     case RT.Pat.Capture(pos, name) =>
       ok((NT.Lit(pat.pos, LitValue.BoolValue(true)), Seq(name -> target)))
     case RT.Pat.Ctor(pos, name, args) =>
@@ -235,7 +229,6 @@ object Namer {
     case class Local(name: String) extends ValueRef
     case class Member(member: MemberRef) extends ValueRef
   }
-  
 
   case class Ctx(
     env: NameEnv,
@@ -248,7 +241,7 @@ object Namer {
 
     def tlet(name: Name): Result[Ctx] = {
       require(stack.isEmpty)
-      if(env.valueExists(currentModule, name.value))
+      if (env.valueExists(currentModule, name.value))
         error(name.pos, s"Name $name is already defined in ${currentModule.name}")
       else
         ok(copy(env = env.addValueMember(currentModule, name.value)))
@@ -274,14 +267,12 @@ object Namer {
         env.findRef(Ref.Module(currentModule), name.value)
         orElse imports.get(name.value)
         orElse env.findRef(Ref.Package(currentModule.pkg), name.value)
-        orElse env.findRef(name.value)
-      ).toResult(name.pos, s"Name $name not found")
+        orElse env.findRef(name.value)).toResult(name.pos, s"Name $name not found")
 
     def resolveSimpleType(qname: QName): Result[Type] = (
-      (if(qname.size == 1) localTypes.get(qname.head.value).map(ok(_)) else None)
+      (if (qname.size == 1) localTypes.get(qname.head.value).map(ok(_)) else None)
       getOrElse resolveRef(qname)
-        .flatMap { ref => env.findType(ref).toResult(qname.pos, s"$qname is not a type") }
-    )
+      .flatMap { ref => env.findType(ref).toResult(qname.pos, s"$qname is not a type") })
 
     def resolveType(tname: TypeName): Result[Type] = tname match {
       case TypeName.Atom(pos, n) =>
@@ -308,27 +299,25 @@ object Namer {
     }
 
     def resolveValue(qname: QName): Result[ValueRef] = (
-      (if(qname.size == 1) values.get(qname.head.value).map(ok(_)) else None)
+      (if (qname.size == 1) values.get(qname.head.value).map(ok(_)) else None)
       getOrElse resolveRef(qname).flatMap {
         case ref @ Ref.Member(member) =>
-          if(env.valueExists(ref))
+          if (env.valueExists(ref))
             ok(ValueRef.Member(member))
           else
             error(qname.lastPartPos, s"Member $member is not a value")
         case ref =>
           error(qname.lastPartPos, s"$ref is not a value")
-      }
-    )
+      })
 
-    def bindLocal(name: String): Ctx = 
+    def bindLocal(name: String): Ctx =
       copy(
-        values  = values + (name -> ValueRef.Local(name)),
+        values = values + (name -> ValueRef.Local(name)),
         stack = this :: stack)
-    
 
     def bindLocals(names: Seq[Name]): Result[Ctx] = {
       names.foldLeftE(Set.empty[String]) { (ns, n) =>
-        if(ns.contains(n.value)) error(n.pos, s"Name conflict: $n")
+        if (ns.contains(n.value)) error(n.pos, s"Name conflict: $n")
         else ok(ns + n.value)
       }.map { _ =>
         val newValues = names.map { name => name.value -> ValueRef.Local(name.value) }
@@ -354,7 +343,7 @@ object Namer {
       copy(imports = imports + (name -> ref))
 
     def addDataType(name: Name, params: Seq[Name]): Result[Ctx] = {
-      if(env.typeExists(currentModule, name.value)) {
+      if (env.typeExists(currentModule, name.value)) {
         error(name.pos, s"Type ${name.value} is already defined")
       } else {
         val tpe =
