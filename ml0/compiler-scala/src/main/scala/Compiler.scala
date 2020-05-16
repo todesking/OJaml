@@ -102,7 +102,6 @@ object Compiler {
 
   def newEnv(cl: ClassLoader) = {
     val cp = new Classpath(cl)
-    val primitivesModule = PackageRef.Root.packageRef("ojaml").moduleRef("Primitives")
     val nameEnv = NameEnv.defaultEnv(cp)
     Env(cp, nameEnv, TypeEnv(cp, Map()))
   }
