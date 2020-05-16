@@ -11,5 +11,5 @@ module Id_id {
   (* id3: [?1] ?1 -> ?1 = * *)
 
   let x = (id2 id3) 1 ;
-  (* x: int = 1 *)
+  (* x: Int = 1 *)
 }

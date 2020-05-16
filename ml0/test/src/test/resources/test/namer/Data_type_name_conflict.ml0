@@ -1,7 +1,7 @@
 package test.ml0
 
 module Data_type_name_conflict {
-  data X = X1 int ;
-  data X = X2 int ;
+  data X = X1 Int ;
+  data X = X2 Int ;
   (*   ^ *)
 }

@@ -3,4 +3,4 @@ package test.ml0
 module Let {
   let result = 2 ;
 }
-(* result: int = 2 *)
+(* result: Int = 2 *)

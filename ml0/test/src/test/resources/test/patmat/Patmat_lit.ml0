@@ -26,9 +26,9 @@ module Patmat_lit {
     | "def" => 2
     | _ => 3 ;
   let x31 = m_str "abc" ;
-  (* x31: int = 1 *)
+  (* x31: Int = 1 *)
   let x32 = m_str "def" ;
-  (* x32: int = 2 *)
+  (* x32: Int = 2 *)
   let x33 = m_str "xxx" ;
-  (* x33: int = 3 *)
+  (* x33: Int = 3 *)
 }

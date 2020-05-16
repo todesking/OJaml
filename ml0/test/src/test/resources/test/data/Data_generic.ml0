@@ -4,17 +4,17 @@ module Data_generic {
   data G t = G t ;
 
   let g1 = G 1 ;
-  (* g1: G int = G 1 *)
+  (* g1: G Int = G 1 *)
 
   let gg1 = G (G 1) ;
-  (* gg1: G (G int) = G (G 1) *)
+  (* gg1: G (G Int) = G (G 1) *)
 
   let f x = match x
     | G x => x ;
 
   let x1 = f (G (G 123)) ;
-  (* x1: G int = G 123 *)
+  (* x1: G Int = G 123 *)
 
   let x2 = f (G 456) ;
-  (* x2: int = 456 *)
+  (* x2: Int = 456 *)
 }

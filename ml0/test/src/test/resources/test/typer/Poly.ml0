@@ -14,7 +14,7 @@ module Poly {
   (* id3: [?1] ?1 -> ?1 = * *)
 
   let x_int = id 1 ;
-  (* x_int: int = 1 *)
+  (* x_int: Int = 1 *)
 
   let x_str = id "foo" ;
   (* x_str: java.lang.String = foo *)

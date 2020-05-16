@@ -4,5 +4,5 @@ module Ref_tlet_inner {
   let x = 123 ;
   let y = x ;
 }
-(* x: int = 123 *)
-(* y: int = 123 *)
+(* x: Int = 123 *)
+(* y: Int = 123 *)

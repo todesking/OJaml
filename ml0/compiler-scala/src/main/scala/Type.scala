@@ -13,11 +13,11 @@ object Type {
     override def freeTypeVariables = Set()
   }
   case object Int extends Primitive {
-    override def toString(group: Boolean) = "int"
+    override def toString(group: Boolean) = "Int"
     override def jtype = JType.TInt
   }
   case object Bool extends Primitive {
-    override def toString(group: Boolean) = "bool"
+    override def toString(group: Boolean) = "Bool"
     override def jtype = JType.TBool
   }
 

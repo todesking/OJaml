@@ -4,5 +4,5 @@ import test.ml0.p1.A
 
 module B {
   let y = A.x ;
-  (* y: int = 10 *)
+  (* y: Int = 10 *)
 }

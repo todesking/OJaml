@@ -4,38 +4,38 @@ package test.ml0
 import com.todesking.ojaml.ml0.lib.Predef.+
 
 module Fun {
-  let f = fun x: bool =>
-    fun y: int =>
-      fun z: int =>
+  let f = fun x: Bool =>
+    fun y: Int =>
+      fun z: Int =>
         if x then y else z ;
 
   let f_true = f true ;
   let f_false = f false ;
 
   let x1 = f true 123 456 ;
-  (* x1: int = 123 *)
+  (* x1: Int = 123 *)
 
   let x2 = f false 123 456 ;
-  (* x2: int = 456 *)
+  (* x2: Int = 456 *)
 
   let x3 = f_true 123 456 ;
-  (* x3: int = 123 *)
+  (* x3: Int = 123 *)
 
   let x4 = f_false 123 456 ;
-  (* x4: int = 456 *)
+  (* x4: Int = 456 *)
 
   let f_sugar = fun x y =>
     let snd = fun x y => y in
     snd x y ;
   (* f_sugar: [?1, ?2] ?1 -> ?2 -> ?2 = * *)
   let x5 = f_sugar 10 20 ;
-  (* x5: int = 20 *)
+  (* x5: Int = 20 *)
 
   let f_sugar2 x y =
     let f a b = a + b in
     let rec g x = x in
     f x (g y) ;
-  (* f_sugar2: int -> int -> int = * *)
+  (* f_sugar2: Int -> Int -> Int = * *)
   let x6 = f_sugar2 1 2 ;
-  (* x6: int = 3 *)
+  (* x6: Int = 3 *)
 }

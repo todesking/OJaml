@@ -20,8 +20,8 @@ class ReplTest extends FunSuite with BeforeAndAfterEach {
   }
 
   val exprExamples = Seq[(String, PartialFunction[RR, Unit])](
-    "1" -> { case RR.Value(_, 1, "int") => },
-    "1 + 1" -> { case RR.Value(_, 2, "int") => },
+    "1" -> { case RR.Value(_, 1, "Int") => },
+    "1 + 1" -> { case RR.Value(_, 2, "Int") => },
     "aaa" -> { case RR.CompileError(_) => })
   exprExamples.foreach {
     case (src, assertFun) =>
@@ -33,11 +33,11 @@ class ReplTest extends FunSuite with BeforeAndAfterEach {
   val longExamples = Seq[(Seq[String], PartialFunction[RR, Unit])](
     Seq(
       "let x = 1 ;",
-      "x") -> { case RR.Value(_, 1, "int") => },
+      "x") -> { case RR.Value(_, 1, "Int") => },
     Seq(
-      "data E = L int | R int ;",
+      "data E = L Int | R Int ;",
       "let m ee = match ee | L x => 1 | _ => 2 ;",
-      "m (L 1)") -> { case RR.Value(_, 1, "int") => })
+      "m (L 1)") -> { case RR.Value(_, 1, "Int") => })
   longExamples.foreach {
     case (srcs, assertFun) =>
       test(s"inputs: ${srcs.mkString(" ")}") {
@@ -53,9 +53,9 @@ class ReplTest extends FunSuite with BeforeAndAfterEach {
 
   test("name override") {
     val res0 = repl.eval("let x = 1 ;")
-    assert(res0 == Repl.Result.Value("x", 1, "int"))
+    assert(res0 == Repl.Result.Value("x", 1, "Int"))
 
     val res1 = repl.eval("let x = 2 ;")
-    assert(res1 == Repl.Result.Value("x", 2, "int"))
+    assert(res1 == Repl.Result.Value("x", 2, "Int"))
   }
 }

@@ -1,8 +1,8 @@
 package test.ml0
 
 module Data_ctor_name_conflict {
-  data X = X int ;
-  data Y = X int ;
+  data X = X Int ;
+  data Y = X Int ;
   (*      ^ *)
 }
 

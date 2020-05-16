@@ -2,12 +2,12 @@
 package ml0.test
 
 module Tlet_error1 {
-  let f = fun a: int => x ;
+  let f = fun a: Int => x ;
 
   let x = f 10 ;
-  let y = fun a: int => g 10 ;
+  let y = fun a: Int => g 10 ;
   let z = g 10 ;
   (*      ^ *)
 
-  let g = fun a: int => x ;
+  let g = fun a: Int => x ;
 }

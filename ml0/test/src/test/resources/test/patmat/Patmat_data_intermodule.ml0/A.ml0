@@ -1,5 +1,5 @@
 package test.ml0
 
 module A {
-  data X = L int | R int ;
+  data X = L Int | R Int ;
 }

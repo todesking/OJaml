@@ -5,9 +5,9 @@ import com.todesking.ojaml.ml0.lib.Predef.+
 
 module Mono {
   let lit_int = 1 ;
-  (* lit_int: int = 1 *)
+  (* lit_int: Int = 1 *)
 
   let x =
     let f = fun x => x in f 1 ;
-  (* x: int = 1 *)
+  (* x: Int = 1 *)
 }

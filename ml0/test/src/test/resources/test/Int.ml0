@@ -11,33 +11,33 @@ import com.todesking.ojaml.ml0.lib.Predef.==
 
 module Int {
   let x1 = 1 + 2 ;
-  (* x1: int = 3 *)
+  (* x1: Int = 3 *)
 
   let x2 = 5 - 3 ;
-  (* x2: int = 2 *)
+  (* x2: Int = 2 *)
 
   let x3 = 5 / 3 ;
-  (* x3: int = 1 *)
+  (* x3: Int = 1 *)
 
   let x4 = 5 % 3 ;
-  (* x4: int = 2 *)
+  (* x4: Int = 2 *)
 
   let x5 = 3 * 5 ;
-  (* x5: int = 15 *)
+  (* x5: Int = 15 *)
 
   let x6 = 1 + 2 * 3 ;
-  (* x6: int = 7 *)
+  (* x6: Int = 7 *)
 
   let x7 = 1 + 2 * 3 ;
-  (* x7: int = 7 *)
+  (* x7: Int = 7 *)
 
   let x8 = (1 + 2) * 3 ;
-  (* x8: int = 9 *)
+  (* x8: Int = 9 *)
 
   let x9 = 1 == 1 ;
-  (* x9: bool = true *)
+  (* x9: Bool = true *)
 
   let x10 = 1 == 2 ;
-  (* x10: bool = false *)
+  (* x10: Bool = false *)
 }
 

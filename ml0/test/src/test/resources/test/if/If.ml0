@@ -7,5 +7,5 @@ module If {
   let x = if b1 then 123 else 456 ;
   let y = if b2 then x else 789 ;
 }
-(* x: int = 456 *)
-(* y: int = 456 *)
+(* x: Int = 456 *)
+(* y: Int = 456 *)

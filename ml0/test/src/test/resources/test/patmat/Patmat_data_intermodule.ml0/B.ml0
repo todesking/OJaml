@@ -7,5 +7,5 @@ module B {
   let x = match l
     | L a => a
     | R a => 0 ;
-  (* x: int = 1 *)
+  (* x: Int = 1 *)
 }

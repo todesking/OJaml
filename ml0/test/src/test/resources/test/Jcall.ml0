@@ -15,5 +15,5 @@ module Jcall {
 
   (* primitive types *)
   let x4 = 123#intValue() ;
-  (* x4: int = 123 *)
+  (* x4: Int = 123 *)
 }

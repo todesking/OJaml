@@ -10,39 +10,39 @@ import com.todesking.ojaml.ml0.lib.Predef.==
 module Let_rec {
   let x =
     let rec
-      is_even: int => bool = fun n: int =>
+      is_even: Int => Bool = fun n: Int =>
         if n == 0 then true
         else is_odd (n - 1) ;
-      is_odd: int => bool = fun n: int =>
+      is_odd: Int => Bool = fun n: Int =>
         if n == 0 then false
         else is_even (n - 1)
     in
       is_even 99 ;
-  (* x: bool = false *)
+  (* x: Bool = false *)
 
   let y =
-    let rec fact: int => int = fun n: int =>
+    let rec fact: Int => Int = fun n: Int =>
       if n == 0 then 0
       else if n == 1 then 1
       else fact (n - 1) + fact (n - 2)
     in
       fact 10 ;
-  (* y: int = 55 *)
+  (* y: Int = 55 *)
 
   let z =
     let rec
-      f: int => int = fun x: int => g x + 1 ;
-      g: int => int = fun x: int => x * 10
+      f: Int => Int = fun x: Int => g x + 1 ;
+      g: Int => Int = fun x: Int => x * 10
     in
       let rec
-        h: int => int = fun x: int =>
+        h: Int => Int = fun x: Int =>
           let tmp = f x in
-          let rec check: int => bool = fun x: int => x == 0 in
+          let rec check: Int => Bool = fun x: Int => x == 0 in
           if check x then 0
           else tmp * 10
       in
         h 5 ;
-  (* z: int = 510 *)
+  (* z: Int = 510 *)
 
 
 }

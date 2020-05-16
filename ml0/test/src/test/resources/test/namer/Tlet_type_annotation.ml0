@@ -3,10 +3,10 @@ package test.ml0
 import java.lang
 
 module Tlet_type_annotation {
-  data D = D int ;
+  data D = D Int ;
 
-  let x: int = 10 ;
-  (* x: int = 10 *)
+  let x: Int = 10 ;
+  (* x: Int = 10 *)
 
   let y: java.lang.String = "y" ;
   (* y: java.lang.String = y *)

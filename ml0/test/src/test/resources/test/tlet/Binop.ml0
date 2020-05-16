@@ -1,15 +1,15 @@
 package test.ml0
 
 module Binop {
-  let + = fun x: int => fun y: int => y ;
-  let % = fun x: int => fun y: int => x ;
+  let + = fun x: Int => fun y: Int => y ;
+  let % = fun x: Int => fun y: Int => x ;
 
   let x = 10 + 20 ;
-  (* x: int = 20 *)
+  (* x: Int = 20 *)
 
   let y = 10 % 20 ;
-  (* y: int = 10 *)
+  (* y: Int = 10 *)
 
   let z = 10 + 20 % 30 ;
-  (* z: int = 20 *)
+  (* z: Int = 20 *)
 }

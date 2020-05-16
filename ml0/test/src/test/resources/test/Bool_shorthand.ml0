@@ -2,20 +2,20 @@ package test.ml0
 
 module Bool_shorthand {
   let x0 = true && false ;
-  (* x0: bool = false *)
+  (* x0: Bool = false *)
 
   let x1 = true && true ;
-  (* x1: bool = true *)
+  (* x1: Bool = true *)
 
   let x2 = true && false && true ;
-  (* x2: bool = false *)
+  (* x2: Bool = false *)
 
   let y0 = false || false ;
-  (* y0: bool = false *)
+  (* y0: Bool = false *)
 
   let y1 = false || true ;
-  (* y1: bool = true *)
+  (* y1: Bool = true *)
 
   let y2 = false || false || true ;
-  (* y2: bool = true *)
+  (* y2: Bool = true *)
 }

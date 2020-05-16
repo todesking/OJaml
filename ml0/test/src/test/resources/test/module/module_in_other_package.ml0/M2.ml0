@@ -2,6 +2,6 @@ package test.ml0.p2
 
 module M2 {
   let x = test.ml0.p1.M1.x ;
-  (* p2.M2.x: int = 10 *)
+  (* p2.M2.x: Int = 10 *)
 }
 

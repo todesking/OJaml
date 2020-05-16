@@ -4,6 +4,6 @@ import A.x
 
 module B {
   let x = 2 ;
-  (* x: int = 2 *)
+  (* x: Int = 2 *)
 }
 

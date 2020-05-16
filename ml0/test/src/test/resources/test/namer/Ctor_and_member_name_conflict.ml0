@@ -1,7 +1,7 @@
 package test.ml0
 
 module Ctor_and_member_name_conflict {
-  data X = X1 int ;
+  data X = X1 Int ;
   let X1 = 1 ;
   (*  ^ *)
 }

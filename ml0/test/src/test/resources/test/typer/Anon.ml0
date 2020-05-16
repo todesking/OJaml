@@ -6,13 +6,13 @@ import com.todesking.ojaml.ml0.lib.Predef.*
 
 module Anon {
   let x1 = (if true then (fun x => x) else (fun x => x)) 1 ;
-  (* x1: int = 1 *)
+  (* x1: Int = 1 *)
 
   let x2 =
     (fun x => x) 42 ;
-  (* x2: int = 42 *)
+  (* x2: Int = 42 *)
 
   let x3 =
     (fun x => fun y => y x) 21 (fun x => x * 2) ;
-  (* x3: int = 42 *)
+  (* x3: Int = 42 *)
 }

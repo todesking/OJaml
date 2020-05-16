@@ -9,18 +9,18 @@ import com.todesking.ojaml.ml0.lib.Predef.{
 
 module Basic_equality {
   let int1 = int_eq 1 2 ;
-  (* int1: bool = false *)
+  (* int1: Bool = false *)
 
   let int2 = int_eq 1 1 ;
-  (* int2: bool = true *)
+  (* int2: Bool = true *)
 
   let bool1 = bool_eq true false ;
-  (* bool1: bool = false *)
+  (* bool1: Bool = false *)
   let bool2 = bool_eq true true ;
-  (* bool2: bool = true *)
+  (* bool2: Bool = true *)
 
   let str1 = string_eq "a" "b" ;
-  (* str1: bool = false *)
+  (* str1: Bool = false *)
   let str2 = string_eq "a" "a" ;
-  (* str2: bool = true *)
+  (* str2: Bool = true *)
 }
