@@ -1,0 +1,34 @@
+(* using: Predef *)
+package test.ml0
+
+module Patmat_lit {
+  let m_bool x = match x
+    | false => "F"
+    | true => "T" ;
+  let x11 = m_bool false ;
+  (* x11: java.lang.String = F *)
+  let x12 = m_bool true ;
+  (* x12: java.lang.String = T *)
+
+  let m_int x = match x
+    | 0 => "zero"
+    | 1 => "one"
+    | _ => "unk" ;
+  let x21 = m_int 0 ;
+  (* x21: java.lang.String = zero *)
+  let x22 = m_int 1 ;
+  (* x22: java.lang.String = one *)
+  let x23 = m_int 999 ;
+  (* x23: java.lang.String = unk *)
+
+  let m_str x = match x
+    | "abc" => 1
+    | "def" => 2
+    | _ => 3 ;
+  let x31 = m_str "abc" ;
+  (* x31: int = 1 *)
+  let x32 = m_str "def" ;
+  (* x32: int = 2 *)
+  let x33 = m_str "xxx" ;
+  (* x33: int = 3 *)
+}

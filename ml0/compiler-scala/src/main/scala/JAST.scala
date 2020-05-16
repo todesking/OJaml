@@ -33,12 +33,8 @@ object JAST {
       P.group(
         "return",
         prettyDoc(expr, false))
-    case LitInt(value) =>
+    case Lit(value) =>
       Doc.Text(value.toString)
-    case LitBool(value) =>
-      Doc.Text(value.toString)
-    case LitString(value) =>
-      s""""$value"""".doc
     case If(cond, th, el, tpe) =>
       P.eif(
         prettyDoc(cond, false),
@@ -127,12 +123,10 @@ object JAST {
   sealed abstract class Expr extends JAST {
     def tpe: JType
   }
-  sealed abstract class Lit(override val tpe: JType) extends Expr {
-    def value: Any
+
+  case class Lit(value: LitValue) extends Expr {
+    override def tpe: JType = value.tpe.jtype
   }
-  case class LitInt(value: Int) extends Lit(JType.TInt)
-  case class LitBool(value: Boolean) extends Lit(JType.TBool)
-  case class LitString(value: String) extends Lit(JType.TString)
 
   case class If(cond: Expr, th: Expr, el: Expr, tpe: JType) extends Expr
 

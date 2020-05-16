@@ -9,7 +9,9 @@ import Namer.Ctx
 import util.Syntax._
 
 import NameEnv.Ref
+
 import Namer.ValueRef
+import Namer.litBool
 
 class Namer() {
 
@@ -79,9 +81,7 @@ class Namer() {
         case ValueRef.Local(name) => NT.RefLocal(pos, name)
         case ValueRef.Member(member) => NT.RefMember(pos, member)
       }
-    case RT.LitInt(pos, v) => ok(NT.LitInt(pos, v))
-    case RT.LitBool(pos, v) => ok(NT.LitBool(pos, v))
-    case RT.LitString(pos, v) => ok(NT.LitString(pos, v))
+    case RT.Lit(pos, v) => ok(NT.Lit(pos, v))
     case RT.If(pos, cond, th, el) =>
       for {
         e0 <- appExpr(ctx, cond)
@@ -174,11 +174,30 @@ class Namer() {
     }
   }
 
+  // return: (checker expr, Seq(name -> selector expr))
   private[this] def appPat(ctx: Ctx, pat: RT.Pat, target: NT.Expr): Result[(NT.Expr, Seq[(String, NT.Expr)])] = pat match {
     case RT.Pat.PAny(pos) =>
-      ok((NT.LitBool(pat.pos, true), Nil))
+      ok((NT.Lit(pat.pos, LitValue.BoolValue(true)), Nil))
+    case RT.Pat.Lit(pos, v) =>
+      val checkerFun = v match {
+        case LitValue.StringValue(_) => "string_eq"
+        case LitValue.IntValue(_) => "int_eq"
+        case LitValue.BoolValue(_) => "bool_eq"
+      }
+      ok((
+        NT.App(
+          pos,
+          NT.App(
+            pos,
+            NT.RefMember(pos, ModuleRef.predef.memberRef(checkerFun)),
+            target
+          ),
+          NT.Lit(pos, v)
+        ),
+        Seq()
+      ))
     case RT.Pat.Capture(pos, name) =>
-      ok((NT.LitBool(pat.pos, true), Seq(name -> target)))
+      ok((NT.Lit(pat.pos, LitValue.BoolValue(true)), Seq(name -> target)))
     case RT.Pat.Ctor(pos, name, args) =>
       // TODO: Support qname
       for {
@@ -201,7 +220,7 @@ class Namer() {
       } yield {
               val checker = subPatterns.map(_._1).foldLeft(rootChecker: NT.Expr) {
                 case (l, r) =>
-                  NT.If(r.pos, l, r, NT.LitBool(r.pos, false))
+                  NT.If(r.pos, l, r, litBool(pos, false))
               }
               val extractor = subPatterns.flatMap(_._2)
               (checker, extractor)
@@ -214,11 +233,16 @@ object Namer {
       "bool" -> NameEnv.Ref.Member(PackageRef.root("ojaml").moduleRef("Primitives"), "Bool"),
       "int" -> NameEnv.Ref.Member(PackageRef.root("ojaml").moduleRef("Primitives"), "Int"),
     )
+
+  def litBool(pos: Pos, v: Boolean): NT.Expr =
+    NT.Lit(pos, LitValue.BoolValue(v))
+
   sealed abstract class ValueRef
   object ValueRef {
     case class Local(name: String) extends ValueRef
     case class Member(member: MemberRef) extends ValueRef
   }
+  
 
   case class Ctx(
     env: NameEnv,

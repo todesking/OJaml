@@ -20,12 +20,8 @@ object NamedAST {
       P.data(name, Seq(), ctors.map { case (n, ts) => (n.value, ts.map(_.toString)) })
     case TExpr(pos, e) =>
       P.group(prettyDoc(e, false), ";;")
-    case LitInt(pos, value) =>
+    case Lit(pos, value) =>
       Doc.Text(value.toString)
-    case LitBool(pos, value) =>
-      Doc.Text(value.toString)
-    case LitString(pos, value) =>
-      s""""$value"""".doc
     case RefMember(pos, ref) =>
       ref.toString.doc
     case RefLocal(pos, name) =>
@@ -77,10 +73,7 @@ object NamedAST {
 
   sealed abstract class Expr extends NamedAST
 
-  sealed abstract class Lit extends Expr
-  case class LitInt(pos: Pos, value: Int) extends Lit
-  case class LitBool(pos: Pos, value: Boolean) extends Lit
-  case class LitString(pos: Pos, value: String) extends Lit
+  case class Lit(pos: Pos, value: LitValue) extends Expr
 
   case class RefLocal(pos: Pos, name: String) extends Expr
   case class RefMember(pos: Pos, member: MemberRef) extends Expr

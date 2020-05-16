@@ -16,12 +16,8 @@ object TypedAST {
       P.module(s"$pkg.$name", body.map(prettyDoc(_, false)))
     case TLet(pos, name, tpe, expr) =>
       P.tlet(name, Some(tpe.toString), expr.map(prettyDoc(_, false)).getOrElse("".doc))
-    case LitInt(pos, value) =>
+    case Lit(pos, value) =>
       Doc.Text(value.toString)
-    case LitBool(pos, value) =>
-      Doc.Text(value.toString)
-    case LitString(pos, value) =>
-      s""""$value"""".doc
     case RefLocal(pos, name, tpe) =>
       s"($name: $tpe)".doc
     case RefMember(pos, member, tpe) =>
@@ -82,12 +78,10 @@ object TypedAST {
   sealed abstract class Expr extends TypedAST {
     def tpe: Type
   }
-  sealed abstract class Lit(override val tpe: Type) extends Expr {
-    def value: Any
+
+  case class Lit(pos: Pos, value: LitValue) extends Expr {
+    override def tpe = value.tpe
   }
-  case class LitInt(pos: Pos, value: Int) extends Lit(Type.Int)
-  case class LitBool(pos: Pos, value: Boolean) extends Lit(Type.Bool)
-  case class LitString(pos: Pos, value: String) extends Lit(Type.String)
 
   case class RefMember(pos: Pos, member: MemberRef, tpe: Type) extends Expr
   case class RefLocal(pos: Pos, name: String, tpe: Type) extends Expr

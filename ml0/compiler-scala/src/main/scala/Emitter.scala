@@ -111,12 +111,8 @@ class Emitter(baseDir: Path) {
   }
 
   private[this] def eval(method: asm.MethodVisitor, expr: J.Expr): Unit = expr match {
-    case J.LitInt(v) =>
-      method.visitLdcInsn(v)
-    case J.LitBool(v) =>
-      method.visitLdcInsn(v)
-    case J.LitString(v) =>
-      method.visitLdcInsn(v)
+    case J.Lit(v) =>
+      method.visitLdcInsn(v.value)
     case J.GetField(ref, target) =>
       eval(method, target)
       method.visitFieldInsn(op.GETFIELD, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))

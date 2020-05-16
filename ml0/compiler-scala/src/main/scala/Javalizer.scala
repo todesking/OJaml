@@ -62,9 +62,7 @@ object Javalizer {
         builder.addClinit(J.TExpr(appExpr(expr, 0, Map())))
     }
     def appExpr(expr: T.Expr, depth: Int, locals: Map[String, (Int, Int)]): J.Expr = expr match {
-      case T.LitInt(pos, v) => J.LitInt(v)
-      case T.LitBool(pos, v) => J.LitBool(v)
-      case T.LitString(pos, v) => J.LitString(v)
+      case T.Lit(pos, v) => J.Lit(v)
       case T.RefMember(pos, m, t) =>
         J.GetStatic(FieldRef(m.module.classRef, m.name, t.jtype))
       case T.RefLocal(pos, name, tt) =>
@@ -94,7 +92,7 @@ object Javalizer {
                 sig,
                 false,
                 Some(J.GetLocal(0, JType.Fun)),
-                Seq(J.LitInt(d), J.LitInt(index))),
+                Seq(J.Lit(LitValue.of(d)), J.Lit(LitValue.of(index)))),
               t.boxed),
             t)
         }
@@ -152,7 +150,9 @@ object Javalizer {
       case T.Upcast(pos, b, t) => J.Cast(appExpr(b, depth, locals), t.jtype)
       case T.MatchError(pos, t) =>
         J.Throw(
-          J.JNew(ClassRef.fromInternalName("java/lang/RuntimeException"), Seq(J.LitString("match error"))),
+          J.JNew(
+            ClassRef.fromInternalName("java/lang/RuntimeException"),
+            Seq(J.Lit(LitValue.of("match error")))),
           t.jtype)
     }
 
@@ -193,7 +193,7 @@ object Javalizer {
                 MethodSig(dataKlass, false, false, "<init>", Seq(JType.TInt), None),
                 true,
                 Some(J.GetLocal(0, JType.TKlass(ctorKlass))),
-                Seq(J.LitInt(params.size))))) ++ paramFields.zipWithIndex.map {
+                Seq(J.Lit(LitValue.of(params.size)))))) ++ paramFields.zipWithIndex.map {
               case (field, i) =>
                 J.PutField(field, J.GetLocal(0, JType.TKlass(ctorKlass)), J.GetLocal(i + 1, field.tpe))
             }
@@ -209,7 +209,7 @@ object Javalizer {
           ctorBuilder.addMethod(J.MethodDef("values", false, Seq(), Some(JType.ObjectArray), valuesBody))
 
           val nameBody = Seq(
-            J.TReturn(J.LitString(ctorName)))
+            J.TReturn(J.Lit(LitValue.of(ctorName))))
           ctorBuilder.addMethod(J.MethodDef("name", false, Seq(), Some(JType.TString), nameBody))
 
           klasses :+= ctorBuilder.build()

@@ -138,9 +138,9 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
       case e ~ es =>
         es.foldLeft(e) {
           case (l, Name(pos, "&&") ~ r) =>
-            T.If(pos, l, r, T.LitBool(pos, false))
+            T.If(pos, l, r, T.Lit(pos, LitValue.BoolValue(false)))
           case (l, Name(pos, "||") ~ r) =>
-            T.If(pos, l, T.LitBool(pos, true), r)
+            T.If(pos, l, T.Lit(pos, LitValue.BoolValue(true)), r)
           case (l, op ~ r) =>
             T.App(
               op.pos,
@@ -172,7 +172,10 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   lazy val jcall: Parser[String ~ Name ~ List[RawAST.Expr]] = ("##" | "#") ~ name ~ ("(" ~> repsep(expr, ",") <~ ")")
 
-  def expr6: Parser[RawAST.Expr] = paren | lit_bool | lit_int | lit_string | var_ref
+  def expr6: Parser[RawAST.Expr] = paren | lit | var_ref
+
+  def lit = withpos(litv) { (pos, v) => T.Lit(pos, v) }
+  def litv = litv_bool | litv_int | litv_string
 
   def paren: Parser[RawAST.Expr] = ("(" ~> expr) <~ ")"
 
@@ -182,14 +185,14 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case _ => throw new AssertionError()
   }
 
-  val lit_int: Parser[RawAST.LitInt] = withpos("""[0-9]+""".r) { case (pos, i) => T.LitInt(pos, i.toInt) }
-  val lit_bool: Parser[RawAST.LitBool] = withpos(("true" | "false")) {
-    case (pos, "true") => T.LitBool(pos, true)
-    case (pos, "false") => T.LitBool(pos, false)
+  val litv_int: Parser[LitValue] = """[0-9]+""".r ^^ { i => LitValue.of(i.toInt) }
+  val litv_bool: Parser[LitValue] = ("true" | "false") ^^ {
+    case "true" => LitValue.of(true)
+    case "false" => LitValue.of(false)
     case _ => throw new AssertionError()
   }
-  val lit_string: Parser[RawAST.LitString] =
-    withpos(("\"" ~> """[^"]+""".r) <~ "\"") { (pos, s) => T.LitString(pos, s) }
+  val litv_string: Parser[LitValue] =
+    ("\"" ~> """[^"]+""".r) <~ "\"" ^^ { s => LitValue.of(s) }
 
   val eif: Parser[RawAST.If] =
     withpos((kwd("if") ~> expr) ~ (kwd("then") ~> expr) ~ (kwd("else") ~> expr)) { case (pos, cond ~ th ~ el) => T.If(pos, cond, th, el) }
@@ -224,7 +227,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case (pos, p ~ e) =>
       T.Clause(pos, p, e)
   }
-  lazy val ematch_pat: Parser[T.Pat] = (ematch_ctor | ematch_any | ematch_capture | (("(" ~> ematch_pat) <~ ")")).named("ematch_pat")
+  lazy val ematch_pat: Parser[T.Pat] = (ematch_lit | ematch_ctor | ematch_any | ematch_capture | (("(" ~> ematch_pat) <~ ")")).named("ematch_pat")
   lazy val ematch_ctor: Parser[T.Pat] =
     ctor_name ~ rep(ematch_pat) ^^ {
       case n ~ ps =>
@@ -232,5 +235,6 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     }
   lazy val ematch_any = withpos(kwd("_")) { case (pos, _) => T.Pat.PAny(pos) }
   lazy val ematch_capture = var_name ^^ { case n => T.Pat.Capture(n.pos, n.value) }
+  lazy val ematch_lit = withpos(litv) { (pos, v) => T.Pat.Lit(pos, v) }
 }
 

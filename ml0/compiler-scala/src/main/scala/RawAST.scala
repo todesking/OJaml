@@ -28,12 +28,8 @@ object RawAST {
       })
     case TExpr(_, expr) =>
       P.group(prettyDoc(expr, false), ";;")
-    case LitInt(_, value) =>
+    case Lit(_, value) =>
       Doc.Text(value.toString)
-    case LitBool(_, value) =>
-      Doc.Text(value.toString)
-    case LitString(_, value) =>
-      s""""$value"""".doc
     case Ref(_, qname) =>
       qname.fullName.doc
     case JCall(_, expr, name, args, isStatic) =>
@@ -76,6 +72,8 @@ object RawAST {
         args.map(prettyDoc(_, true))))
     case Pat.Capture(_, name) =>
       name.doc
+    case Pat.Lit(_, v) =>
+      v.toString.doc
   }
 
   case class Program(pos: Pos, pkg: QName, imports: Seq[Import], items: Seq[Module]) extends RawAST
@@ -89,11 +87,7 @@ object RawAST {
 
   sealed abstract class Expr extends RawAST
 
-  sealed abstract class Lit extends Expr
-
-  case class LitInt(pos: Pos, value: Int) extends Lit
-  case class LitBool(pos: Pos, value: Boolean) extends Lit
-  case class LitString(pos: Pos, value: String) extends Lit
+  case class Lit(pos: Pos, value: LitValue) extends Expr
 
   case class Ref(pos: Pos, qname: QName) extends Expr
   case class JCall(pos: Pos, expr: Expr, name: Name, args: Seq[Expr], isStatic: Boolean) extends Expr
@@ -110,5 +104,6 @@ object RawAST {
     case class Ctor(pos: Pos, name: String, args: Seq[Pat]) extends Pat
     case class PAny(pos: Pos) extends Pat
     case class Capture(pos: Pos, name: String) extends Pat
+    case class Lit(pos: Pos, value: LitValue) extends Pat
   }
 }

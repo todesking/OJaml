@@ -13,4 +13,6 @@ object ModuleRef {
     val parts = fullName.split('.')
     ModuleRef(PackageRef.fromParts(parts.init), parts.last)
   }
+
+  val predef = fromFullName("com.todesking.ojaml.ml0.lib.Predef")
 }

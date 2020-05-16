@@ -191,9 +191,7 @@ class Typer {
       ok0(TT.RefMember(pos, member, tappFresh(ctx.memberTypeOf(member))))
     case NT.RefLocal(pos, name) =>
       ok0(TT.RefLocal(pos, name, tappFresh(ctx.localTypeOf(name))))
-    case NT.LitInt(pos, v) => ok0(TT.LitInt(pos, v))
-    case NT.LitBool(pos, v) => ok0(TT.LitBool(pos, v))
-    case NT.LitString(pos, v) => ok0(TT.LitString(pos, v))
+    case NT.Lit(pos, v) => ok0(TT.Lit(pos, v))
     case NT.If(pos, cond, th, el) =>
       for {
         x0 <- appExpr(ctx, cond)
