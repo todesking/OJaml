@@ -17,4 +17,6 @@ module Predef {
   let int_eq l: int r: int = Runtime##intEq(l, r) ;
   let bool_eq l: bool r: bool = Runtime##boolEq(l, r) ;
   let string_eq l: java.lang.String r: java.lang.String = Runtime##stringEq(l, r) ;
+
+  let unit = Runtime##unitValue() ;
 }

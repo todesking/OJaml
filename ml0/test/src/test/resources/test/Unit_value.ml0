@@ -1,0 +1,9 @@
+(* using: Predef *)
+package test.ml0
+
+import com.todesking.ojaml.ml0.lib.Predef.unit
+
+module Unit_value {
+  let u = unit ;
+  (* u: com.todesking.ojaml.ml0.runtime.Unit = () *)
+}

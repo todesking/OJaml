@@ -18,5 +18,7 @@ public class Runtime {
   public static boolean boolOr(boolean l, boolean r) { return l || r; }
   public static boolean boolAnd(boolean l, boolean r) { return l && r; }
   public static boolean boolEq(boolean l, boolean r) { return l == r; }
+
+  public static Unit unitValue() { return Unit.value; }
 }
 
