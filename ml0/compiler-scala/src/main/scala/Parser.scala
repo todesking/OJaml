@@ -84,7 +84,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
 
   // TODO: Support parenthesis
   def typename: Parser[TypeName] = rep1sep(typename_app | typename1, kwd("=>")) ^^ { ts =>
-    ts.tail.foldLeft(ts.head) { (l, r) => TypeName.Fun(l, r) }
+    ts.init.foldRight(ts.last) { (l, r) => TypeName.Fun(l, r) }
   }
   def typename1: Parser[TypeName] = typename_atom | typename_group
   def typename_app = typename_atom ~ rep1(typename1) ^^ { case n ~ args => TypeName.App(n.pos, n, args) }
