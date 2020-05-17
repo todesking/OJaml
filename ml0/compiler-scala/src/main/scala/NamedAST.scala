@@ -15,7 +15,13 @@ object NamedAST {
     case Module(pos, pkg, name, body) =>
       P.module(s"$pkg.$name", body.map(prettyDoc(_, false)))
     case TLet(pos, name, tpe, expr) =>
-      P.tlet(name, tpe.map(_.toString), prettyDoc(expr, false))
+      P.tlet(name.value, tpe.map(_.toString), prettyDoc(expr, false))
+    case TLetRec(pos, bindings) =>
+      P.bgroup(
+        bindings.map {
+          case (name, tpe, expr) =>
+            P.tlet(s"(rec)$name", tpe.map(_.toString), prettyDoc(expr, false))
+        })
     case Data(pos, name, tpe, ctors) =>
       P.data(name, Seq(), ctors.map { case (n, ts) => (n.value, ts.map(_.toString)) })
     case TExpr(pos, e) =>
@@ -68,6 +74,7 @@ object NamedAST {
 
   sealed abstract class Term extends NamedAST
   case class TLet(pos: Pos, name: Name, tpe: Option[Type], expr: Expr) extends Term
+  case class TLetRec(pos: Pos, bindings: Seq[(Name, Option[Type], Expr)]) extends Term
   case class Data(pos: Pos, name: Name, tvars: Seq[Type.Var], ctors: Seq[(Name, Seq[Type])]) extends Term
   case class TExpr(pos: Pos, expr: Expr) extends Term
 
@@ -81,7 +88,7 @@ object NamedAST {
   case class App(pos: Pos, fun: Expr, arg: Expr) extends Expr
   case class Fun(pos: Pos, param: String, tpe: Option[Type], body: Expr) extends Expr
   case class ELet(pos: Pos, name: String, value: Expr, body: Expr) extends Expr
-  case class ELetRec(pos: Pos, bindings: Seq[(String, Option[Type], Fun)], body: Expr) extends Expr
+  case class ELetRec(pos: Pos, bindings: Seq[(Name, Option[Type], Fun)], body: Expr) extends Expr
   case class JCallInstance(pos: Pos, receiver: Expr, methodName: Name, args: Seq[Expr]) extends Expr
   case class JCallStatic(pos: Pos, target: ClassRef, methodName: Name, args: Seq[Expr]) extends Expr
 

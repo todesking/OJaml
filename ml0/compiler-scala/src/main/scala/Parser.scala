@@ -101,7 +101,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case (pos, n ~ ts) => T.Module(pos, n, ts)
   }
 
-  def term: Parser[T.Term] = tlet | data | texpr
+  def term: Parser[T.Term] = tletr | tlet | data | texpr
   def tlet: Parser[RawAST.TLet] = tlet_fun | tlet_generic
   val tlet_generic: Parser[RawAST.TLet] = withpos((kwd("let") ~> name) ~ (":" ~> typename).? ~ ("=" ~> expr) <~ eot) {
     case (pos, n ~ tn ~ e) =>
@@ -111,6 +111,12 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case (pos, name ~ tn ~ params ~ expr) =>
       T.TLet(pos, name, tn, mkLetBody(params, expr))
   }
+
+  val tletr: Parser[RawAST.Term] =
+    withpos((kwd("let") ~ kwd("rec")) ~> rep1(letrec_binding <~ ";")) {
+      case (pos, bindings) =>
+        T.TLetRec(pos, bindings)
+    }
 
   private[this] def mkLetBody(params: Seq[Name ~ Option[TypeName]], body: T.Expr): T.Expr = params match {
     case (name ~ tpe) :: xs =>

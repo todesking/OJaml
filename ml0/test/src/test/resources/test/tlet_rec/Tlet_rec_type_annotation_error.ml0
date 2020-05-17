@@ -1,0 +1,17 @@
+(* using: Predef *)
+
+package test.ml0
+
+import com.todesking.ojaml.ml0.lib.Predef.-
+import com.todesking.ojaml.ml0.lib.Predef.==
+
+module Tlet_rec_type_annotation_error {
+  let rec
+    is_even: Int => Int = fun n =>
+      if n == 0 then true
+      else is_odd (n - 1) ;
+    is_odd n: Int =
+      if n == 0 then false
+      else is_even (n - 1) ;
+      (*             ^ TODO: WHY here? *)
+}

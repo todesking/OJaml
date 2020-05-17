@@ -44,9 +44,9 @@ object P {
       s"module $name {",
       bgroupi(body),
       "}")
-  def tlet(name: Name, tpe: Option[String], body: Doc) =
+  def tlet(name: String, tpe: Option[String], body: Doc) =
     group(
-      s"let ${name.value}${tpe.map { t => s": $t" } getOrElse ""} =",
+      s"let $name${tpe.map { t => s": $t" } getOrElse ""} =",
       groupi(body))
   def data(name: Name, tvars: Seq[Name], ctors: Seq[(String, Seq[String])]) =
     group(

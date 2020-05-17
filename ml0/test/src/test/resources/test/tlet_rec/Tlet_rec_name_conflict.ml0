@@ -1,0 +1,9 @@
+package test.ml0
+
+module Tlet_rec_type_annotation {
+  let rec
+    f x = 1;
+(*          ^ TODO: Parser may wrong *)
+    f x = 1;
+}
+

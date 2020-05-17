@@ -1,0 +1,11 @@
+package test.ml0
+
+module Let_rec_generic {
+  let consume x:Int y:Int = 100 ;
+  let x =
+    let rec
+      f x = g x;
+      g x = 1 in
+    consume (f "a") (f true) ;
+  (* x: Int = 100 *)
+}

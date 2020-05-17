@@ -15,7 +15,13 @@ object TypedAST {
     case Module(pos, pkg, name, body) =>
       P.module(s"$pkg.$name", body.map(prettyDoc(_, false)))
     case TLet(pos, name, tpe, expr) =>
-      P.tlet(name, Some(tpe.toString), expr.map(prettyDoc(_, false)).getOrElse("".doc))
+      P.tlet(name.value, Some(tpe.toString), expr.map(prettyDoc(_, false)).getOrElse("".doc))
+    case TLetRec(pos, bindings) =>
+      P.bgroup(
+        bindings.map {
+          case (name, tpe, expr) =>
+            P.tlet(s"(rec)$name", Some(tpe.toString), prettyDoc(expr, false))
+        })
     case Lit(pos, value) =>
       Doc.Text(value.toString)
     case RefLocal(pos, name, tpe) =>
@@ -43,11 +49,11 @@ object TypedAST {
       P.fun(param, Some(tpe.toString), prettyDoc(body, false), paren)
     case App(pos, fun, arg, tpe) =>
       P.app(paren, prettyDoc(fun, false), prettyDoc(arg, true))
-    case LetRec(pos, values, body) =>
+    case ELetRec(pos, values, body) =>
       P.eletrec(
         values.map {
-          case (name, f) =>
-            (name, None, prettyDoc(f, false))
+          case (name, tpe, f) =>
+            (name.value, Some(tpe.toString), prettyDoc(f, false))
         },
         prettyDoc(body, false))
     case JNew(pos, ref, args) =>
@@ -70,6 +76,7 @@ object TypedAST {
 
   sealed abstract class Term extends TypedAST
   case class TLet(pos: Pos, name: Name, tpe: Type, expr: Option[Expr]) extends Term
+  case class TLetRec(pos: Pos, values: Seq[(Name, Type, Expr)]) extends Term
   case class TExpr(pos: Pos, expr: Expr) extends Term
 
   case class Data(pos: Pos, name: Name, tparams: Seq[Type.Var], ctors: Seq[DataCtor]) extends Term
@@ -85,7 +92,7 @@ object TypedAST {
 
   case class RefMember(pos: Pos, member: MemberRef, tpe: Type) extends Expr
   case class RefLocal(pos: Pos, name: String, tpe: Type) extends Expr
-  case class LetRec(pos: Pos, values: Seq[(String, Fun)], body: Expr) extends Expr {
+  case class ELetRec(pos: Pos, values: Seq[(Name, Type, Expr)], body: Expr) extends Expr {
     override def tpe: Type = body.tpe
   }
   case class If(pos: Pos, cond: Expr, th: Expr, el: Expr, tpe: Type) extends Expr

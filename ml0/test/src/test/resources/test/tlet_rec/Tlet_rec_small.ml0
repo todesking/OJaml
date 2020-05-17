@@ -1,0 +1,10 @@
+package test.ml0
+
+module Tlet_rec_small {
+  let rec
+    f x = g x;
+    g x = 1;
+
+  let x = f "a" ;
+  (* x: Int = 1 *)
+}

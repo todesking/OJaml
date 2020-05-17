@@ -56,6 +56,13 @@ object Javalizer {
           builder.addClinit(
             J.PutStatic(f, appExpr(expr, 0, Map())))
         }
+      case T.TLetRec(pos, bindings) =>
+        bindings.foreach {
+          case (name, tpe, fun) =>
+            val f = builder.addStaticField(name.value, tpe.jtype)
+            builder.addClinit(
+              J.PutStatic(f, appExpr(fun, 0, Map())))
+        }
       case T.Data(pos, name, params, ctors) =>
         appData(name.value, ctors)
       case T.TExpr(pos, expr) =>
@@ -96,9 +103,9 @@ object Javalizer {
               t.boxed),
             t)
         }
-      case T.LetRec(pos, vs, b) =>
-        val newLocals = locals ++ vs.map(_._1).zipWithIndex.map { case (name, i) => name -> (depth + 1, i + 1) }
-        val funs = vs.map { case (name, fun) => appExpr(fun, depth + 1, newLocals) }
+      case T.ELetRec(pos, vs, b) =>
+        val newLocals = locals ++ vs.map(_._1).zipWithIndex.map { case (name, i) => name.value -> (depth + 1, i + 1) }
+        val funs = vs.map { case (name, tpe, fun) => appExpr(fun, depth + 1, newLocals) }
         val body = appExpr(b, depth + 1, newLocals)
         val funKlass = createFun(body, Some(funs))
         val funNewArgs =

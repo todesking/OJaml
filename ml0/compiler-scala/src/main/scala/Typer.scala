@@ -58,6 +58,18 @@ class Typer {
         val e2 = reindex(Subst.empty, 1, e)
         (ctx, Seq(TT.TLet(pos, name, e2.tpe, Some(e2))))
       }
+    case NT.TLetRec(pos, bindings) =>
+      for {
+        x <- appLetRecBindings(ctx, pos, bindings) { (ctx, name, tpe) => ctx.setMember(name, tpe) }
+        (s, bs) = x
+        c = bs.foldLeft(ctx) {
+          case (c, (name, tpe, expr)) =>
+            c.setMember(name.value, tpe)
+        }
+      } yield {
+        // TODO: bind members
+        (c, Seq(TT.TLetRec(pos, bs)))
+      }
     case NT.Data(pos, name, tvars, ctors) =>
       def wrap(t: Type) = if (tvars.isEmpty) t else Type.Abs(tvars, t)
       val data = Type.Data(ctx.currentModule, name.value, tvars)
@@ -100,9 +112,10 @@ class Typer {
     case _: TT.Lit => tree
     case TT.RefMember(pos, member, t) => TT.RefMember(pos, member, s.app(t))
     case TT.RefLocal(pos, name, t) => TT.RefLocal(pos, name, s.app(t))
-    case TT.LetRec(pos, vs, b) => TT.LetRec(
+    case TT.ELetRec(pos, vs, b) => TT.ELetRec(
       pos,
-      vs.map { case (name, e) => name -> subst(s, e) }.map { case (name, f: TT.Fun) => name -> f case _ => throw new AssertionError() },
+      vs.map { case (name, tpe, e) => (name, s.app(tpe), subst(s, e)) }
+        .map { case (name, tpe, f: TT.Fun) => (name, tpe, f) case _ => throw new AssertionError() },
       subst(s, b))
     case TT.If(pos, c, th, el, t) =>
       TT.If(pos, subst(s, c), subst(s, th), subst(s, el), s.app(t))
@@ -124,10 +137,10 @@ class Typer {
     case _: TT.Lit => tree
     case TT.RefMember(pos, member, t) => TT.RefMember(pos, member, s.app(t))
     case TT.RefLocal(pos, name, t) => TT.RefLocal(pos, name, s.app(t))
-    case TT.LetRec(pos, vs, b) => TT.LetRec(
+    case TT.ELetRec(pos, vs, b) => TT.ELetRec(
       pos,
-      vs.map { case (name, e) => name -> reindex(s, nextIndex, e) }
-        .map { case (name, f: TT.Fun) => name -> f case _ => throw new AssertionError() },
+      vs.map { case (name, tpe, e) => (name, s.app(tpe), reindex(s, nextIndex, e)) }
+        .map { case (name, tpe, f: TT.Fun) => (name, tpe, f) case _ => throw new AssertionError() },
       reindex(s, nextIndex, b))
     case TT.If(pos, c, th, el, t) =>
       TT.If(pos, reindex(s, nextIndex, c), reindex(s, nextIndex, th), reindex(s, nextIndex, el), s.app(t))
@@ -157,8 +170,16 @@ class Typer {
       case _: TT.Lit =>
       case TT.RefMember(pos, m, t) =>
       case TT.RefLocal(pos, n, t) =>
-      case TT.LetRec(pos, vs, b) =>
-        vs.foreach { case (name, e) => assertNoFVs(e, nonFrees) }
+      case TT.ELetRec(pos, vs, b) =>
+        vs.foreach {
+          case (name, tpe, e) =>
+            tpe match {
+              case Type.Abs(params, t) =>
+                assertNoFVs(e, nonFrees ++ params)
+              case _ =>
+                assertNoFVs(e, nonFrees)
+            }
+        }
         assertNoFVs(b, nonFrees)
       case TT.If(pos, c, th, el, t) =>
         assertNoFVs(c, nonFrees)
@@ -231,30 +252,17 @@ class Typer {
         s <- (s0 ++ s1).unify(body.pos)
       } yield (s, TT.App(pos, TT.Fun(pos, name, e1, Type.Fun(e0.tpe, e1.tpe)), e0, e1.tpe))
     case NT.ELetRec(pos, bindings, body) =>
-      val bs = bindings.map {
-        case (name, tpe, fun) =>
-          (name, tpe getOrElse freshVar(), fun)
-      }
-      val c = bs.foldLeft(ctx) {
-        case (c, (name, tpe, fun)) =>
-          c.bindLocal(name, tpe)
-      }
-
-      val typed =
-        bs.map {
-          case (_, tpe, fun) =>
-            appExpr(c, fun).map {
-              case (subst, tfun: TT.Fun) => (subst + (tpe -> tfun.tpe), tfun)
-              case (subst, tfun) => throw new AssertionError(s"$tfun")
-            }
-        }.validated
-
       for {
-        ts <- typed
+        x <- appLetRecBindings(ctx, pos, bindings) { (c, name, tpe) => c.bindLocal(name, tpe) }
+        (s, bs) = x
+        c = bs.foldLeft(ctx) {
+          case (c, (name, tpe, expr)) =>
+            c.bindLocal(name.value, tpe)
+        }
         x <- appExpr(c, body)
         (sb, b) = x
-        s <- (ts.map(_._1) :+ sb).reduce(_ ++ _).unify(expr.pos)
-      } yield (s, TT.LetRec(pos, bindings.map(_._1).zip(ts.map(_._2)), b))
+        s <- (s ++ sb).unify(expr.pos)
+      } yield (s, TT.ELetRec(pos, bs, b))
     case NT.App(pos, f, x) =>
       val a1 = freshVar()
       val a2 = freshVar()
@@ -288,6 +296,51 @@ class Typer {
       } yield (s1, TT.JCallInstance(pos, method, e1, targs.map(_._2)))
     case NT.MatchError(pos) =>
       ok0(TT.MatchError(pos, freshVar()))
+  }
+
+  private[this] def appLetRecBindings(
+    ctx: Ctx,
+    pos: Pos,
+    bindings: Seq[(Name, Option[Type], NT.Expr)])(register: (Ctx, String, Type) => Ctx): Result[(Subst, Seq[(Name, Type, TT.Expr)])] = {
+    val varIdStart = nextVarId
+    val names = bindings.map(_._1)
+    val types = bindings.map { case (_, tpe, _) => tpe getOrElse freshVar() }
+    val exprs = bindings.map(_._3)
+
+    val c = names.zip(types).foldLeft(ctx) {
+      case (c, (name, tpe)) =>
+        register(c, name.value, tpe)
+    }
+
+    val typed =
+      types.zip(exprs).map {
+        case (tpe, fun) =>
+          appExpr(c, fun).map {
+            case (subst, tfun: TT.Fun) => (subst + (tpe -> tfun.tpe), tfun)
+            case (subst, tfun) => throw new AssertionError(s"$tfun")
+          }
+      }.validated
+
+    for {
+      ts <- typed
+      s <- ts.map(_._1).reduce(_ ++ _).unify(pos)
+      ts2 = ts.map {
+        case (_, tree) =>
+          subst(s, tree)
+      }
+    } yield (
+      s,
+      names.zip(types).zip(ts2).map {
+        case ((name, tpe), expr) =>
+          val tpe2 = s.app(tpe)
+          val params = tpe2
+            .freeTypeVariables
+            .filter(_.id >= varIdStart)
+            .toSeq
+            .sortBy(_.id)
+          val abs = Type.Abs(params, tpe2)
+          (name, abs, expr)
+      })
   }
 }
 
@@ -350,6 +403,9 @@ object Typer {
         case (l, r) :: xs =>
           Result.error(pos, s"Unify failed: $l and $r")
       }
+
+    def pretty: String =
+      items.map { case (from, to) => s"$from --> $to" }.mkString("\n")
   }
   object Subst {
     def apply(items: (Type, Type)*) = new Subst(items.toList)
@@ -383,6 +439,8 @@ object Typer {
       if (memberTypes.contains(ref)) error(name.pos, s"Member $name is already defined")
       else Result.ok(copy(memberTypes = memberTypes + (ref -> tpe)))
     }
+    def setMember(name: String, tpe: Type): Ctx =
+      copy(memberTypes = memberTypes + (currentModule.memberRef(name) -> tpe))
 
     def bindMembers(mts: Map[MemberRef, Type]): Ctx =
       copy(memberTypes = memberTypes ++ mts)

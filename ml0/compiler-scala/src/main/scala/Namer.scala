@@ -52,6 +52,15 @@ class Namer() {
       } yield {
         (c.addModuleMember(name.value), NT.TLet(pos, name, t, e))
       }
+    case RT.TLetRec(pos, bindings) =>
+      val names = bindings.map(_._1)
+      for {
+        c <- names.foldLeftE(ctx) { (c, name) => c.tlet(name) }
+        ts <- validate(bindings.map(_._2).map(_.mapResult(c.resolveType)))
+        vs <- validate(bindings.map(_._3).map(appExpr(c, _)))
+      } yield {
+        (c, NT.TLetRec(pos, names.zip(ts).zip(vs).map { case ((n, t), v) => (n, t, v) }))
+      }
     case RT.Data(pos, name, tparams, ctors) =>
       for {
         ctx <- ctx.addDataType(name, tparams)
@@ -100,7 +109,7 @@ class Namer() {
         ts <- validate(bs.map(_._2).map(_.mapResult(c.resolveType)))
         vs <- validate(bs.map(_._3).map(appExpr(c, _))).map(_.map(_.asInstanceOf[NT.Fun]))
         b <- appExpr(c, body)
-      } yield NT.ELetRec(pos, names.zip(ts).zip(vs).map { case ((n, t), v) => (n.value, t, v) }, b)
+      } yield NT.ELetRec(pos, names.zip(ts).zip(vs).map { case ((n, t), v) => (n, t, v) }, b)
     case RT.ELet(pos, name, value, body) =>
       for {
         v <- appExpr(ctx, value)

@@ -21,7 +21,13 @@ object RawAST {
     case Module(_, name, body) =>
       P.module(name.value, body.map(prettyDoc(_, false)))
     case TLet(_, name, tname, expr) =>
-      P.tlet(name, tname.map(_.toString), prettyDoc(expr, false))
+      P.tlet(name.value, tname.map(_.toString), prettyDoc(expr, false))
+    case TLetRec(pos, bindings) =>
+      P.bgroup(
+        bindings.map {
+          case (name, tname, expr) =>
+            P.tlet(s"(rec)$name", tname.map(_.toString), prettyDoc(expr, false))
+        })
     case Data(_, name, tvars, ctors) =>
       P.data(name, tvars, ctors.map {
         case (n, ts) => (n.value, ts.map(_.toString))
@@ -82,6 +88,8 @@ object RawAST {
 
   sealed abstract class Term extends RawAST
   case class TLet(pos: Pos, name: Name, typeName: Option[TypeName], expr: Expr) extends Term
+  case class TLetRec(pos: Pos, bindings: Seq[(Name, Option[TypeName], Fun)]) extends Term
+
   case class Data(pos: Pos, name: Name, tparams: Seq[Name], ctors: Seq[(Name, Seq[TypeName])]) extends Term
   case class TExpr(pos: Pos, expr: Expr) extends Term
 
