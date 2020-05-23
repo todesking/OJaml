@@ -12,12 +12,13 @@ object RawAST {
   def pretty(ast: RawAST): String =
     PrettyPrinter.pretty(80, prettyDoc(ast, false))
   def prettyDoc(ast: RawAST, paren: Boolean): Doc = ast match {
-    case Program(_, pkg, imports, items) =>
+    case Program(_, pkg, items) =>
       P.bgroup(
         P.pkg(pkg),
-        P.imports(imports),
         P.bgroup(
           items.map(prettyDoc(_, false))))
+    case TImport(pos, spec) =>
+      P.imports(Seq(spec))
     case Module(_, name, body) =>
       P.module(name.value, body.map(prettyDoc(_, false)))
     case TLet(_, name, tname, expr) =>
@@ -82,9 +83,11 @@ object RawAST {
       v.toString.doc
   }
 
-  case class Program(pos: Pos, pkg: QName, imports: Seq[Import], items: Seq[Module]) extends RawAST
+  case class Program(pos: Pos, pkg: QName, items: Seq[TopLevel]) extends RawAST
 
-  case class Module(pos: Pos, name: Name, body: Seq[Term]) extends RawAST
+  sealed abstract class TopLevel extends RawAST
+  case class TImport(pos: Pos, spec: Import) extends TopLevel
+  case class Module(pos: Pos, name: Name, body: Seq[Term]) extends TopLevel
 
   sealed abstract class Term extends RawAST
   case class TLet(pos: Pos, name: Name, typeName: Option[TypeName], expr: Expr) extends Term

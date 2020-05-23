@@ -1,0 +1,23 @@
+(* using: Predef *)
+package test.ml0
+
+import com.todesking.ojaml.ml0.lib.Predef.+
+
+module A {
+  let x = 123 ;
+  (* A.x: Int = 123 *)
+}
+
+import A.x
+
+module B {
+  let x = x + 1 ;
+  (* B.x: Int = 124 *)
+}
+
+import B.x
+
+module C {
+  let x = x + 1 ;
+  (* C.x: Int = 125 *)
+}

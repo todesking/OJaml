@@ -94,15 +94,15 @@ class Repl extends Closeable {
   }
 
   private[this] def compile(statement: RT.Term): Either[Result, (ojaml.Compiler.Env, TT.Module)] = {
+    val module = RT.Module(
+      fakePos,
+      mkName(s"Repl_$nextIndex"),
+      Seq(statement))
+    val programBody = imports.map(RT.TImport(fakePos, _)) :+ module
     val program = RT.Program(
       fakePos,
       mkQName("ojaml.repl"),
-      imports,
-      Seq(
-        RT.Module(
-          fakePos,
-          mkName(s"Repl_$nextIndex"),
-          Seq(statement))))
+      programBody)
     val result =
       for {
         x <- compiler.namePhase(env.nameEnv, program)

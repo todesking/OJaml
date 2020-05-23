@@ -16,12 +16,15 @@ import Namer.litBool
 class Namer() {
 
   def appProgram(p: RT.Program, env: NameEnv): Result[(NameEnv, Seq[NT.Module])] =
-    p.items.mapWithContextEC(env) { (env, x) =>
-      appModule(p.pkg, p.imports, env, x).map {
-        case (pe, named) =>
-          (pe, named)
-      }
-    }
+    p.items.flatMapWithContextEC((env, Seq.empty[Import])) {
+      case ((env, imports), RT.TImport(pos, spec)) =>
+        ok(((env, imports :+ spec), Seq()))
+      case ((env, imports), tree @ RT.Module(_, _, _)) =>
+        appModule(p.pkg, imports, env, tree).map {
+          case (env, named) =>
+            ((env, imports), Seq(named))
+        }
+    }.map { case ((env, imports), trees) => (env, trees) }
 
   private[this] def appModule(pkg: QName, imports: Seq[Import], env: NameEnv, s: RT.Module): Result[(NameEnv, NT.Module)] = {
     val currentModule = ModuleRef(PackageRef.fromInternalName(pkg.internalName), s.name.value)

@@ -12,10 +12,14 @@ object Syntax {
         case (a, x) =>
           a.flatMap(f(_, x))
       }
-    def mapWithContextEC[B, C, E](init: B)(f: (B, A) => Result[(B, C)]): Result[(B, Seq[C])] =
+
+    def flatMapWithContextEC[B, C, E](init: B)(f: (B, A) => Result[(B, Seq[C])]): Result[(B, Seq[C])] =
       self.foldLeftE((init, Seq.empty[C])) {
-        case ((c, a), x) => f(c, x).map { case (cc, y) => (cc, a :+ y) }
+        case ((c, a), x) => f(c, x).map { case (cc, y) => (cc, a ++ y) }
       }
+
+    def mapWithContextEC[B, C, E](init: B)(f: (B, A) => Result[(B, C)]): Result[(B, Seq[C])] =
+      flatMapWithContextEC(init) { (a, x) => f(a, x).map { case (b, c) => (b, Seq(c)) } }
 
     def mapWithContextE[B, C, E](init: B)(f: (B, A) => Result[(B, C)]): Result[Seq[C]] =
       self.mapWithContextEC(init)(f).map(_._2)
