@@ -12,4 +12,7 @@ module List_test {
 
   let ilist1 = Predef.list_map (fun n => n + 1) ilist ;
   (* ilist1: List Int = Cons 2 (Cons 3 (Cons 4 Nil)) *)
+
+  let l = Predef.list_len ilist ;
+  (* l: Int = 3 *)
 }

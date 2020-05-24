@@ -25,4 +25,8 @@ module Predef {
   let rec list_map f l = match l
     | Cons x xs => Cons (f x) (list_map f xs)
     | Nil => Nil ;
+
+  let rec list_len l = match l
+    | Cons x xs => 1 + (list_len xs)
+    | Nil => 0 ;
 }
