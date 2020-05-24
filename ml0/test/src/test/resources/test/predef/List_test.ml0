@@ -10,9 +10,12 @@ module List_test {
   let ilist = Cons 1 (Cons 2 (Cons 3 Nil)) ;
   (* ilist: List Int = Cons 1 (Cons 2 (Cons 3 Nil)) *)
 
-  let ilist1 = Predef.list_map (fun n => n + 1) ilist ;
-  (* ilist1: List Int = Cons 2 (Cons 3 (Cons 4 Nil)) *)
+  let l1 = Predef.list_map (fun n => n + 1) ilist ;
+  (* l1: List Int = Cons 2 (Cons 3 (Cons 4 Nil)) *)
 
-  let l = Predef.list_len ilist ;
-  (* l: Int = 3 *)
+  let l2 = Predef.list_len ilist ;
+  (* l2: Int = 3 *)
+
+  let l3 = Predef.fold_left (fun a x => a + x) 0 ilist ;
+  (* l3: Int = 6 *)
 }

@@ -29,4 +29,8 @@ module Predef {
   let rec list_len l = match l
     | Cons x xs => 1 + (list_len xs)
     | Nil => 0 ;
+
+  let rec fold_left f a l = match l
+    | Cons x xs => fold_left f (f a x) xs
+    | Nil => a ;
 }
