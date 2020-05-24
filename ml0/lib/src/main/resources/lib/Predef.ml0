@@ -19,4 +19,6 @@ module Predef {
   let string_eq l: java.lang.String r: java.lang.String = Runtime##stringEq(l, r) ;
 
   let unit = Runtime##unitValue() ;
+
+  data List a = Cons a (List a) | Nil ;
 }

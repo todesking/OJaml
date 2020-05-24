@@ -1,0 +1,11 @@
+(* using: Predef *)
+
+package test.ml0
+
+import com.todesking.ojaml.ml0.lib.Predef
+import Predef.{Cons, Nil}
+
+module List_test {
+  let ilist = Cons 1 (Cons 2 (Cons 3 Nil)) ;
+  (* ilist: List Int = Cons 1 (Cons 2 (Cons 3 Nil)) *)
+}

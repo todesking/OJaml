@@ -76,7 +76,16 @@ class Namer() {
             params.map { tname => boundCtx.resolveType(tname) }.validated.map { ts => (name, ts) }
         }.validated
         ctx <- resolvedCtors
-          .foldLeftE(ctx) { case (c, (n, ts)) => c.addCtor(n.value, ts.size) }
+          .foldLeftE(ctx) {
+            case (c, (n, ts)) =>
+              c.addCtor(n.value, ts.size).map { c =>
+                (0 until ts.size).foldLeft(
+                  c.addModuleMember(c.patCheckerName(n.value))) {
+                    case (c, i) =>
+                      c.addModuleMember(c.patExtractorName(n.value, i))
+                  }
+              }
+          }
       } yield (ctx, NT.Data(pos, name, tvars, resolvedCtors))
     case RT.TExpr(pos, expr) =>
       for {
@@ -339,6 +348,7 @@ object Namer {
       }
     }
 
+    // TODO: rename to addValueMember
     def addModuleMember(name: String): Ctx = {
       require(stack.isEmpty)
       copy(env = env.addValueMember(currentModule, name))
