@@ -21,4 +21,8 @@ module Predef {
   let unit = Runtime##unitValue() ;
 
   data List a = Cons a (List a) | Nil ;
+
+  let rec list_map f l = match l
+    | Cons x xs => Cons (f x) (list_map f xs)
+    | Nil => Nil ;
 }
