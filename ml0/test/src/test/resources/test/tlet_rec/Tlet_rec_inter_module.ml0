@@ -1,0 +1,13 @@
+(* debug *)
+package test.ml0
+
+module A {
+  let rec
+    f x = g x ;
+    g x = x ;
+}
+
+module B {
+  let x = A.g 1 ;
+  (* B.x: Int = 1 *)
+}

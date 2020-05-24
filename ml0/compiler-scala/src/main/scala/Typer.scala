@@ -345,9 +345,15 @@ class Typer {
 }
 
 object Typer {
-  def memberTypes(s: TypedAST.Module): Map[MemberRef, Type] = s.body.collect {
+  def memberTypes(s: TypedAST.Module): Map[MemberRef, Type] = s.body.flatMap {
     case TypedAST.TLet(pos, name, tpe, _) =>
-      MemberRef(s.moduleRef, name.value) -> tpe
+      Seq(MemberRef(s.moduleRef, name.value) -> tpe)
+    case TypedAST.TLetRec(pos, bindings) =>
+      bindings.map {
+        case (n, t, e) => s.moduleRef.memberRef(n.value) -> t
+      }
+    case _ =>
+      Seq()
   }.toMap
 
   // TODO: add unified flag
