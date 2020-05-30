@@ -3,4 +3,7 @@ package test.ml0
 module String {
   let x1 = "foo" ;
   (* x1: java.lang.String = foo *)
+
+  let x2 = "" ;
+  (* x2: java.lang.String = *)
 }

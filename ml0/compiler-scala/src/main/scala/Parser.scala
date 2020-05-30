@@ -199,7 +199,7 @@ class Parser(sourceLocation: String) extends scala.util.parsing.combinator.Regex
     case _ => throw new AssertionError()
   }
   val litv_string: Parser[LitValue] =
-    ("\"" ~> """[^"]+""".r) <~ "\"" ^^ { s => LitValue.of(s) }
+    ("\"" ~> """[^"]*""".r) <~ "\"" ^^ { s => LitValue.of(s) }
 
   val eif: Parser[RawAST.If] =
     withpos((kwd("if") ~> expr) ~ (kwd("then") ~> expr) ~ (kwd("else") ~> expr)) { case (pos, cond ~ th ~ el) => T.If(pos, cond, th, el) }
