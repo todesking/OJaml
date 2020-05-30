@@ -1,6 +1,7 @@
 package com.todesking.ojaml.ml0.lib
 
 import com.todesking.ojaml.ml0.runtime.Runtime
+import java.lang.String
 
 module Predef {
   let + l: Int r: Int = Runtime##intAdd(l, r) ;
@@ -16,9 +17,13 @@ module Predef {
 
   let int_eq l: Int r: Int = Runtime##intEq(l, r) ;
   let bool_eq l: Bool r: Bool = Runtime##boolEq(l, r) ;
-  let string_eq l: java.lang.String r: java.lang.String = Runtime##stringEq(l, r) ;
+  let string_eq l: String r: String = Runtime##stringEq(l, r) ;
 
   let unit = Runtime##unitValue() ;
+
+  let id x = x ;
+
+  let int_show n:Int = n#toString() ;
 
   data List a = Cons a (List a) | Nil ;
 
@@ -33,4 +38,13 @@ module Predef {
   let rec fold_left f a l = match l
     | Cons x xs => fold_left f (f a x) xs
     | Nil => a ;
+
+  let str_concat l:String r:String = Runtime##stringConcat(l, r) ;
+
+  let rec list_join show sep l = match l
+    | Nil => ""
+    | Cons x Nil => show x
+    | Cons x xs => str_concat (str_concat (show x) sep) (list_join show sep xs) ;
+
+  let list_show show l = str_concat (str_concat "[" (list_join show "; " l)) "]" ;
 }

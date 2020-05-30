@@ -1,9 +1,13 @@
 package com.todesking.ojaml.ml0.runtime;
 
 public class Runtime {
-  public static boolean stringEq(java.lang.String l, java.lang.String r) {
+  public static boolean stringEq(String l, String r) {
     if(l == null) return r == null;
     else return l.equals(r);
+  }
+
+  public static String stringConcat(String l, String r) {
+    return l + r;
   }
 
   public static int intAdd(int l, int r) { return l + r; }

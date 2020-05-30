@@ -18,4 +18,22 @@ module List_test {
 
   let l3 = Predef.fold_left (fun a x => a + x) 0 ilist ;
   (* l3: Int = 6 *)
+
+  let l4 = Predef.list_show Predef.int_show ilist ;
+  (* l4: java.lang.String = [1; 2; 3] *)
+
+  let j1 = Predef.list_join Predef.id ", " Nil ;
+  (* j1: java.lang.String = *)
+
+  let j2 = Predef.list_join Predef.id ", " (Cons "a" Nil) ;
+  (* j2: java.lang.String = a *)
+
+  let j3 = Predef.list_join Predef.id ", " (Cons "a" (Cons "b" Nil)) ;
+  (* j3: java.lang.String = a, b *)
+
+  let con1 = Predef.str_concat "" "" ;
+  (* con1: java.lang.String = *)
+
+  let con2 = Predef.str_concat "a" "b" ;
+  (* con2: java.lang.String = ab *)
 }
