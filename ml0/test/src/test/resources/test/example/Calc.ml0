@@ -1,0 +1,133 @@
+(* using: Predef *)
+package test.ml0
+
+import com.todesking.ojaml.ml0.lib.Predef
+import Predef.{+, *}
+import Predef.{Cons, Nil}
+
+import java.lang.String
+import java.util.regex.Pattern
+
+module Calc {
+  data Result a = Ok a | Error ;
+  data Parsed a = POk a String | PError String;
+
+  data Expr = Lit Int | Add Expr Expr | Mul Expr Expr ;
+
+  data Tuple2 t1 t2 = Tuple2 t1 t2 ;
+  data Tuple3 t1 t2 t3 = Tuple3 t1 t2 t3 ;
+
+  let starts_with s:String p:String = s#startsWith(p) ;
+  let str_tail l:Int s:String = s#substring(l) ;
+  let str_len s:String = s#length() ;
+
+  let parse_regex re:Pattern s:String =
+    let m = re#matcher(Predef.string_as_charseq s) in
+    if m#lookingAt()
+    then POk m#group() (str_tail m#end() s)
+    else PError "error at parse_regex" ;
+
+  let rec eval_expr expr = match expr
+    | Lit x => x
+    | Add l r => (eval_expr l) + (eval_expr r)
+    | Mul l r => (eval_expr l) * (eval_expr r) ;
+
+  let rec parse_choice ps s = match ps
+    | Cons p ps =>
+      (match p s
+        | POk a rest => POk a rest
+        | PError _ => parse_choice ps s)
+    | Nil => PError "error at parse_choice" ;
+
+  let parse_seql l r = fun s =>
+    match l s
+    | POk vl s => (match r s
+      | POk vr s => POk vl s
+      | PError s => PError s)
+    | PError s => PError s ;
+
+  let parse_seqr l r = fun s =>
+    match l s
+    | POk vl s => (match r s
+      | POk vr s => POk vr s
+      | PError s => PError s)
+    | PError s => PError s ;
+
+  let parse_seq p1 p2 s =
+    match p1 s
+    | POk v1 s => (match p2 s
+      | POk v2 s => POk (Tuple2 v1 v2) s
+      | PError s => PError s )
+    | PError s => PError s ;
+
+  let parse_seq3 p1 p2 p3 s =
+    match parse_seq p1 p2 s
+    | POk (Tuple2 v1 v2) s => (match p3 s
+      | POk v3 s => POk (Tuple3 v1 v2 v3) s
+      | PError s => PError s )
+    | PError s => PError s ;
+
+  let parse_str p:String s:String =
+    if starts_with s p then POk p (str_tail (str_len p) s)
+    else PError "error at parse_str" ;
+
+  let rec parse_rep p s = match p s
+    | POk v s => (match parse_rep p s
+      | POk tail s => POk (Cons v tail) s
+      | PError s => PError s) (* Can't reach here *)
+    | PError _ => POk Nil s ;
+
+  let parse_repsep p sep s = match p s
+    | POk v s => (match parse_rep (parse_seq sep p) s
+      | POk tail s => POk (Cons v (Predef.list_map (fun x => match x | Tuple2 l r => r) tail)) s 
+      | PError _ => POk (Cons v Nil) s )
+    | PError _ => POk Nil s ;
+
+  let parse_repsep1 p sep s = match parse_repsep p sep s
+    | POk (Cons v vs) s => POk (Cons v vs) s
+    | POk (Nil) s => PError "error at parse_repsep1"
+    | PError s => PError s ;
+
+  let re_lit = Predef.re_compile "[1-9][0-9]*" ;
+
+  let rec
+    parse_expr s = parse_add s ;
+    parse_add s = match parse_repsep1 parse_mul (parse_str "+") s
+      | POk (Cons e es) s => POk (Predef.fold_left Add e es) s
+      | PError s => PError s ;
+    parse_mul s = match parse_repsep1 (parse_choice (Cons parse_paren (Cons parse_lit Nil))) (parse_str "*") s
+      | POk (Cons e es) s => POk (Predef.fold_left Mul e es) s
+      | PError s => PError s ;
+    parse_lit s =  match parse_regex re_lit s
+      | POk v s => POk (Lit java.lang.Integer##parseInt(Predef.as_string v)) s
+      | PError s => PError s ;
+    parse_paren s =
+      let p1 = parse_seqr (parse_str "(") parse_expr in
+      parse_seql p1 (parse_str ")") s ;
+
+  let eval s = match parse_expr s
+    | POk expr "" => Ok (eval_expr expr)
+    | POk expr _ => Error
+    | PError s => Error ;
+
+  let e1 = eval "a" ;
+  (* e1: * = Error *)
+
+  let e2 = eval "1+" ;
+  (* e2: * = Error *)
+
+  let e3 = eval "1+()" ;
+  (* e3: * = Error *)
+
+  let o1 = eval "1" ;
+  (* o1: * = Ok 1 *)
+
+  let o2 = eval "1+2" ;
+  (* o2: * = Ok 3 *)
+
+  let o3 = eval "1+2*3+4" ;
+  (* o3: * = Ok 11 *)
+
+  let o4 = eval "(1+2)*3+4" ;
+  (* o4: * = Ok 13 *)
+}

@@ -14,7 +14,8 @@ class Classpath(cl: ClassLoader) {
   val knownPackages: Set[String] = Set(
     "java",
     "java/lang",
-    "java/util")
+    "java/util",
+    "java/util/regex")
   def packageExists(pkg: PackageRef, name: String): Boolean = {
     val path = pkg.packageRef(name).internalName
     cl.getResource(path) != null || knownPackages.contains(path)

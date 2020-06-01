@@ -19,7 +19,14 @@ module Predef {
   let bool_eq l: Bool r: Bool = Runtime##boolEq(l, r) ;
   let string_eq l: String r: String = Runtime##stringEq(l, r) ;
 
+  let string_as_charseq s:String = Runtime##stringAsCharSeq(s) ;
+  let as_string s:String = s ;
+
+  let re_compile s:String = Runtime##regexCompile(s) ;
+
   let unit = Runtime##unitValue() ;
+
+  let println s:String = Runtime##println(s) ;
 
   let id x = x ;
 

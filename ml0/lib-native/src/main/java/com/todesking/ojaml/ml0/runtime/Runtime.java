@@ -1,5 +1,7 @@
 package com.todesking.ojaml.ml0.runtime;
 
+import java.util.regex.Pattern;
+
 public class Runtime {
   public static boolean stringEq(String l, String r) {
     if(l == null) return r == null;
@@ -8,6 +10,14 @@ public class Runtime {
 
   public static String stringConcat(String l, String r) {
     return l + r;
+  }
+
+  public static CharSequence stringAsCharSeq(String s) {
+    return s;
+  }
+
+  public static void println(String s) {
+    System.out.println(s);
   }
 
   public static int intAdd(int l, int r) { return l + r; }
@@ -24,5 +34,9 @@ public class Runtime {
   public static boolean boolEq(boolean l, boolean r) { return l == r; }
 
   public static Unit unitValue() { return Unit.value; }
+
+  public static Pattern regexCompile(String s) {
+    return Pattern.compile(s);
+  }
 }
 
