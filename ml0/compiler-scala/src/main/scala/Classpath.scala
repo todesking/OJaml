@@ -47,10 +47,14 @@ class Classpath(cl: ClassLoader) {
 
   private[this] def parse(resourceName: String): ClassRepo.ClassFile = {
     val s = cl.getResourceAsStream(resourceName)
-    val cr = new asm.ClassReader(s)
-    val p = new ClassRepo.ClassParser
-    cr.accept(p, asm.ClassReader.SKIP_CODE)
-    p.result()
+    try {
+      val cr = new asm.ClassReader(s)
+      val p = new ClassRepo.ClassParser
+      cr.accept(p, asm.ClassReader.SKIP_CODE)
+      p.result()
+    } finally {
+      s.close()
+    }
   }
 }
 
