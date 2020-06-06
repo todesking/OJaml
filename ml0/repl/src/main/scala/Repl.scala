@@ -180,10 +180,15 @@ class Repl extends Closeable {
 
   private[this] def rmr(path: Path): Unit = {
     if (Files.isDirectory(path)) {
-      Files.list(path)
-        .collect(Collectors.toList())
-        .asScala
-        .foreach { sub => rmr(sub) }
+      val stream = Files.list(path)
+      val list = try {
+        stream
+          .collect(Collectors.toList())
+          .asScala
+      } finally {
+        stream.close()
+      }
+      list.foreach { sub => rmr(sub) }
     }
     Files.delete(path)
   }

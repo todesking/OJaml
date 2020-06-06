@@ -41,10 +41,18 @@ class E2ETest extends FunSpec {
     }
   }
 
+  def listFiles0(p: Path): Seq[Path] = {
+    val stream = Files.list(p)
+    try {
+      stream
+        .collect(java.util.stream.Collectors.toList[Path])
+        .asScala
+    } finally {
+      stream.close()
+    }
+  }
   def listFiles(p: Path): Seq[Path] =
-    Files.list(p)
-      .collect(java.util.stream.Collectors.toList[Path])
-      .asScala
+    listFiles0(p)
       .sortBy { path =>
         val grouped =
           if (Files.isDirectory(path) && !path.toString.endsWith(".ml0")) 1
@@ -172,10 +180,7 @@ class E2ETest extends FunSpec {
 
   private[this] def rmr(path: Path): Unit = {
     if (Files.isDirectory(path)) {
-      Files.list(path)
-        .collect(Collectors.toList())
-        .asScala
-        .foreach { sub => rmr(sub) }
+      listFiles0(path).foreach { sub => rmr(sub) }
     }
     Files.delete(path)
   }
