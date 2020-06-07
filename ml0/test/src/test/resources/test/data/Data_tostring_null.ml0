@@ -1,0 +1,10 @@
+(* using: Predef *)
+package test.ml0
+
+import com.todesking.ojaml.ml0.lib.Predef
+
+module Data_tostring_null {
+  data X a = X a ;
+  let x = X Predef.null_as_object ;
+  (* x: X java.lang.Object = X null *)
+}

@@ -28,6 +28,8 @@ public abstract class Data {
     public static String format(Object x, boolean group) {
         if(x instanceof Data) {
             return ((Data)x).toString(group);
+        } else if(x == null) {
+            return "null";
         } else {
             return x.toString();
         }

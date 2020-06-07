@@ -38,5 +38,9 @@ public class Runtime {
   public static Pattern regexCompile(String s) {
     return Pattern.compile(s);
   }
+
+  public static Object nullAsObject() {
+    return null;
+  }
 }
 
