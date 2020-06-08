@@ -112,12 +112,13 @@ class Emitter(baseDir: Path) {
     write(pkg.fullName, klass.ref.name, cw.toByteArray)
   }
 
-  class MethodContext(mw: asm.MethodVisitor) {
+  class MethodContext(sourcePath: String, mw: asm.MethodVisitor) {
     // offset -> (labe, lineNum)
     private[this] var lineNumbers = Map.empty[Int, (asm.Label, Int)]
     private[this] var posStack = List.empty[Pos]
 
     private[this] def recordPos(pos: Pos): Unit = {
+      require(pos.location == sourcePath)
       val label = new asm.Label()
       mw.visitLabel(label)
       lineNumbers += label.getOffset -> (label, pos.line)
@@ -265,7 +266,7 @@ class Emitter(baseDir: Path) {
       null,
       Array())
 
-    val ctx = new MethodContext(mw)
+    val ctx = new MethodContext(klass.filePath, mw)
     m.body.foreach { term =>
       ctx.appTerm(term)
     }
