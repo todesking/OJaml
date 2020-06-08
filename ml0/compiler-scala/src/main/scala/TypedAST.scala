@@ -117,7 +117,6 @@ object TypedAST {
 
   case class MatchError(pos: Pos, tpe: Type) extends Expr
 
-  case class Match(pos: Pos, expr: Expr, clauses: Seq[Clause], tpe: Type) extends Expr
   case class Clause(pos: Pos, pat: Pat, body: Expr) extends TypedAST
   sealed abstract class Pat extends TypedAST
   object Pat {
