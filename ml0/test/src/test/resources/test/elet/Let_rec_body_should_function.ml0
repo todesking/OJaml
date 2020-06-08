@@ -3,6 +3,6 @@ package test.ml0
 module Let_rec_body_should_function {
   let x =
     let rec x = 1 in x ;
-    (*              ^ *)
+    (*           ^ *)
     (* TODO: this is not intended: When parser fails to parse letrec, it continues and fails in another place. *)
 }

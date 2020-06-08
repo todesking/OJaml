@@ -47,6 +47,7 @@ class E2ETest extends FunSpec {
       stream
         .collect(java.util.stream.Collectors.toList[Path])
         .asScala
+        .toSeq
     } finally {
       stream.close()
     }
@@ -205,7 +206,7 @@ object E2ETest {
 
   object Target {
     def from(path: Path): Target = {
-      val lines = Files.readAllLines(path).asScala
+      val lines = Files.readAllLines(path).asScala.toSeq
 
       val reModuleName = """module\s+([^\s]+)""".r
       val classNames = lines.collect { case `reModuleName`(name) => s"test.ml0.$name" }
