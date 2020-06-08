@@ -105,11 +105,4 @@ object TypedAST {
   }
 
   case class MatchError(pos: Pos, tpe: Type) extends Expr
-
-  case class Clause(pos: Pos, pat: Pat, body: Expr) extends TypedAST
-  sealed abstract class Pat extends TypedAST
-  object Pat {
-    case class Ctor(pos: Pos, dataType: Type.Data, name: Name, args: Seq[(Type, Pat)]) extends Pat
-    case class PAny(pos: Pos) extends Pat
-  }
 }
