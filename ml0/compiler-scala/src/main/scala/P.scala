@@ -5,6 +5,8 @@ import pretty.PrettyPrinter
 import pretty.Doc
 import pretty.PrettySyntax._
 
+import scala.language.implicitConversions
+
 object P {
   trait DocLike {
     def toDocs: Seq[Doc]
