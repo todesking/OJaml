@@ -54,4 +54,8 @@ module Predef {
     | Cons x xs => str_concat (str_concat (show x) sep) (list_join show sep xs) ;
 
   let list_show show l = str_concat (str_concat "[" (list_join show "; " l)) "]" ;
+
+  let null_as_object = Runtime##nullAsObject() ;
+
+  let stacktrace_element depth:Int = Runtime##stacktraceElement(depth + 1) ;
 }

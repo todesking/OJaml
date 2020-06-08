@@ -1,0 +1,20 @@
+(* using: Predef *)
+package test.ml0
+
+import com.todesking.ojaml.ml0.lib.Predef
+
+module Source_location {
+  data Elem = Elem java.lang.String Int ;
+
+  let elm e:java.lang.StackTraceElement = 
+    Elem e#getFileName() e#getLineNumber() ;
+
+  let x1 = elm (Predef.stacktrace_element 0) ;
+  (* x1: * = Elem Source_location.ml0 12 *)
+
+  let x2 =
+    let rec e x =
+      elm (Predef.stacktrace_element 0) in
+    e 0 ;
+  (* x2: * = Elem Source_location.ml0 17 *)
+}

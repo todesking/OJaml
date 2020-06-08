@@ -98,6 +98,8 @@ class Emitter(baseDir: Path) {
       null,
       klass.superRef.internalName,
       Array())
+    val fileName = java.nio.file.Paths.get(klass.filePath).getFileName.toString
+    cw.visitSource(fileName, null)
 
     klass.fields.foreach { f =>
       defineField(cw, f.name, f.tpe, f.isStatic)
@@ -110,89 +112,146 @@ class Emitter(baseDir: Path) {
     write(pkg.fullName, klass.ref.name, cw.toByteArray)
   }
 
-  private[this] def eval(method: asm.MethodVisitor, expr: J.Expr): Unit = expr match {
-    case J.Lit(v) =>
-      method.visitLdcInsn(v.value)
-    case J.GetField(ref, target) =>
-      eval(method, target)
-      method.visitFieldInsn(op.GETFIELD, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
-    case J.GetStatic(ref) =>
-      method.visitFieldInsn(op.GETSTATIC, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
-    case J.If(cond, th, el, tpe) =>
-      val lElse = new asm.Label()
-      val lEnd = new asm.Label()
-      eval(method, cond)
-      method.visitJumpInsn(op.IFEQ, lElse)
-      eval(method, th)
-      method.visitJumpInsn(op.GOTO, lEnd)
-      method.visitLabel(lElse)
-      eval(method, el)
-      method.visitLabel(lEnd)
-    case J.JNew(ref, args) =>
-      method.visitTypeInsn(op.NEW, ref.internalName)
-      method.visitInsn(op.DUP)
-      args.foreach { a =>
-        eval(method, a)
+  class MethodContext(mw: asm.MethodVisitor) {
+    // offset -> (labe, lineNum)
+    private[this] var lineNumbers = Map.empty[Int, (asm.Label, Int)]
+    private[this] var posStack = List.empty[Pos]
+
+    private[this] def recordPos(pos: Pos): Unit = {
+      val label = new asm.Label()
+      mw.visitLabel(label)
+      lineNumbers += label.getOffset -> (label, pos.line)
+    }
+    private[this] def pushPos[A](pos: Pos)(f: => A): A = {
+      recordPos(pos)
+      posStack = pos :: posStack
+      val value = f
+      posStack = posStack.tail
+      posStack.headOption.foreach { p => recordPos(p) }
+      value
+    }
+    def finish(): Unit = {
+      lineNumbers.foreach {
+        case (off, (label, line)) =>
+          mw.visitLineNumber(line, label)
       }
-      method.visitMethodInsn(
-        op.INVOKESPECIAL,
-        ref.internalName,
-        "<init>",
-        asm.Type.getMethodType(asm.Type.VOID_TYPE, args.map(_.tpe).map(JType.toAsm).toArray: _*).getDescriptor,
-        false)
-    case J.Cast(body, tpe) =>
-      eval(method, body)
-      method.visitTypeInsn(op.CHECKCAST, tpe.jname)
-    case J.Box(body) =>
-      eval(method, body)
-      box(method, body.tpe)
-    case J.Unbox(body) =>
-      eval(method, body)
-      unbox(method, body.tpe)
-    case J.Invoke(sig, special, receiver, args) =>
-      receiver.foreach(eval(method, _))
-      args.foreach(eval(method, _))
-      val insn =
-        if (special) op.INVOKESPECIAL
-        else if (sig.isInterface) op.INVOKEINTERFACE
-        else if (sig.isStatic) op.INVOKESTATIC
-        else op.INVOKEVIRTUAL
-      method.visitMethodInsn(
-        insn,
-        sig.klass.internalName,
-        sig.name,
-        sig.descriptor,
-        sig.isInterface)
-      if (sig.ret.isEmpty) {
+    }
+    def appTerm(term: J.Term): Unit = term match {
+      case J.PutStatic(pos, ref, expr) =>
+        pushPos(pos) {
+          eval(mw, expr)
+          mw.visitFieldInsn(op.PUTSTATIC, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
+        }
+      case J.PutField(pos, ref, target, expr) =>
+        pushPos(pos) {
+          eval(mw, target)
+          eval(mw, expr)
+          mw.visitFieldInsn(op.PUTFIELD, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
+        }
+      case J.TExpr(pos, expr) =>
+        pushPos(pos) {
+          eval(mw, expr)
+          mw.visitInsn(op.POP)
+        }
+      case J.TReturn(pos, expr) =>
+        pushPos(pos) {
+          eval(mw, expr)
+          expr.tpe match {
+            case _: JType.TReference =>
+              mw.visitInsn(op.ARETURN)
+            case tpe =>
+              throw new NotImplementedError(s"Not supported yet: $tpe")
+          }
+        }
+    }
+    def eval(method: asm.MethodVisitor, expr: J.Expr): Unit = expr match {
+      case J.EPos(pos, expr) =>
+        pushPos(pos) {
+          eval(method, expr)
+        }
+      case J.Lit(v) =>
+        method.visitLdcInsn(v.value)
+      case J.GetField(ref, target) =>
+        eval(method, target)
+        method.visitFieldInsn(op.GETFIELD, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
+      case J.GetStatic(ref) =>
+        method.visitFieldInsn(op.GETSTATIC, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
+      case J.If(cond, th, el, tpe) =>
+        val lElse = new asm.Label()
+        val lEnd = new asm.Label()
+        eval(method, cond)
+        method.visitJumpInsn(op.IFEQ, lElse)
+        eval(method, th)
+        method.visitJumpInsn(op.GOTO, lEnd)
+        method.visitLabel(lElse)
+        eval(method, el)
+        method.visitLabel(lEnd)
+      case J.JNew(ref, args) =>
+        method.visitTypeInsn(op.NEW, ref.internalName)
+        method.visitInsn(op.DUP)
+        args.foreach { a =>
+          eval(method, a)
+        }
+        method.visitMethodInsn(
+          op.INVOKESPECIAL,
+          ref.internalName,
+          "<init>",
+          asm.Type.getMethodType(asm.Type.VOID_TYPE, args.map(_.tpe).map(JType.toAsm).toArray: _*).getDescriptor,
+          false)
+      case J.Cast(body, tpe) =>
+        eval(method, body)
+        method.visitTypeInsn(op.CHECKCAST, tpe.jname)
+      case J.Box(body) =>
+        eval(method, body)
+        box(method, body.tpe)
+      case J.Unbox(body) =>
+        eval(method, body)
+        unbox(method, body.tpe)
+      case J.Invoke(sig, special, receiver, args) =>
+        receiver.foreach(eval(method, _))
+        args.foreach(eval(method, _))
+        val insn =
+          if (special) op.INVOKESPECIAL
+          else if (sig.isInterface) op.INVOKEINTERFACE
+          else if (sig.isStatic) op.INVOKESTATIC
+          else op.INVOKEVIRTUAL
+        method.visitMethodInsn(
+          insn,
+          sig.klass.internalName,
+          sig.name,
+          sig.descriptor,
+          sig.isInterface)
+        if (sig.ret.isEmpty) {
+          method.visitInsn(op.ACONST_NULL)
+        }
+      case J.GetLocal(index, tpe) =>
+        Asm.autoload(method, index, tpe)
+      case J.GetObjectFromUncheckedArray(arr, index) =>
+        eval(method, arr)
+        method.visitTypeInsn(op.CHECKCAST, JType.ObjectArray.jname)
+        method.visitLdcInsn(index)
+        method.visitInsn(op.AALOAD)
+      case J.Null(tpe) =>
         method.visitInsn(op.ACONST_NULL)
-      }
-    case J.GetLocal(index, tpe) =>
-      Asm.autoload(method, index, tpe)
-    case J.GetObjectFromUncheckedArray(arr, index) =>
-      eval(method, arr)
-      method.visitTypeInsn(op.CHECKCAST, JType.ObjectArray.jname)
-      method.visitLdcInsn(index)
-      method.visitInsn(op.AALOAD)
-    case J.Null(tpe) =>
-      method.visitInsn(op.ACONST_NULL)
-    case J.NewObjectArray(size) =>
-      method.visitLdcInsn(size)
-      method.visitTypeInsn(op.ANEWARRAY, JType.TObject.jname)
-    case J.PutValuesToArray(arr, values) =>
-      eval(method, arr)
-      values.zipWithIndex.foreach {
-        case (v, i) =>
-          method.visitInsn(op.DUP)
-          method.visitLdcInsn(i)
-          eval(method, v)
-          method.visitInsn(op.AASTORE)
-      }
-    case J.Throw(e, t) =>
-      eval(method, e)
-      method.visitInsn(op.ATHROW)
-    case J.InstanceOf(e, ref) =>
-      eval(method, e)
-      method.visitTypeInsn(op.INSTANCEOF, ref.internalName)
+      case J.NewObjectArray(size) =>
+        method.visitLdcInsn(size)
+        method.visitTypeInsn(op.ANEWARRAY, JType.TObject.jname)
+      case J.PutValuesToArray(arr, values) =>
+        eval(method, arr)
+        values.zipWithIndex.foreach {
+          case (v, i) =>
+            method.visitInsn(op.DUP)
+            method.visitLdcInsn(i)
+            eval(method, v)
+            method.visitInsn(op.AASTORE)
+        }
+      case J.Throw(e, t) =>
+        eval(method, e)
+        method.visitInsn(op.ATHROW)
+      case J.InstanceOf(e, ref) =>
+        eval(method, e)
+        method.visitTypeInsn(op.INSTANCEOF, ref.internalName)
+    }
   }
 
   private[this] def defineMethod(cw: ClassVisitor, klass: J.ClassDef, m: J.MethodDef) = {
@@ -205,26 +264,13 @@ class Emitter(baseDir: Path) {
       klass.methodSig(m).descriptor,
       null,
       Array())
-    m.body.foreach {
-      case J.PutStatic(ref, expr) =>
-        eval(mw, expr)
-        mw.visitFieldInsn(op.PUTSTATIC, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
-      case J.PutField(ref, target, expr) =>
-        eval(mw, target)
-        eval(mw, expr)
-        mw.visitFieldInsn(op.PUTFIELD, ref.klass.internalName, escape(ref.name), descriptor(ref.tpe))
-      case J.TExpr(expr) =>
-        eval(mw, expr)
-        mw.visitInsn(op.POP)
-      case J.TReturn(expr) =>
-        eval(mw, expr)
-        expr.tpe match {
-          case _: JType.TReference =>
-            mw.visitInsn(op.ARETURN)
-          case tpe =>
-            throw new NotImplementedError(s"Not supported yet: $tpe")
-        }
+
+    val ctx = new MethodContext(mw)
+    m.body.foreach { term =>
+      ctx.appTerm(term)
     }
+    ctx.finish()
+
     if (m.ret.isEmpty)
       mw.visitInsn(op.RETURN)
     methodEnd(mw)

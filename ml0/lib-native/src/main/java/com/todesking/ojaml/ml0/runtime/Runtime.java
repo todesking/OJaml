@@ -42,5 +42,11 @@ public class Runtime {
   public static Object nullAsObject() {
     return null;
   }
+
+  public static StackTraceElement stacktraceElement(int depth) {
+    RuntimeException e = new RuntimeException();
+    e.fillInStackTrace();
+    return e.getStackTrace()[depth + 1];
+  }
 }
 

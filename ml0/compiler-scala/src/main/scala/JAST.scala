@@ -7,14 +7,14 @@ sealed abstract class JAST
 object JAST {
   case class MethodDef(name: String, isStatic: Boolean, params: Seq[JType], ret: Option[JType], body: Seq[Term]) extends JAST
   case class FieldDef(name: String, isStatic: Boolean, tpe: JType) extends JAST
-  case class ClassDef(ref: ClassRef, superRef: ClassRef, fields: Seq[FieldDef], methods: Seq[MethodDef]) extends JAST {
+  case class ClassDef(filePath: String, ref: ClassRef, superRef: ClassRef, fields: Seq[FieldDef], methods: Seq[MethodDef]) extends JAST {
     def methodSig(md: MethodDef) = MethodSig(ref, md.isStatic, false, md.name, md.params, md.ret)
   }
 
   def pretty(ast: JAST): String =
     PrettyPrinter.pretty(80, prettyDoc(ast, false))
   def prettyDoc(ast: JAST, paren: Boolean): Doc = ast match {
-    case ClassDef(ref, superRef, fields, methods) =>
+    case ClassDef(fileName, ref, superRef, fields, methods) =>
       P.bgroup(
         s"class ${ref.fullName} extends ${superRef.fullName} {",
         P.bgroupi(fields.map(prettyDoc(_, false))),
@@ -27,12 +27,14 @@ object JAST {
         s"def ${if (isStatic) "static " else ""}$name(${params.map(_.hname).mkString(", ")}): ${ret.map(_.hname) getOrElse "void"} {",
         P.groupi(body.map(prettyDoc(_, false))),
         "}")
-    case TExpr(expr) =>
+    case TExpr(pos, expr) =>
       prettyDoc(expr, false)
-    case TReturn(expr) =>
+    case TReturn(pos, expr) =>
       P.group(
         "return",
         prettyDoc(expr, false))
+    case EPos(pos, expr) =>
+      prettyDoc(expr, paren)
     case Lit(value) =>
       Doc.Text(value.toString)
     case If(cond, th, el, tpe) =>
@@ -45,7 +47,7 @@ object JAST {
         s"new ${ref.fullName}(",
         P.mks(", ".doc)(args.map(prettyDoc(_, false))),
         ")")
-    case PutStatic(f, b) =>
+    case PutStatic(pos, f, b) =>
       P.group(
         s"$f = ",
         prettyDoc(b, false))
@@ -56,7 +58,7 @@ object JAST {
     case GetStatic(ref) =>
       P.group(
         ref.toString.doc)
-    case PutField(ref, target, expr) =>
+    case PutField(pos, ref, target, expr) =>
       P.group(
         P.group(prettyDoc(target, true), "."),
         s"$ref =",
@@ -114,14 +116,18 @@ object JAST {
   }
 
   sealed abstract class Term extends JAST
-  case class TExpr(expr: Expr) extends Term
-  case class TReturn(expr: Expr) extends Term
+  case class TExpr(pos: Pos, expr: Expr) extends Term
+  case class TReturn(pos: Pos, expr: Expr) extends Term
 
-  case class PutStatic(ref: FieldRef, expr: Expr) extends Term
-  case class PutField(ref: FieldRef, target: Expr, expr: Expr) extends Term
+  case class PutStatic(pos: Pos, ref: FieldRef, expr: Expr) extends Term
+  case class PutField(pos: Pos, ref: FieldRef, target: Expr, expr: Expr) extends Term
 
   sealed abstract class Expr extends JAST {
     def tpe: JType
+  }
+
+  case class EPos(pos: Pos, expr: Expr) extends Expr {
+    override def tpe = expr.tpe
   }
 
   case class Lit(value: LitValue) extends Expr {
