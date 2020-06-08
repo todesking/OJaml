@@ -56,13 +56,6 @@ object TypedAST {
             (name.value, Some(tpe.toString), prettyDoc(f, false))
         },
         prettyDoc(body, false))
-    case JNew(pos, ref, args) =>
-      P.group(
-        s"new ${ref.fullName}(",
-        P.mks(", ".doc)(args.map(prettyDoc(_, false))),
-        ")")
-    case Upcast(pos, body, tpe) =>
-      prettyDoc(body, true) ^^ ": ".doc ^^ tpe.toString().doc
     case TAbs(pos, params, body, tpe) =>
       s"[${params.map(_.toString()).mkString(", ")}]".doc ^^ prettyDoc(body, true)
     case MatchError(pos, tpe) =>
@@ -110,10 +103,6 @@ object TypedAST {
     require(method.args.size == args.size)
     override def tpe: Type = method.ret.map(_.tpe).getOrElse(Type.Unit)
   }
-  case class JNew(pos: Pos, ref: ClassRef, args: Seq[Expr]) extends Expr {
-    override def tpe = Type.Klass(ref)
-  }
-  case class Upcast(pos: Pos, body: Expr, tpe: Type.Reference) extends Expr
 
   case class MatchError(pos: Pos, tpe: Type) extends Expr
 

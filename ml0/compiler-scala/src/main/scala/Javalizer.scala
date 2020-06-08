@@ -69,6 +69,7 @@ object Javalizer {
       case T.TExpr(pos, expr) =>
         builder.addClinit(J.TExpr(pos, appExpr(expr, 0, Map())))
     }
+
     def appExpr(expr: T.Expr, depth: Int, locals: Map[String, (Int, Int)]): J.Expr = expr match {
       case T.Lit(pos, v) => J.EPos(pos, J.Lit(v))
       case T.RefMember(pos, m, t) =>
@@ -77,37 +78,7 @@ object Javalizer {
           J.GetStatic(FieldRef(m.module.classRef, m.name, t.jtype)))
       case T.RefLocal(pos, name, tt) =>
         val (d, index) = locals(name)
-        val t = tt.jtype
-        val tree =
-          if (depth == d) {
-            if (index == 0) {
-              unbox(J.Cast(J.GetLocal(1, t.boxed), t.boxed), t)
-            } else {
-              unbox(
-                J.Cast(
-                  J.GetObjectFromUncheckedArray(J.GetLocal(1, TObject), index - 1),
-                  t.boxed),
-                t)
-            }
-          } else {
-            val sig = MethodSig(
-              Type.Fun.ref,
-              false,
-              false,
-              "getLocal",
-              Seq(JType.TInt, JType.TInt),
-              Some(TObject))
-            unbox(
-              J.Cast(
-                J.Invoke(
-                  sig,
-                  false,
-                  Some(J.GetLocal(0, JType.Fun)),
-                  Seq(J.Lit(LitValue.of(d)), J.Lit(LitValue.of(index)))),
-                t.boxed),
-              t)
-          }
-        J.EPos(pos, tree)
+        J.EPos(pos, appRefLocal(depth, d, index, tt.jtype))
       case T.ELetRec(pos, vs, b) =>
         val newLocals = locals ++ vs.map(_._1).zipWithIndex.map { case (name, i) => name.value -> (depth + 1, i + 1) }
         val funs = vs.map { case (name, tpe, fun) => appExpr(fun, depth + 1, newLocals) }
@@ -169,10 +140,6 @@ object Javalizer {
         J.EPos(
           pos,
           J.Invoke(m, false, Some(box(appExpr(r, depth, locals))), args))
-      case T.JNew(pos, r, a) => J.EPos(pos, J.JNew(r, a.map(appExpr(_, depth, locals))))
-      case T.Upcast(pos, b, t) => J.EPos(
-        pos,
-        J.Cast(appExpr(b, depth, locals), t.jtype))
       case T.MatchError(pos, t) =>
         J.EPos(
           pos,
@@ -181,6 +148,37 @@ object Javalizer {
               ClassRef.fromInternalName("java/lang/RuntimeException"),
               Seq(J.Lit(LitValue.of("match error")))),
             t.jtype))
+    }
+
+    def appRefLocal(currentDepth: Int, depth: Int, index: Int, tpe: JType) = {
+      if (depth == currentDepth) {
+        if (index == 0) {
+          unbox(J.Cast(J.GetLocal(1, tpe.boxed), tpe.boxed), tpe)
+        } else {
+          unbox(
+            J.Cast(
+              J.GetObjectFromUncheckedArray(J.GetLocal(1, TObject), index - 1),
+              tpe.boxed),
+            tpe)
+        }
+      } else {
+        val sig = MethodSig(
+          Type.Fun.ref,
+          false,
+          false,
+          "getLocal",
+          Seq(JType.TInt, JType.TInt),
+          Some(TObject))
+        unbox(
+          J.Cast(
+            J.Invoke(
+              sig,
+              false,
+              Some(J.GetLocal(0, JType.Fun)),
+              Seq(J.Lit(LitValue.of(depth)), J.Lit(LitValue.of(index)))),
+            tpe.boxed),
+          tpe)
+      }
     }
 
     def appData(pos: Pos, name: String, ctors: Seq[T.DataCtor]): Unit = {
@@ -245,18 +243,22 @@ object Javalizer {
           klasses :+= ctorBuilder.build()
 
           val fieldCtor = FieldRef(moduleClass, ctorName, if (params.isEmpty) JType.TKlass(dataKlass) else JType.Fun)
-          val ctorTree = params.zipWithIndex.foldRight(
-            T.Upcast(
-              pos,
-              T.JNew(
-                pos,
-                ctorKlass,
-                oparams.zipWithIndex.map {
-                  case (t, i) =>
-                    T.RefLocal(pos, s"param$i", t)
-                }),
-              Type.Klass(dataKlass)): T.Expr) { case ((t, i), e) => T.Fun(pos, s"param$i", e, e.tpe) } // TODO: Type.Fun(t, e.tpe) ?
-          builder.addClinit(J.PutStatic(pos, fieldCtor, appExpr(ctorTree, 0, Map())))
+
+          val innerDepth = params.size
+          val ctorTree =
+            params.zipWithIndex.foldRight(
+              J.JNew(ctorKlass, oparams.zipWithIndex.map {
+                case (tpe, depth) =>
+                  appRefLocal(innerDepth, depth + 1, 0, tpe.jtype)
+              }): J.Expr) {
+                case ((tpe, depth), body) =>
+                  val funKlass = createFun(pos, body, None)
+                  val args =
+                    if (depth == 0) Seq(J.Null(TObject), J.Null(JType.Fun))
+                    else Seq(J.GetLocal(1, TObject), J.GetLocal(0, JType.Fun))
+                  J.JNew(funKlass, args)
+              }
+          builder.addClinit(J.PutStatic(pos, fieldCtor, ctorTree))
 
           val fieldCheck = FieldRef(moduleClass, checkerName, JType.Fun)
           val funCheck = createFun(pos, J.InstanceOf(J.GetLocal(1, JType.TObject), ctorKlass), None)
