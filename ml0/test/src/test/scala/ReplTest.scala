@@ -37,7 +37,8 @@ class ReplTest extends FunSuite with BeforeAndAfterEach {
     Seq(
       "data E = L Int | R Int ;",
       "let m ee = match ee | L x => 1 | _ => 2 ;",
-      "m (L 1)") -> { case RR.Value(_, 1, "Int") => })
+      "m (L 1)") -> { case RR.Value(_, 1, "Int") => },
+    Seq("let rec f x = g x; g x = x + 1;", "f 1") -> { case RR.Value(_, 2, "Int") => })
   longExamples.foreach {
     case (srcs, assertFun) =>
       test(s"inputs: ${srcs.mkString(" ")}") {

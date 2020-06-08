@@ -73,6 +73,7 @@ class Repl extends Closeable {
     import ojaml.{ RawAST => RT }
     tree match {
       case tree @ RT.TLet(_, name, tname, expr) => Input.Let(name.value, tree)
+      case tree @ RT.TLetRec(_, bindings) => Input.LetRec(bindings.map(_._1.value), tree)
       case tree @ RT.Data(_, name, tvars, ctors) => Input.Data(ctors.map(_._1.value), tree)
       case tree @ RT.TExpr(_, expr) => Input.Expr(s"res$nextIndex", expr)
     }
@@ -144,6 +145,7 @@ class Repl extends Closeable {
       in match {
         case Input.Data(_, _) => Result.Empty
         case Input.Let(name, _) => readValue(klass, tree)
+        case Input.LetRec(_, _) => Result.Empty
         case Input.Expr(name, _) => readValue(klass, tree)
       }
     }.merge
@@ -155,6 +157,7 @@ class Repl extends Closeable {
         case Input.Data(cnames, tree) => (tree, cnames)
         case Input.Expr(name, tree) => (RT.TLet(fakePos, mkName(name), None, tree), Seq(name))
         case Input.Let(name, tree) => (tree, Seq(name))
+        case Input.LetRec(names, tree) => (tree, names)
       }
       compile(statement).map {
         case (newEnv, tree) =>
@@ -221,6 +224,7 @@ object Repl {
   object Input {
     case class Expr(name: String, tree: ojaml.RawAST.Expr) extends Input
     case class Let(name: String, tree: ojaml.RawAST.TLet) extends Input
+    case class LetRec(names: Seq[String], tree: ojaml.RawAST.TLetRec) extends Input
     case class Data(ctors: Seq[String], tree: ojaml.RawAST.Data) extends Input
   }
 
